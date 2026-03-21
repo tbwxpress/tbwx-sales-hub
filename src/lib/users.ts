@@ -11,6 +11,7 @@ const dbUrl = process.env.TURSO_DATABASE_URL || 'file:data/inbox.db'
 const authToken = process.env.TURSO_AUTH_TOKEN || undefined
 
 let _db: Client | null = null
+let _tableReady = false
 
 function getClient(): Client {
   if (!_db) {
@@ -26,7 +27,28 @@ function getClient(): Client {
   return _db
 }
 
+async function ensureTable(): Promise<void> {
+  if (_tableReady) return
+  const db = getClient()
+  await db.executeMultiple(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'agent' CHECK(role IN ('admin', 'agent')),
+      can_assign INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+  `)
+  _tableReady = true
+}
+
 export async function getUsers(): Promise<User[]> {
+  await ensureTable()
   const db = getClient()
   const result = await db.execute('SELECT * FROM users ORDER BY created_at ASC')
   return result.rows.map(row => ({
@@ -41,6 +63,7 @@ export async function getUsers(): Promise<User[]> {
 }
 
 export async function getUserByEmail(email: string): Promise<User | null> {
+  await ensureTable()
   const db = getClient()
   const result = await db.execute({
     sql: 'SELECT * FROM users WHERE LOWER(email) = LOWER(?)',
@@ -60,6 +83,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 }
 
 export async function createUser(user: Omit<User, 'id'>): Promise<string> {
+  await ensureTable()
   const db = getClient()
   const id = `u_${Date.now()}`
   await db.execute({
