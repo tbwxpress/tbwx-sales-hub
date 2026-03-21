@@ -4,8 +4,10 @@ import { cookies } from 'next/headers'
 import type { SessionUser } from './types'
 import { AUTH } from '@/config/client'
 
-if (!process.env.JWT_SECRET) throw new Error('FATAL: JWT_SECRET environment variable is required')
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET)
+function getJwtSecret() {
+  if (!process.env.JWT_SECRET) throw new Error('FATAL: JWT_SECRET environment variable is required')
+  return new TextEncoder().encode(process.env.JWT_SECRET)
+}
 const COOKIE_NAME = AUTH.cookieName
 
 export async function hashPassword(password: string): Promise<string> {
@@ -21,7 +23,7 @@ export async function createSession(user: SessionUser): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime('7d')
     .setIssuedAt()
-    .sign(JWT_SECRET)
+    .sign(getJwtSecret())
 
   const cookieStore = await cookies()
   cookieStore.set(COOKIE_NAME, token, {
@@ -41,7 +43,7 @@ export async function getSession(): Promise<SessionUser | null> {
   if (!token) return null
 
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, getJwtSecret())
     return {
       id: payload.id as string,
       name: payload.name as string,
