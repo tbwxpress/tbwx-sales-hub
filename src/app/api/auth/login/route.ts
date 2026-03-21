@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { comparePassword, createSession } from '@/lib/auth'
-import { getUserByEmail } from '@/lib/users'
+import { comparePassword, createSession, hashPassword } from '@/lib/auth'
+import { getUserByEmail, getUsers, createUser } from '@/lib/users'
 
 // --- Rate limiting ---
 const loginAttempts = new Map<string, { count: number; resetAt: number }>()
@@ -41,6 +41,24 @@ export async function POST(req: NextRequest) {
     const { email, password } = await req.json()
     if (!email || !password) {
       return NextResponse.json({ success: false, error: 'Email and password required' }, { status: 400 })
+    }
+
+    // Auto-seed admin on first login if no users exist
+    const allUsers = await getUsers()
+    if (allUsers.length === 0) {
+      const adminName = process.env.ADMIN_NAME || 'Admin'
+      const adminEmail = process.env.ADMIN_EMAIL
+      const adminPassword = process.env.ADMIN_PASSWORD
+      if (adminEmail && adminPassword) {
+        await createUser({
+          name: adminName,
+          email: adminEmail,
+          password_hash: await hashPassword(adminPassword),
+          role: 'admin',
+          can_assign: true,
+          active: true,
+        })
+      }
     }
 
     const user = await getUserByEmail(email)
