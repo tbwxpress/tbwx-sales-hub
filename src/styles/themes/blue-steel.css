@@ -1,0 +1,31 @@
+/* ═══════════════════════════════════════════════════════════
+   Theme: Blue Steel — Cool Blue / Slate
+   ═══════════════════════════════════════════════════════════
+   Professional tech/SaaS palette.
+   Copy these values into src/styles/theme.css to activate.
+   Set NEXT_PUBLIC_THEME_COLOR=#0f1419 in .env.local
+   ═══════════════════════════════════════════════════════════ */
+
+/*
+  --color-bg: #0f1419;
+  --color-card: #161d26;
+  --color-elevated: #1e2a36;
+  --color-border: #2a3a4a;
+  --color-border-light: #3a4f63;
+
+  --color-text: #e8edf2;
+  --color-muted: #7b8fa3;
+  --color-dim: #4a5f75;
+
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+  --color-accent-soft: #3b82f620;
+
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-hot: #f97316;
+
+  --color-wa-sent: #005c4b;
+  --color-wa-received: #161d26;
+*/

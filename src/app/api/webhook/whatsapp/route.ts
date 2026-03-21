@@ -1,0 +1,211 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createHmac } from 'crypto'
+import { upsertContact, insertMessage, updateMessageStatus, getMessages, getContact } from '@/lib/db'
+import { sendTemplate } from '@/lib/whatsapp'
+import { logSentMessage, getLeadByRow } from '@/lib/sheets'
+
+// WhatsApp webhook verification (GET)
+export async function GET(req: NextRequest) {
+  const mode = req.nextUrl.searchParams.get('hub.mode')
+  const token = req.nextUrl.searchParams.get('hub.verify_token')
+  const challenge = req.nextUrl.searchParams.get('hub.challenge')
+
+  const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || 'saleshub-webhook-verify'
+
+  if (mode === 'subscribe' && token === verifyToken) {
+    return new NextResponse(challenge, { status: 200 })
+  }
+
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+}
+
+// WhatsApp incoming message webhook (POST)
+export async function POST(req: NextRequest) {
+  try {
+    // Verify Meta webhook signature (HMAC-SHA256)
+    const appSecret = process.env.META_APP_SECRET
+    if (appSecret) {
+      const signature = req.headers.get('x-hub-signature-256')
+      const rawBody = await req.clone().text()
+      const expectedSig = 'sha256=' + createHmac('sha256', appSecret).update(rawBody).digest('hex')
+      if (signature !== expectedSig) {
+        console.warn('[Webhook] Invalid signature — rejecting')
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+      }
+    }
+
+    const body = await req.json()
+
+    // Meta sends webhook payloads with this structure
+    const entries = body.entry || []
+
+    for (const entry of entries) {
+      const changes = entry.changes || []
+
+      for (const change of changes) {
+        if (change.field !== 'messages') continue
+        const value = change.value || {}
+        const messages = value.messages || []
+        const contacts = value.contacts || []
+
+        for (const msg of messages) {
+          const phone = msg.from // e.g. "919876543210"
+          const contactInfo = contacts.find((c: { wa_id: string }) => c.wa_id === phone)
+          const contactName = contactInfo?.profile?.name || ''
+
+          // Get message text based on type
+          let text = ''
+          switch (msg.type) {
+            case 'text':
+              text = msg.text?.body || ''
+              break
+            case 'image':
+              text = '[Image] ' + (msg.image?.caption || '')
+              break
+            case 'video':
+              text = '[Video] ' + (msg.video?.caption || '')
+              break
+            case 'audio':
+              text = '[Audio message]'
+              break
+            case 'document':
+              text = '[Document] ' + (msg.document?.filename || '')
+              break
+            case 'location':
+              text = `[Location: ${msg.location?.latitude}, ${msg.location?.longitude}]`
+              break
+            case 'sticker':
+              text = '[Sticker]'
+              break
+            case 'reaction':
+              text = `[Reaction: ${msg.reaction?.emoji || ''}]`
+              break
+            case 'button':
+              text = msg.button?.text || '[Button reply]'
+              break
+            case 'interactive':
+              text = msg.interactive?.button_reply?.title ||
+                     msg.interactive?.list_reply?.title ||
+                     '[Interactive reply]'
+              break
+            default:
+              text = `[${msg.type || 'Unknown'} message]`
+          }
+
+          // Ensure contact exists
+          await upsertContact(phone, { name: contactName })
+
+          // Insert message
+          await insertMessage({
+            phone,
+            direction: 'received',
+            text,
+            timestamp: new Date(parseInt(msg.timestamp) * 1000).toISOString(),
+            wa_message_id: msg.id || '',
+            status: 'received',
+            read: false,
+          })
+
+          // Auto-update lead status to REPLIED if they are a lead
+          try {
+            const { updateLead } = await import('@/lib/sheets')
+            const contact = await getContact(phone)
+            if (contact && contact.is_lead && contact.lead_row) {
+              await updateLead(Number(contact.lead_row), { lead_status: 'REPLIED' })
+            }
+          } catch {
+            // Non-critical — don't break webhook if sheet update fails
+          }
+
+          // Auto-send franchise deck on opt-in button tap or first reply
+          try {
+            const isOptInButton = msg.type === 'button' && (msg.button?.text || '').toLowerCase().includes('yes')
+            const isInteractiveOptIn = msg.type === 'interactive' &&
+              (msg.interactive?.button_reply?.title || '').toLowerCase().includes('yes')
+            const isTextOptIn = msg.type === 'text' && /^(yes|yeah|yep|sure|ok|interested|send)/i.test(text.trim())
+
+            // Check if this is their first message (no prior messages in DB)
+            const priorMessages = await getMessages(phone, 5, 0)
+            // Count only received messages before this one
+            const priorReceived = (priorMessages || []).filter(
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (m: any) => m.direction === 'received' && m.wa_message_id !== msg.id
+            )
+            const isFirstReply = priorReceived.length === 0
+
+            if (isOptInButton || isInteractiveOptIn || isTextOptIn || isFirstReply) {
+              // Check we haven't already sent the deck to this number
+              const allMsgs = await getMessages(phone, 200, 0)
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const alreadySentDeck = (allMsgs || []).some(
+                (m: any) => m.direction === 'sent' && m.template_used === 'franchise_inquiry_response'
+              )
+
+              if (!alreadySentDeck) {
+                // Find lead name for the template parameter (use DB contact's lead_row instead of fetching ALL leads)
+                let leadName = contactName || 'there'
+                try {
+                  const contact = await getContact(phone)
+                  if (contact?.lead_row) {
+                    const lead = await getLeadByRow(Number(contact.lead_row))
+                    if (lead?.full_name) leadName = lead.full_name
+                  }
+                } catch { /* use contactName fallback */ }
+
+                const result = await sendTemplate(phone, 'franchise_inquiry_response', [
+                  { type: 'text', text: leadName },
+                ])
+
+                if (result.success) {
+                  // Log in SQLite DB (shows in Sales Hub inbox)
+                  await insertMessage({
+                    phone,
+                    direction: 'sent',
+                    text: '[Template: franchise_inquiry_response] Franchise deck & investment details sent automatically',
+                    timestamp: new Date().toISOString(),
+                    sent_by: 'System (Auto)',
+                    wa_message_id: result.message_id || '',
+                    status: 'sent',
+                    template_used: 'franchise_inquiry_response',
+                    read: true,
+                  })
+
+                  // Log in Google Sheets
+                  await logSentMessage({
+                    phone,
+                    name: leadName,
+                    message: '[Auto] Franchise deck sent after opt-in/first reply',
+                    sent_by: 'System (Auto)',
+                    wa_message_id: result.message_id || '',
+                    status: 'sent',
+                    template_used: 'franchise_inquiry_response',
+                  })
+
+                  console.log(`[Webhook] Auto-sent franchise deck to ${phone}`)
+                }
+              }
+            }
+          } catch (autoErr) {
+            console.error('[Webhook] Auto-response error (non-critical):', autoErr)
+            // Non-critical — don't break webhook
+          }
+        }
+
+        // Handle message status updates (delivered, read, etc.)
+        const statuses = value.statuses || []
+        for (const status of statuses) {
+          if (status.id) {
+            await updateMessageStatus(status.id, status.status || '')
+          }
+        }
+      }
+    }
+
+    // Always return 200 to acknowledge receipt
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error('Webhook error:', err)
+    // Still return 200 to avoid Meta retrying
+    return NextResponse.json({ success: true })
+  }
+}

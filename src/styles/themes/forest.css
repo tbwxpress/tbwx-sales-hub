@@ -1,0 +1,31 @@
+/* ═══════════════════════════════════════════════════════════
+   Theme: Forest — Green / Earth Tones
+   ═══════════════════════════════════════════════════════════
+   Organic, health, and wellness brands.
+   Copy these values into src/styles/theme.css to activate.
+   Set NEXT_PUBLIC_THEME_COLOR=#0f1a12 in .env.local
+   ═══════════════════════════════════════════════════════════ */
+
+/*
+  --color-bg: #0f1a12;
+  --color-card: #152419;
+  --color-elevated: #1c2e21;
+  --color-border: #2a3f2e;
+  --color-border-light: #3a5340;
+
+  --color-text: #eaf2eb;
+  --color-muted: #7fa382;
+  --color-dim: #4a6f4e;
+
+  --color-accent: #4ade80;
+  --color-accent-hover: #22c55e;
+  --color-accent-soft: #4ade8020;
+
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-hot: #f97316;
+
+  --color-wa-sent: #005c4b;
+  --color-wa-received: #152419;
+*/

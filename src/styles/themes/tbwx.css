@@ -1,0 +1,31 @@
+/* ═══════════════════════════════════════════════════════════
+   Theme: TBWX — Warm Brown / Gold / Coffee
+   ═══════════════════════════════════════════════════════════
+   The Belgian Waffle Xpress brand palette.
+   Copy these values into src/styles/theme.css to activate.
+   Set NEXT_PUBLIC_THEME_COLOR=#1a1209 in .env.local
+   ═══════════════════════════════════════════════════════════ */
+
+/*
+  --color-bg: #1a1209;
+  --color-card: #241a0e;
+  --color-elevated: #2e2214;
+  --color-border: #3d2e1a;
+  --color-border-light: #4d3d28;
+
+  --color-text: #faf5eb;
+  --color-muted: #a89274;
+  --color-dim: #6b5a42;
+
+  --color-accent: #f5c518;
+  --color-accent-hover: #e6b800;
+  --color-accent-soft: #f5c51820;
+
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-hot: #f97316;
+
+  --color-wa-sent: #005c4b;
+  --color-wa-received: #2a1f12;
+*/
