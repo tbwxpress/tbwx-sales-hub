@@ -271,6 +271,112 @@ export async function updateMessageStatus(waMessageId: string, status: string) {
   })
 }
 
+/**
+ * Get the delivery status of the first automated message for a lead.
+ * Checks by wa_message_id first, then falls back to finding the first
+ * sent template message for the phone number.
+ */
+export async function getAutoMessageStatus(waMessageId: string, phone: string): Promise<{
+  status: string
+  timestamp: string
+  template_used: string
+  source: 'db_by_id' | 'db_by_phone' | 'not_found'
+}> {
+  const db = await ensureInit()
+
+  // Try to find by exact wa_message_id
+  if (waMessageId) {
+    const result = await db.execute({
+      sql: 'SELECT status, timestamp, template_used FROM messages WHERE wa_message_id = ? LIMIT 1',
+      args: [waMessageId],
+    })
+    if (result.rows.length > 0) {
+      const row = result.rows[0]
+      return {
+        status: String(row.status || 'sent'),
+        timestamp: String(row.timestamp || ''),
+        template_used: String(row.template_used || ''),
+        source: 'db_by_id',
+      }
+    }
+  }
+
+  // Fallback: find the first sent template message for this phone
+  if (phone) {
+    const result = await db.execute({
+      sql: `SELECT status, timestamp, template_used FROM messages
+            WHERE phone LIKE ? AND direction = 'sent' AND template_used != ''
+            ORDER BY timestamp ASC LIMIT 1`,
+      args: [`%${phone.slice(-10)}`],
+    })
+    if (result.rows.length > 0) {
+      const row = result.rows[0]
+      return {
+        status: String(row.status || 'sent'),
+        timestamp: String(row.timestamp || ''),
+        template_used: String(row.template_used || ''),
+        source: 'db_by_phone',
+      }
+    }
+  }
+
+  // If wa_message_id exists but not in our DB, it was sent by n8n
+  // (n8n sends via its own WhatsApp node, so it won't be in our SQLite)
+  if (waMessageId) {
+    return {
+      status: 'sent',
+      timestamp: '',
+      template_used: '',
+      source: 'not_found',
+    }
+  }
+
+  return {
+    status: 'none',
+    timestamp: '',
+    template_used: '',
+    source: 'not_found',
+  }
+}
+
+/**
+ * Get the delivery status of the first sent template message for all phones.
+ * Returns a map of phone -> { status, template_used, timestamp }.
+ * Used by dashboard to show WA delivery status for all leads at once.
+ */
+export async function getBulkAutoMessageStatus(): Promise<
+  Record<string, { status: string; template_used: string; timestamp: string }>
+> {
+  const db = await ensureInit()
+
+  // Get the first (earliest) sent template message per phone
+  const result = await db.execute(`
+    SELECT m.phone, m.status, m.template_used, m.timestamp
+    FROM messages m
+    INNER JOIN (
+      SELECT phone, MIN(timestamp) as first_ts
+      FROM messages
+      WHERE direction = 'sent' AND template_used != ''
+      GROUP BY phone
+    ) first ON m.phone = first.phone AND m.timestamp = first.first_ts
+    WHERE m.direction = 'sent' AND m.template_used != ''
+  `)
+
+  const map: Record<string, { status: string; template_used: string; timestamp: string }> = {}
+  for (const row of result.rows) {
+    const phone = String(row.phone || '')
+    // Store by last 10 digits for matching with leads
+    const key = phone.slice(-10)
+    map[key] = {
+      status: String(row.status || 'sent'),
+      template_used: String(row.template_used || ''),
+      timestamp: String(row.timestamp || ''),
+    }
+  }
+
+  return map
+}
+
 // --- Call log operations ---
 
 export async function insertCallLog(data: {

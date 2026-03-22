@@ -95,6 +95,43 @@ export async function sendTemplate(
   }
 }
 
+// Check delivery status of a message via WhatsApp Cloud API
+export async function getMessageStatus(waMessageId: string): Promise<{
+  status: 'sent' | 'delivered' | 'read' | 'failed' | 'unknown'
+  timestamp?: string
+  error?: string
+}> {
+  if (!waMessageId || !waMessageId.startsWith('wamid.')) {
+    return { status: 'unknown', error: 'Invalid message ID' }
+  }
+
+  try {
+    const res = await fetch(
+      `${WHATSAPP_API}/${waMessageId}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        },
+      }
+    )
+
+    if (!res.ok) {
+      // Meta doesn't expose a per-message status GET endpoint in Cloud API,
+      // so we fall back to checking our local DB for the status
+      return { status: 'unknown', error: 'Status not available via API' }
+    }
+
+    const data = await res.json()
+    return {
+      status: data.status || 'unknown',
+      timestamp: data.timestamp,
+    }
+  } catch (err) {
+    return { status: 'unknown', error: err instanceof Error ? err.message : 'Network error' }
+  }
+}
+
 // Check if we're within the 24-hour messaging window
 // by looking at the last received message timestamp
 export function isWithin24Hours(lastReceivedAt: string): boolean {

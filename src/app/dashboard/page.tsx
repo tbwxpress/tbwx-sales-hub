@@ -185,6 +185,9 @@ export default function DashboardPage() {
   // Tasks
   const [tasks, setTasks] = useState<Task[]>([])
 
+  // Auto-message (n8n) delivery status per phone
+  const [waStats, setWaStats] = useState<Record<string, { status: string; template_used: string; timestamp: string }>>({})
+
   // Filters
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -280,6 +283,18 @@ export default function DashboardPage() {
     }
   }, [])
 
+  const fetchWaStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/leads/auto-message-stats')
+      const data = await res.json()
+      if (data.success) {
+        setWaStats(data.data || {})
+      }
+    } catch {
+      // non-critical
+    }
+  }, [])
+
   // ─── Initial Load ────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -287,7 +302,7 @@ export default function DashboardPage() {
       setLoading(true)
       const currentUser = await fetchUser()
       if (currentUser) {
-        await Promise.all([fetchStats(), fetchLeads(), fetchAgents(currentUser), fetchTasks()])
+        await Promise.all([fetchStats(), fetchLeads(), fetchAgents(currentUser), fetchTasks(), fetchWaStats()])
       }
       setLoading(false)
     }
@@ -733,6 +748,7 @@ export default function DashboardPage() {
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Status</th>
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Priority</th>
                   <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Response</th>
+                  <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider" title="n8n Auto-Message Delivery">WA</th>
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Assigned</th>
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Follow-up</th>
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Added</th>
@@ -743,7 +759,7 @@ export default function DashboardPage() {
                 {leads.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={user?.role === 'admin' || user?.can_assign ? 13 : 12}
+                      colSpan={user?.role === 'admin' || user?.can_assign ? 14 : 13}
                       className="px-3 py-16 text-center"
                     >
                       <div className="flex flex-col items-center gap-3">
@@ -856,6 +872,28 @@ export default function DashboardPage() {
                           ) : (
                             <span className="text-xs text-dim">-</span>
                           )}
+                        </td>
+
+                        {/* WA Auto-Message Status */}
+                        <td className="px-3 py-2.5 text-center">
+                          {(() => {
+                            const phoneKey = lead.phone?.replace(/\D/g, '').slice(-10)
+                            const waInfo = waStats[phoneKey]
+                            // Check both: DB status and sheet wa_message_id
+                            if (waInfo) {
+                              const s = waInfo.status?.toLowerCase()
+                              if (s === 'read') return <span className="text-blue-400 text-xs" title={`Read — ${waInfo.template_used}`}>&#10003;&#10003;</span>
+                              if (s === 'delivered') return <span className="text-green-400 text-xs" title={`Delivered — ${waInfo.template_used}`}>&#10003;&#10003;</span>
+                              if (s === 'sent') return <span className="text-zinc-400 text-xs" title={`Sent — ${waInfo.template_used}`}>&#10003;</span>
+                              if (s === 'failed') return <span className="text-red-400 text-xs" title="Failed">&#10007;</span>
+                              return <span className="text-zinc-500 text-xs" title="Status unknown">&#10003;</span>
+                            }
+                            if (lead.wa_message_id) {
+                              // n8n sent it but we don't have status in DB
+                              return <span className="text-zinc-500 text-xs" title="Sent by n8n (status pending)">&#10003;</span>
+                            }
+                            return <span className="text-dim text-[10px]" title="No auto-message sent">—</span>
+                          })()}
                         </td>
 
                         {/* Assigned */}

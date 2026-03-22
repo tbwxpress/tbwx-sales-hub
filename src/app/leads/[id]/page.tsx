@@ -91,6 +91,16 @@ export default function LeadDetailPage() {
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
 
+  // Auto-message verification
+  const [autoMsgStatus, setAutoMsgStatus] = useState<{
+    auto_message_sent: boolean
+    status: string
+    wa_message_id?: string
+    template_used?: string
+    message?: string
+  } | null>(null)
+  const [verifying, setVerifying] = useState(false)
+
   // Form state
   const [messageText, setMessageText] = useState('')
   const [sending, setSending] = useState(false)
@@ -178,15 +188,36 @@ export default function LeadDetailPage() {
     }
   }, [])
 
+  // Fetch auto-message verification status
+  const fetchAutoMsgStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/leads/${id}/verify-message`)
+      const json = await res.json()
+      if (json.success) {
+        setAutoMsgStatus(json.data)
+      }
+    } catch {
+      // silent
+    }
+  }, [id])
+
+  // Manual re-verify
+  const handleVerify = async () => {
+    setVerifying(true)
+    await fetchAutoMsgStatus()
+    setVerifying(false)
+    setToast('Message status refreshed')
+  }
+
   // Initial load
   useEffect(() => {
     async function load() {
       setLoading(true)
-      await Promise.all([fetchLead(), fetchMessages(), fetchUsers(), fetchQuickReplies()])
+      await Promise.all([fetchLead(), fetchMessages(), fetchUsers(), fetchQuickReplies(), fetchAutoMsgStatus()])
       setLoading(false)
     }
     load()
-  }, [fetchLead, fetchMessages, fetchUsers, fetchQuickReplies])
+  }, [fetchLead, fetchMessages, fetchUsers, fetchQuickReplies, fetchAutoMsgStatus])
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -414,6 +445,63 @@ export default function LeadDetailPage() {
               <InfoRow label="Experience" value={lead.experience || '---'} />
               <InfoRow label="Timeline" value={lead.timeline || '---'} />
               <InfoRow label="Platform" value={lead.platform || '---'} />
+            </div>
+
+            {/* n8n Auto-Message Status */}
+            <div className="bg-card rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-semibold text-dim uppercase tracking-wide">Auto Message</h2>
+                <button
+                  onClick={handleVerify}
+                  disabled={verifying}
+                  className="text-[10px] text-dim hover:text-accent transition-colors disabled:opacity-50"
+                  title="Refresh status"
+                >
+                  {verifying ? 'Checking...' : 'Refresh'}
+                </button>
+              </div>
+              {autoMsgStatus ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    {autoMsgStatus.status === 'read' && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 rounded-md">
+                        <span>&#10003;&#10003;</span> Read
+                      </span>
+                    )}
+                    {autoMsgStatus.status === 'delivered' && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-400 bg-green-500/10 border border-green-500/20 px-2.5 py-1 rounded-md">
+                        <span>&#10003;&#10003;</span> Delivered
+                      </span>
+                    )}
+                    {autoMsgStatus.status === 'sent' && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 rounded-md">
+                        <span>&#10003;</span> Sent
+                      </span>
+                    )}
+                    {autoMsgStatus.status === 'failed' && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-red-400 bg-red-500/10 border border-red-500/20 px-2.5 py-1 rounded-md">
+                        <span>&#10007;</span> Failed
+                      </span>
+                    )}
+                    {autoMsgStatus.status === 'none' && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-dim bg-elevated border border-border px-2.5 py-1 rounded-md">
+                        Not sent
+                      </span>
+                    )}
+                    {!['read', 'delivered', 'sent', 'failed', 'none'].includes(autoMsgStatus.status) && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 bg-elevated border border-border px-2.5 py-1 rounded-md">
+                        Unknown
+                      </span>
+                    )}
+                  </div>
+                  {autoMsgStatus.template_used && (
+                    <p className="text-[10px] text-dim">Template: {autoMsgStatus.template_used}</p>
+                  )}
+                  <p className="text-[10px] text-dim">{autoMsgStatus.message}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-dim">Loading...</p>
+              )}
             </div>
 
             {/* Manage Card */}
