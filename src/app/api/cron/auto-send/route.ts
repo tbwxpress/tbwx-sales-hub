@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { sendTemplate } from '@/lib/whatsapp'
+import { sendFranchiseEmail } from '@/lib/email'
 import { logSentMessage, updateLead } from '@/lib/sheets'
 import { upsertContact, insertMessage } from '@/lib/db'
 
@@ -174,6 +175,8 @@ export async function POST(request: NextRequest) {
       name: string
       status: string
       wa_message_id?: string
+      email_sent?: boolean
+      email_error?: string
       error?: string
     }> = []
 
@@ -312,11 +315,39 @@ export async function POST(request: NextRequest) {
           template_used: TEMPLATE_NAME,
         })
 
+        // Send franchise email with deck + menu (continue on fail)
+        let emailSent = false
+        let emailError = ''
+        if (lead.email && lead.email.includes('@')) {
+          try {
+            const emailResult = await sendFranchiseEmail(lead.email, lead.full_name)
+            emailSent = emailResult.success
+            if (!emailResult.success) emailError = emailResult.error || 'Unknown'
+
+            if (emailResult.success) {
+              await insertMessage({
+                phone: lead.phone_formatted,
+                direction: 'sent',
+                text: `[Email] Franchise deck + menu sent to ${lead.email}`,
+                timestamp: new Date().toISOString(),
+                sent_by: 'auto-send',
+                wa_message_id: emailResult.message_id || '',
+                status: 'sent',
+                template_used: 'franchise_email',
+              })
+            }
+          } catch (err) {
+            emailError = err instanceof Error ? err.message : 'Email failed'
+          }
+        }
+
         results.push({
           phone: lead.phone_formatted,
           name: lead.full_name,
           status: 'sent',
           wa_message_id: waMessageId,
+          email_sent: emailSent,
+          email_error: emailError || undefined,
         })
       } catch (err) {
         results.push({
