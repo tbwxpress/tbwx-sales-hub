@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth, requireAdmin } from '@/lib/auth'
 import { WHATSAPP } from '@/config/client'
@@ -47,7 +48,7 @@ export async function GET() {
     return NextResponse.json({ success: true, data: templates })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to fetch templates' },
+      { success: false, error: apiError(err, 'Failed to fetch templates') },
       { status: 500 }
     )
   }
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
     })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to create template' },
+      { success: false, error: apiError(err, 'Failed to create template') },
       { status: 500 }
     )
   }
@@ -154,7 +155,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to delete template' },
+      { success: false, error: apiError(err, 'Failed to delete template') },
       { status: 500 }
     )
   }

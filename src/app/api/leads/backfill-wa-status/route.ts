@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads } from '@/lib/sheets'
@@ -104,7 +105,7 @@ export async function POST() {
     })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Backfill failed' },
+      { success: false, error: apiError(err, 'Backfill failed') },
       { status: 500 }
     )
   }

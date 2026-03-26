@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { insertTask, getTasks, completeTask } from '@/lib/db'
 
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: true, data: tasks })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to fetch tasks' },
+      { success: false, error: apiError(err, 'Failed to fetch tasks') },
       { status: 500 }
     )
   }
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, id })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to create task' },
+      { success: false, error: apiError(err, 'Failed to create task') },
       { status: 500 }
     )
   }
@@ -55,7 +56,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to complete task' },
+      { success: false, error: apiError(err, 'Failed to complete task') },
       { status: 500 }
     )
   }

@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getKnowledgeBase, createKnowledgeBaseEntry, updateKnowledgeBaseEntry, deleteKnowledgeBaseEntry } from '@/lib/sheets'
@@ -9,7 +10,7 @@ export async function GET() {
     const entries = await getKnowledgeBase()
     return NextResponse.json({ success: true, data: entries })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }
 
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
     const id = await createKnowledgeBaseEntry({ category: category || 'General', title, content, link: link || '', created_by: user.name })
     return NextResponse.json({ success: true, data: { id } })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }
 
@@ -52,7 +53,7 @@ export async function PATCH(req: NextRequest) {
     await updateKnowledgeBaseEntry(id, { category, title, content, link })
     return NextResponse.json({ success: true })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }
 
@@ -71,6 +72,6 @@ export async function DELETE(req: NextRequest) {
     await deleteKnowledgeBaseEntry(id)
     return NextResponse.json({ success: true })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }

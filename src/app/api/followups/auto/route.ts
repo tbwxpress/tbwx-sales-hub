@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 import { getLeads } from '@/lib/sheets'
 import { getMessages } from '@/lib/db'
@@ -68,7 +69,7 @@ export async function POST() {
     })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Follow-up failed' },
+      { success: false, error: apiError(err, 'Follow-up failed') },
       { status: 500 }
     )
   }

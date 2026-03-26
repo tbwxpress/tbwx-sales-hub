@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads } from '@/lib/sheets'
@@ -37,6 +38,6 @@ export async function GET() {
       }
     })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }

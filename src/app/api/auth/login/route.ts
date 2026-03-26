@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { comparePassword, createSession, hashPassword } from '@/lib/auth'
 import { getUserByEmail, getUsers, createUser } from '@/lib/users'
@@ -84,6 +85,6 @@ export async function POST(req: NextRequest) {
       data: { id: user.id, name: user.name, email: user.email, role: user.role, can_assign: user.can_assign },
     })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Login failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Login failed') }, { status: 500 })
   }
 }

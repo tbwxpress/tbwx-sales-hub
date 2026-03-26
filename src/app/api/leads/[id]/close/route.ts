@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { updateLead } from '@/lib/sheets'
 import { insertNote } from '@/lib/db'
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to close lead' },
+      { success: false, error: apiError(err, 'Failed to close lead') },
       { status: 500 }
     )
   }

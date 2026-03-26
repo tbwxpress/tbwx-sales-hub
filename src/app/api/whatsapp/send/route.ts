@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { logSentMessage, updateLead, getLeadByRow, getReceivedMessages } from '@/lib/sheets'
@@ -69,6 +70,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: result.success, data: { message_id: result.message_id }, error: result.error })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Send failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Send failed') }, { status: 500 })
   }
 }

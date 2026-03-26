@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, getConversation } from '@/lib/sheets'
@@ -18,6 +19,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const messages = await getConversation(lead.phone)
     return NextResponse.json({ success: true, data: messages })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }

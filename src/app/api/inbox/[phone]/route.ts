@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getMessages, getContact, markMessagesRead } from '@/lib/db'
@@ -38,7 +39,7 @@ export async function GET(
     })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to fetch messages' },
+      { success: false, error: apiError(err, 'Failed to fetch messages') },
       { status: 500 }
     )
   }

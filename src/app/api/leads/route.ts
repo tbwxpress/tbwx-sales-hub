@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, getLeadStats, createLead } from '@/lib/sheets'
@@ -86,7 +87,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: scoredLeads })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed to fetch leads' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed to fetch leads') }, { status: 500 })
   }
 }
 
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
     if (duplicate) {
       return NextResponse.json({
         success: false,
-        error: `Lead already exists: ${duplicate.full_name} (row ${duplicate.row_number})`,
+        error: 'This phone number already exists in the system.',
       }, { status: 409 })
     }
 
@@ -133,6 +134,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: { row_number: rowNumber } })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed to create lead' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed to create lead') }, { status: 500 })
   }
 }

@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { sendTemplate } from '@/lib/whatsapp'
@@ -23,7 +24,8 @@ import { upsertContact, insertMessage, getMessages } from '@/lib/db'
  */
 
 // --- Auth ---
-const CRON_SECRET = process.env.CRON_SECRET || ''
+const CRON_SECRET = process.env.CRON_SECRET
+if (!CRON_SECRET) console.warn('[auto-send] CRON_SECRET is not set — cron endpoint is unprotected!')
 const SALES_PHONE = '917973933630'
 const TEMPLATE_NAME = 'opt_in_message'
 const SALES_ALERT_TEMPLATE = 'sales_lead_alert_v2'
@@ -153,18 +155,19 @@ export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = authHeader?.replace('Bearer ', '')
 
-  // Allow: Vercel cron (CRON_SECRET), or manual trigger with ?test=true for testing
+  // Auth: CRON_SECRET bearer token OR valid admin session (for manual dashboard trigger)
   const isVercelCron = CRON_SECRET && cronSecret === CRON_SECRET
-  const url = new URL(request.url)
-  const isTest = url.searchParams.get('test') === 'true'
-  const testPhone = url.searchParams.get('phone') || ''
 
-  // In production, require CRON_SECRET. For testing, allow manual calls.
-  if (!isVercelCron && !isTest) {
-    // Check for session-based auth (manual trigger from dashboard)
-    const { getSession } = await import('@/lib/auth')
+  if (!isVercelCron) {
+    // Fall back to session-based auth for manual dashboard triggers
+    const { getSession, requireAuth } = await import('@/lib/auth')
     const session = await getSession()
-    if (!session) {
+    try {
+      const user = requireAuth(session)
+      if (user.role !== 'admin') {
+        return NextResponse.json({ error: 'Admin only' }, { status: 403 })
+      }
+    } catch {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
   }
@@ -214,20 +217,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If test mode, only process the test phone
-    let toProcess = unique
-    if (isTest && testPhone) {
-      const cleanTest = testPhone.replace(/\D/g, '').slice(-10)
-      toProcess = unique.filter(l => l.phone_formatted.slice(-10) === cleanTest)
-      if (toProcess.length === 0) {
-        return NextResponse.json({
-          success: true,
-          message: `No uncontacted lead found for phone ${testPhone}. Found ${unique.length} total uncontacted leads.`,
-          uncontacted_count: unique.length,
-          results: [],
-        })
-      }
-    }
+    const toProcess = unique
 
     // 5. Cap at MAX_PER_RUN to stay within Vercel timeout
     const batch = toProcess.slice(0, MAX_PER_RUN)
@@ -339,7 +329,7 @@ export async function POST(request: NextRequest) {
         // Send franchise email with deck + menu (continue on fail)
         let emailSent = false
         let emailError = ''
-        if (lead.email && lead.email.includes('@')) {
+        if (lead.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) {
           try {
             const emailResult = await sendFranchiseEmail(lead.email, lead.full_name)
             emailSent = emailResult.success
@@ -358,7 +348,7 @@ export async function POST(request: NextRequest) {
               })
             }
           } catch (err) {
-            emailError = err instanceof Error ? err.message : 'Email failed'
+            emailError = apiError(err, 'Email failed')
           }
         }
 
@@ -375,7 +365,7 @@ export async function POST(request: NextRequest) {
           phone: lead.phone_formatted,
           name: lead.full_name,
           status: 'error',
-          error: err instanceof Error ? err.message : 'Unknown error',
+          error: apiError(err, 'Unknown error'),
         })
       }
     }
@@ -395,7 +385,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error('[auto-send] Error:', err)
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Internal error' },
+      { success: false, error: apiError(err, 'Internal error') },
       { status: 500 }
     )
   }

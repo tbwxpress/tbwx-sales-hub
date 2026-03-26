@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { bulkUpdateField } from '@/lib/sheets'
@@ -21,6 +22,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: { updated: lead_ids.length } })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Assignment failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Assignment failed') }, { status: 500 })
   }
 }

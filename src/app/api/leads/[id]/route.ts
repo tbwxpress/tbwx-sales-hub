@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, updateLead, clearLeadRow } from '@/lib/sheets'
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
     return NextResponse.json({ success: true, data: { ...lead, lead_score: computeLeadScore(lead) } })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }
 
@@ -34,7 +35,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await clearLeadRow(rowNum)
     return NextResponse.json({ success: true })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Delete failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Delete failed') }, { status: 500 })
   }
 }
 
@@ -46,8 +47,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const rowNum = parseInt(id)
     const body = await req.json()
 
+    // Agents can only modify leads assigned to them (or unassigned if can_assign)
+    if (user.role === 'agent') {
+      const allLeads = await getLeads()
+      const lead = allLeads.find(l => l.row_number === rowNum)
+      const isAssignedToMe = lead?.assigned_to === user.name
+      const isUnassigned = !lead?.assigned_to
+      if (!isAssignedToMe && !(user.can_assign && isUnassigned)) {
+        return NextResponse.json({ success: false, error: 'Not authorized to modify this lead' }, { status: 403 })
+      }
+    }
+
     // Only admin or users with can_assign can change assigned_to
-    if (body.assigned_to && user.role !== 'admin' && !user.can_assign) {
+    if (body.assigned_to !== undefined && user.role !== 'admin' && !user.can_assign) {
       return NextResponse.json({ success: false, error: 'Not authorized to assign leads' }, { status: 403 })
     }
 
@@ -88,6 +100,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     await updateLead(rowNum, body)
     return NextResponse.json({ success: true })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Update failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Update failed') }, { status: 500 })
   }
 }

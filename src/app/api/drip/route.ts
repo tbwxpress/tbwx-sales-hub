@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getDripState, toggleDrip, getBulkDripState } from '@/lib/db'
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
     const states = await getBulkDripState()
     return NextResponse.json({ success: true, data: states })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }
 
@@ -37,6 +38,6 @@ export async function PATCH(req: NextRequest) {
     await toggleDrip(phone, enabled)
     return NextResponse.json({ success: true })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }

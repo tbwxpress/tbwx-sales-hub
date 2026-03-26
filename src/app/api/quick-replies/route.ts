@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply } from '@/lib/sheets'
@@ -9,7 +10,7 @@ export async function GET() {
     const qrs = await getQuickReplies()
     return NextResponse.json({ success: true, data: qrs })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }
 
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
     const id = await createQuickReply({ category: category || 'General', title, message, created_by: user.name })
     return NextResponse.json({ success: true, data: { id } })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }
 
@@ -46,7 +47,7 @@ export async function PATCH(req: NextRequest) {
     await updateQuickReply(id, { category, title, message })
     return NextResponse.json({ success: true })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }
 
@@ -62,6 +63,6 @@ export async function DELETE(req: NextRequest) {
     await deleteQuickReply(id)
     return NextResponse.json({ success: true })
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }

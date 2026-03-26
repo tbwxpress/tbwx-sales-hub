@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getContacts, searchMessages, getContactsForAgent } from '@/lib/db'
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: true, data: contacts })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to fetch inbox' },
+      { success: false, error: apiError(err, 'Failed to fetch inbox') },
       { status: 500 }
     )
   }

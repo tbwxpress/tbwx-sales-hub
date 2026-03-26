@@ -22,16 +22,22 @@ export async function GET(req: NextRequest) {
 // WhatsApp incoming message webhook (POST)
 export async function POST(req: NextRequest) {
   try {
-    // Verify Meta webhook signature (HMAC-SHA256)
+    // Verify Meta webhook signature (HMAC-SHA256) — REQUIRED
     const appSecret = process.env.META_APP_SECRET
-    if (appSecret) {
-      const signature = req.headers.get('x-hub-signature-256')
-      const rawBody = await req.clone().text()
-      const expectedSig = 'sha256=' + createHmac('sha256', appSecret).update(rawBody).digest('hex')
-      if (signature !== expectedSig) {
-        console.warn('[Webhook] Invalid signature — rejecting')
-        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
-      }
+    if (!appSecret) {
+      console.error('[Webhook] META_APP_SECRET not set — rejecting all webhook requests')
+      return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 })
+    }
+    const signature = req.headers.get('x-hub-signature-256')
+    if (!signature) {
+      console.warn('[Webhook] Missing x-hub-signature-256 header — rejecting')
+      return NextResponse.json({ error: 'Missing signature' }, { status: 401 })
+    }
+    const rawBody = await req.clone().text()
+    const expectedSig = 'sha256=' + createHmac('sha256', appSecret).update(rawBody).digest('hex')
+    if (signature !== expectedSig) {
+      console.warn('[Webhook] Invalid signature — rejecting')
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
 
     const body = await req.json()

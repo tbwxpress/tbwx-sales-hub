@@ -1,14 +1,37 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { upsertContact, insertMessage, getMessages } from '@/lib/db'
 import { sendTextMessage, sendTemplate, isWithin24Hours } from '@/lib/whatsapp'
 import { logSentMessage } from '@/lib/sheets'
 
+// Rate limiting: max 20 messages per user per minute
+const sendRateMap = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT = 20
+const RATE_WINDOW_MS = 60 * 1000
+
+function checkSendRateLimit(userId: string): boolean {
+  const now = Date.now()
+  const entry = sendRateMap.get(userId)
+  if (!entry || now > entry.resetAt) {
+    sendRateMap.set(userId, { count: 1, resetAt: now + RATE_WINDOW_MS })
+    return true
+  }
+  if (entry.count >= RATE_LIMIT) return false
+  entry.count++
+  return true
+}
+
 // POST /api/inbox/send — send a message from the inbox
 export async function POST(req: NextRequest) {
   try {
     const session = await getSession()
     const user = requireAuth(session)
+
+    // Rate limit per user
+    if (!checkSendRateLimit(user.id || user.name)) {
+      return NextResponse.json({ success: false, error: 'Too many messages. Please wait a moment.' }, { status: 429 })
+    }
 
     const { phone, message, template_name, template_params, contact_name } = await req.json()
     if (!phone) {
@@ -74,7 +97,7 @@ export async function POST(req: NextRequest) {
     })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Send failed' },
+      { success: false, error: apiError(err, 'Send failed') },
       { status: 500 }
     )
   }

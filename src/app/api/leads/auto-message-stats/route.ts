@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getBulkAutoMessageStatus } from '@/lib/db'
@@ -19,7 +20,7 @@ export async function GET() {
     return NextResponse.json({ success: true, data: stats })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to fetch stats' },
+      { success: false, error: apiError(err, 'Failed to fetch stats') },
       { status: 500 }
     )
   }

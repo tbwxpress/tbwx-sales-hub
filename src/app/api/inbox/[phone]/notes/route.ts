@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { insertNote, getNotes } from '@/lib/db'
 
@@ -8,7 +9,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ pho
     return NextResponse.json({ success: true, data: notes })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to fetch notes' },
+      { success: false, error: apiError(err, 'Failed to fetch notes') },
       { status: 500 }
     )
   }
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pho
     return NextResponse.json({ success: true, id })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to save note' },
+      { success: false, error: apiError(err, 'Failed to save note') },
       { status: 500 }
     )
   }

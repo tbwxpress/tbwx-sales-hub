@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 import { getSession, requireAuth, requireAdmin } from '@/lib/auth'
 import { getLeads, getReceivedMessages, getSentMessages } from '@/lib/sheets'
@@ -89,7 +90,7 @@ export async function POST() {
     })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Sync failed' },
+      { success: false, error: apiError(err, 'Sync failed') },
       { status: 500 }
     )
   }

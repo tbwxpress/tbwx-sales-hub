@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDripLeads, upsertDripState, insertMessage, upsertContact } from '@/lib/db'
 import { getLeads } from '@/lib/sheets'
@@ -187,6 +188,6 @@ export async function POST(req: NextRequest) {
     })
   } catch (err) {
     console.error('[drip-cron] Error:', err)
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
 }

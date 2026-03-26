@@ -1,3 +1,4 @@
+import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { insertCallLog, getCallLogs } from '@/lib/db'
@@ -15,7 +16,7 @@ export async function GET(
     return NextResponse.json({ success: true, data: logs })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed' },
+      { success: false, error: apiError(err, 'Failed') },
       { status: 500 }
     )
   }
@@ -43,7 +44,7 @@ export async function POST(
     return NextResponse.json({ success: true, data: { id } })
   } catch (err) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to log call' },
+      { success: false, error: apiError(err, 'Failed to log call') },
       { status: 500 }
     )
   }
