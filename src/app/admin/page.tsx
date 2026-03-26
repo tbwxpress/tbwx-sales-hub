@@ -75,6 +75,10 @@ export default function AdminPage() {
           <div>
             <h1 className="text-xl font-bold text-text">User Management</h1>
             <p className="text-sm text-dim mt-0.5">{users.length} users configured</p>
+            <a href="/admin/setup" className="text-xs text-accent hover:text-accent-hover transition-colors mt-1 inline-flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              Setup Health Check
+            </a>
           </div>
           <button
             onClick={() => setShowForm(!showForm)}

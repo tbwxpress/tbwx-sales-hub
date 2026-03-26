@@ -16,6 +16,8 @@ export const BRAND = {
   short: process.env.NEXT_PUBLIC_BRAND_SHORT || 'TBWX',
   logo: process.env.NEXT_PUBLIC_BRAND_LOGO || '/logo-tbwx.png',
   description: process.env.NEXT_PUBLIC_BRAND_DESCRIPTION || 'Sales dashboard for The Belgian Waffle Xpress',
+  tagline: process.env.NEXT_PUBLIC_BRAND_TAGLINE || 'Just Waffle It.',
+  supportEmail: process.env.NEXT_PUBLIC_BRAND_SUPPORT_EMAIL || '',
 } as const
 
 // ─── Auth ───────────────────────────────────────────────────────────

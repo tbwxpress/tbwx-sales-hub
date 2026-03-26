@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { BRAND } from '@/config/client'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -54,15 +55,15 @@ export default function LoginPage() {
           <div className="flex justify-center mb-5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo-tbwx.png"
-              alt="The Belgian Waffle Xpress"
+              src={BRAND.logo}
+              alt={BRAND.name}
               width={88}
               height={88}
               className="rounded-2xl shadow-2xl shadow-black/40 ring-1 ring-white/5"
             />
           </div>
           <h1 className="text-2xl font-bold text-gradient-gold tracking-tight">Sales Hub</h1>
-          <p className="text-muted mt-1.5 text-sm">The Belgian Waffle Xpress</p>
+          <p className="text-muted mt-1.5 text-sm">{BRAND.short}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="glass rounded-2xl p-7 space-y-5 shadow-2xl shadow-black/30">
@@ -84,7 +85,7 @@ export default function LoginPage() {
               required
               autoComplete="email"
               className="w-full bg-elevated/80 border border-border rounded-xl px-4 py-3 text-text placeholder-dim focus:outline-none focus:border-accent/60 transition-all text-sm"
-              placeholder="you@tbwxpress.com"
+              placeholder={BRAND.supportEmail || 'you@example.com'}
             />
           </div>
 
@@ -116,7 +117,7 @@ export default function LoginPage() {
         </form>
 
         <div className="text-center mt-8 space-y-2">
-          <p className="text-dim text-xs italic">Just Waffle It.</p>
+          <p className="text-dim text-xs italic">{BRAND.tagline}</p>
           <div className="flex items-center justify-center gap-1.5 text-dim">
             <span className="text-[10px]">Powered & Built by</span>
             <a href="https://nofluff.pro" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] font-semibold text-[#5cc8ff] hover:text-[#7dd6ff] transition-colors">

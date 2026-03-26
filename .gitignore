@@ -39,6 +39,9 @@ yarn-error.log*
 # sqlite database
 /data/
 
+# Client deployment packages (contain credentials — never commit!)
+/deployments/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
