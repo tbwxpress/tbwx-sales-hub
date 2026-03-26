@@ -60,14 +60,17 @@ interface Task {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  NEW:        { bg: '#3b82f620', text: '#60a5fa', border: '#3b82f630' },
-  DECK_SENT:  { bg: '#8b5cf620', text: '#a78bfa', border: '#8b5cf630' },
-  CONTACTED:  { bg: '#f5c51820', text: '#f5c518', border: '#f5c51830' },
-  REPLIED:    { bg: '#22c55e20', text: '#4ade80', border: '#22c55e30' },
-  INTERESTED: { bg: '#06b6d420', text: '#22d3ee', border: '#06b6d430' },
-  HOT:        { bg: '#f9731620', text: '#fb923c', border: '#f9731630' },
-  CONVERTED:  { bg: '#10b98120', text: '#34d399', border: '#10b98130' },
-  LOST:       { bg: '#ef444420', text: '#f87171', border: '#ef444430' },
+  NEW:          { bg: '#3b82f620', text: '#60a5fa', border: '#3b82f630' },
+  DECK_SENT:    { bg: '#8b5cf620', text: '#a78bfa', border: '#8b5cf630' },
+  CONTACTED:    { bg: '#f5c51820', text: '#f5c518', border: '#f5c51830' },
+  REPLIED:      { bg: '#22c55e20', text: '#4ade80', border: '#22c55e30' },
+  CALL_DONE:    { bg: '#14b8a620', text: '#2dd4bf', border: '#14b8a630' },
+  INTERESTED:   { bg: '#06b6d420', text: '#22d3ee', border: '#06b6d430' },
+  SITE_VISIT:   { bg: '#6366f120', text: '#818cf8', border: '#6366f130' },
+  NEGOTIATION:  { bg: '#ec489920', text: '#f472b6', border: '#ec489930' },
+  HOT:          { bg: '#f9731620', text: '#fb923c', border: '#f9731630' },
+  CONVERTED:    { bg: '#10b98120', text: '#34d399', border: '#10b98130' },
+  LOST:         { bg: '#ef444420', text: '#f87171', border: '#ef444430' },
 }
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -76,7 +79,7 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string
   COLD: { bg: 'rgba(59,130,246,0.15)', text: '#60a5fa', border: 'rgba(59,130,246,0.3)' },
 }
 
-const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'CONTACTED', 'REPLIED', 'INTERESTED', 'HOT', 'CONVERTED', 'LOST']
+const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'CONTACTED', 'REPLIED', 'CALL_DONE', 'INTERESTED', 'SITE_VISIT', 'NEGOTIATION', 'HOT', 'CONVERTED', 'LOST']
 const PRIORITY_OPTIONS = ['HOT', 'WARM', 'COLD']
 
 

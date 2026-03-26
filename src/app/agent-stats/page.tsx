@@ -82,13 +82,13 @@ function WATokenCountdown() {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const REPLIED_STATUSES = ['REPLIED', 'HOT', 'INTERESTED', 'CONVERTED']
+// Statuses that count as "lead has engaged" (non-overlapping with contacted)
+const TERMINAL_STATUSES = ['CONVERTED', 'LOST']
+const NOT_YET_CONTACTED = ['NEW', 'DECK_SENT']
 
 function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics[] {
-  // Build a map of agent name -> metrics
   const metricsMap = new Map<string, AgentMetrics>()
 
-  // Initialize from known agents
   for (const agent of agents) {
     metricsMap.set(agent.name, {
       name: agent.name,
@@ -103,25 +103,17 @@ function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics
     })
   }
 
-  // Also track response times for averaging
   const responseDays = new Map<string, number[]>()
 
   for (const lead of leads) {
     const agentName = lead.assigned_to
     if (!agentName) continue
 
-    // Create entry if agent not in users list but has leads
     if (!metricsMap.has(agentName)) {
       metricsMap.set(agentName, {
         name: agentName,
-        assigned: 0,
-        contacted: 0,
-        replied: 0,
-        hot: 0,
-        converted: 0,
-        lost: 0,
-        conversion_rate: 0,
-        avg_response_days: 0,
+        assigned: 0, contacted: 0, replied: 0, hot: 0,
+        converted: 0, lost: 0, conversion_rate: 0, avg_response_days: 0,
       })
     }
 
@@ -130,14 +122,17 @@ function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics
 
     const status = lead.lead_status?.toUpperCase() || ''
 
-    if (status === 'CONTACTED' || status === 'DECK_SENT' || REPLIED_STATUSES.includes(status) || status === 'LOST') {
+    // Contacted = any lead past NEW/DECK_SENT (they've been reached out to)
+    if (!NOT_YET_CONTACTED.includes(status) && status !== '') {
       m.contacted++
     }
 
-    if (REPLIED_STATUSES.includes(status)) {
+    // Replied = specifically REPLIED status only (not HOT/INTERESTED which are separate stages)
+    if (status === 'REPLIED') {
       m.replied++
     }
 
+    // Hot = status HOT only (not priority — agent should move lead to HOT status)
     if (status === 'HOT') {
       m.hot++
     }
@@ -150,8 +145,8 @@ function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics
       m.lost++
     }
 
-    // Estimate response days from created_time to now for replied leads
-    if (REPLIED_STATUSES.includes(status) && lead.created_time) {
+    // Response days: from lead creation to now, for leads that have replied or beyond
+    if (!NOT_YET_CONTACTED.includes(status) && !TERMINAL_STATUSES.includes(status) && status !== 'CONTACTED' && lead.created_time) {
       const created = new Date(lead.created_time)
       if (!isNaN(created.getTime())) {
         const now = new Date()
@@ -162,8 +157,8 @@ function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics
     }
   }
 
-  // Calculate rates and averages
   for (const [name, m] of metricsMap) {
+    // Conversion rate = converted / assigned (same as pipeline)
     m.conversion_rate = m.assigned > 0 ? Math.round((m.converted / m.assigned) * 100) : 0
     const days = responseDays.get(name)
     m.avg_response_days = days && days.length > 0
@@ -171,7 +166,6 @@ function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics
       : 0
   }
 
-  // Sort by assigned descending
   return Array.from(metricsMap.values()).sort((a, b) => b.assigned - a.assigned)
 }
 

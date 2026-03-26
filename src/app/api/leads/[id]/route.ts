@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, updateLead } from '@/lib/sheets'
+import { LEAD_STATUSES } from '@/config/client'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -30,6 +31,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Only admin or users with can_assign can change assigned_to
     if (body.assigned_to && user.role !== 'admin' && !user.can_assign) {
       return NextResponse.json({ success: false, error: 'Not authorized to assign leads' }, { status: 403 })
+    }
+
+    // Validate status if provided
+    if (body.lead_status && !(LEAD_STATUSES as readonly string[]).includes(body.lead_status)) {
+      return NextResponse.json({ success: false, error: `Invalid status: ${body.lead_status}` }, { status: 400 })
     }
 
     // Set next_followup to 3 days from now if status is being changed and not CONVERTED/LOST

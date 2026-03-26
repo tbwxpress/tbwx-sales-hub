@@ -192,10 +192,12 @@ export async function POST(request: NextRequest) {
     // 2. Merge
     const allLeads = [...newLeads, ...oldLeads]
 
-    // 3. Filter: not contacted, has phone, not test
+    // 3. Filter: only NEW leads (anything beyond NEW has already been handled)
+    const SKIP_STATUSES = ['contacted', 'replied', 'call_done', 'deck_sent', 'interested',
+      'site_visit', 'negotiation', 'hot', 'converted', 'lost']
     const uncontacted = allLeads.filter(lead => {
       const status = lead.lead_status.toLowerCase()
-      if (status === 'contacted' || status === 'converted' || status === 'lost' || status === 'replied') return false
+      if (SKIP_STATUSES.includes(status)) return false
       if (!lead.phone_formatted || lead.phone_formatted.length < 10) return false
       if (lead.full_name.toLowerCase().includes('test lead')) return false
       return true
