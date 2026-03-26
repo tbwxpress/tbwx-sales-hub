@@ -9,9 +9,9 @@ interface User {
   role: string
 }
 
-const brandName = process.env.NEXT_PUBLIC_BRAND_NAME || 'Sales Hub'
-const brandShort = process.env.NEXT_PUBLIC_BRAND_SHORT || 'SH'
-const brandLogo = process.env.NEXT_PUBLIC_BRAND_LOGO || '/logo.png'
+const brandName = process.env.NEXT_PUBLIC_BRAND_NAME || 'TBWX Sales Hub'
+const brandShort = process.env.NEXT_PUBLIC_BRAND_SHORT || 'TBWX'
+const brandLogo = process.env.NEXT_PUBLIC_BRAND_LOGO || '/logo-tbwx.png'
 
 export default function Navbar() {
   const pathname = usePathname()

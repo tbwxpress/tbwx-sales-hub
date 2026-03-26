@@ -5,7 +5,7 @@ import { BRAND } from '@/config/client'
 export const metadata: Metadata = {
   title: BRAND.name,
   description: BRAND.description,
-  icons: { icon: BRAND.logo },
+  icons: { icon: '/icon.png' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

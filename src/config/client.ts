@@ -12,10 +12,10 @@
 
 // ─── Brand ──────────────────────────────────────────────────────────
 export const BRAND = {
-  name: process.env.NEXT_PUBLIC_BRAND_NAME || 'Sales Hub',
-  short: process.env.NEXT_PUBLIC_BRAND_SHORT || 'SH',
-  logo: process.env.NEXT_PUBLIC_BRAND_LOGO || '/logo.png',
-  description: process.env.NEXT_PUBLIC_BRAND_DESCRIPTION || 'Sales dashboard',
+  name: process.env.NEXT_PUBLIC_BRAND_NAME || 'TBWX Sales Hub',
+  short: process.env.NEXT_PUBLIC_BRAND_SHORT || 'TBWX',
+  logo: process.env.NEXT_PUBLIC_BRAND_LOGO || '/logo-tbwx.png',
+  description: process.env.NEXT_PUBLIC_BRAND_DESCRIPTION || 'Sales dashboard for The Belgian Waffle Xpress',
 } as const
 
 // ─── Auth ───────────────────────────────────────────────────────────
