@@ -26,7 +26,7 @@ import { upsertContact, insertMessage } from '@/lib/db'
 const CRON_SECRET = process.env.CRON_SECRET || ''
 const SALES_PHONE = '917973933630'
 const TEMPLATE_NAME = 'opt_in_message'
-const SALES_ALERT_TEMPLATE = 'sales_lead_alert'
+const SALES_ALERT_TEMPLATE = 'sales_lead_alert_v2'
 
 // Rate limit: max leads to process per run (avoid timeout on Vercel 10s limit)
 const MAX_PER_RUN = 5
