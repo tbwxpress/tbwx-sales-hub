@@ -168,7 +168,7 @@ function LeadCard({
             className="w-full glass rounded-md px-2 py-1.5 text-xs text-text focus:outline-none focus:border-accent/50"
           >
             {PIPELINE_STAGES.map(s => (
-              <option key={s} value={s} style={{ backgroundColor: '#241a0e', color: '#faf5eb' }}>
+              <option key={s} value={s} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>
                 {STAGE_LABELS[s]}
               </option>
             ))}

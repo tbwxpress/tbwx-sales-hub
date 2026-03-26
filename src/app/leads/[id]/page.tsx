@@ -18,7 +18,7 @@ const TEMPLATES = [
 const STATUS_COLORS: Record<string, string> = {
   NEW: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   DECK_SENT: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  CONTACTED: 'bg-[#f5c518]/20 text-[#f5c518] border-[#f5c518]/30',
+  CONTACTED: 'bg-accent/20 text-accent border-accent/30',
   REPLIED: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
   INTERESTED: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
   HOT: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
@@ -600,7 +600,7 @@ export default function LeadDetailPage() {
                   value={lead.next_followup || ''}
                   onChange={(e) => updateField('next_followup', e.target.value)}
                   disabled={savingField === 'next_followup'}
-                  className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50 disabled:opacity-50 [color-scheme:dark]"
+                  className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50 disabled:opacity-50"
                 />
                 {savingField === 'next_followup' && (
                   <p className="text-xs text-dim mt-1">Saving...</p>

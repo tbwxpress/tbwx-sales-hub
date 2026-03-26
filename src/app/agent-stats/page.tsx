@@ -326,7 +326,7 @@ export default function AgentStatsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           {[
             { label: 'Assigned', value: totals.assigned, color: 'text-text' },
-            { label: 'Contacted', value: totals.contacted, color: 'text-[#f5c518]' },
+            { label: 'Contacted', value: totals.contacted, color: 'text-accent' },
             { label: 'Replied', value: totals.replied, color: 'text-[#4ade80]' },
             { label: 'Interested', value: totals.interested, color: 'text-[#22d3ee]' },
             { label: 'Converted', value: totals.converted, color: 'text-[#34d399]' },
@@ -412,7 +412,7 @@ export default function AgentStatsPage() {
 
                       {/* Contacted */}
                       <td className="px-3 py-3 text-center">
-                        <span className="text-[#f5c518]">{m.contacted}</span>
+                        <span className="text-accent">{m.contacted}</span>
                       </td>
 
                       {/* Replied */}
@@ -482,7 +482,7 @@ export default function AgentStatsPage() {
                       <span className="font-semibold text-muted text-xs uppercase tracking-wider">Total</span>
                     </td>
                     <td className="px-3 py-3 text-center font-bold text-text">{totals.assigned}</td>
-                    <td className="px-3 py-3 text-center font-bold text-[#f5c518]">{totals.contacted}</td>
+                    <td className="px-3 py-3 text-center font-bold text-accent">{totals.contacted}</td>
                     <td className="px-3 py-3 text-center font-bold text-[#4ade80]">{totals.replied}</td>
                     <td className="px-3 py-3 text-center font-bold text-[#22d3ee]">{totals.interested}</td>
                     <td className="px-3 py-3 text-center font-bold text-[#34d399]">{totals.converted}</td>

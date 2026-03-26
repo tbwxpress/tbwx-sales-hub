@@ -866,8 +866,8 @@ export default function DashboardPage() {
                   </tr>
                 ) : (
                   leads.map((lead, idx) => {
-                    const statusColor = STATUS_COLORS[lead.lead_status] || { bg: '#2e221420', text: '#a89274', border: '#3d2e1a' }
-                    const priorityColor = PRIORITY_COLORS[lead.lead_priority] || { bg: '#2e221420', text: '#a89274', border: '#3d2e1a' }
+                    const statusColor = STATUS_COLORS[lead.lead_status] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
+                    const priorityColor = PRIORITY_COLORS[lead.lead_priority] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
                     const followup = followupLabel(lead.next_followup)
                     const badge = responseTimeBadge(lead)
                     return (
@@ -918,7 +918,7 @@ export default function DashboardPage() {
                             }}
                           >
                             {STATUS_OPTIONS.map(s => (
-                              <option key={s} value={s} style={{ backgroundColor: '#241a0e', color: '#faf5eb' }}>
+                              <option key={s} value={s} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>
                                 {s.replace('_', ' ')}
                               </option>
                             ))}
@@ -937,9 +937,9 @@ export default function DashboardPage() {
                               borderColor: priorityColor.border,
                             }}
                           >
-                            <option value="" style={{ backgroundColor: '#241a0e', color: '#faf5eb' }}>-</option>
+                            <option value="" style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>-</option>
                             {PRIORITY_OPTIONS.map(p => (
-                              <option key={p} value={p} style={{ backgroundColor: '#241a0e', color: '#faf5eb' }}>
+                              <option key={p} value={p} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>
                                 {p}
                               </option>
                             ))}

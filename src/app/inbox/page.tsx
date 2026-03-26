@@ -872,8 +872,8 @@ export default function InboxPage() {
                 <div
                   className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
                   style={{
-                    backgroundColor: (activeContact?.avatar_color || '#f5c518') + '25',
-                    color: activeContact?.avatar_color || '#f5c518'
+                    backgroundColor: (activeContact?.avatar_color || 'var(--color-accent)') + '25',
+                    color: activeContact?.avatar_color || 'var(--color-accent)'
                   }}
                 >
                   <span className="text-sm font-bold">
@@ -1073,8 +1073,8 @@ export default function InboxPage() {
                             <div
                               className={`max-w-[85%] sm:max-w-[75%] px-3 py-2 overflow-hidden shadow-sm shadow-black/10 ${
                                 msg.direction === 'sent'
-                                  ? 'bg-[#005c4b] text-[#e9edef] rounded-2xl rounded-br-md shadow-[0_0_8px_rgba(37,211,102,0.08)]'
-                                  : 'bg-[#2a1f12] text-[#e9edef] rounded-2xl rounded-bl-md'
+                                  ? 'bg-wa-sent text-wa-text rounded-2xl rounded-br-md shadow-[0_0_8px_rgba(37,211,102,0.08)]'
+                                  : 'bg-wa-received text-wa-text rounded-2xl rounded-bl-md'
                               }`}
                             >
                               {/* Template badge */}
@@ -1089,9 +1089,9 @@ export default function InboxPage() {
                               <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words" style={{ overflowWrap: 'anywhere' }}>{msg.text}</p>
                               <div className="flex items-center justify-end gap-1 mt-0.5">
                                 {msg.direction === 'sent' && msg.sent_by && (
-                                  <span className="text-[9px] text-white/40">{msg.sent_by}</span>
+                                  <span className="text-[9px] text-wa-meta">{msg.sent_by}</span>
                                 )}
-                                <span className="text-[10px] text-white/40">{formatMsgTime(msg.timestamp)}</span>
+                                <span className="text-[10px] text-wa-meta">{formatMsgTime(msg.timestamp)}</span>
                                 {msg.direction === 'sent' && (
                                   <span className="text-[10px]">
                                     {msg.status === 'failed' || msg.status === 'undelivered' ? (
@@ -1099,9 +1099,9 @@ export default function InboxPage() {
                                     ) : msg.status === 'read' ? (
                                       <span className="text-[#53bdeb]">&#10003;&#10003;</span>
                                     ) : msg.status === 'delivered' ? (
-                                      <span className="text-white/40">&#10003;&#10003;</span>
+                                      <span className="text-wa-meta">&#10003;&#10003;</span>
                                     ) : (
-                                      <span className="text-white/40">&#10003;</span>
+                                      <span className="text-wa-meta">&#10003;</span>
                                     )}
                                   </span>
                                 )}

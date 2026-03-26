@@ -451,7 +451,7 @@ export default function QuickRepliesPage() {
                   {formMessage && (
                     <div>
                       <label className="block text-xs font-medium text-dim mb-1.5">Preview</label>
-                      <div className="bg-[#0b4d3a] border border-[#1a6b50] rounded-xl px-4 py-3 text-sm text-white/90 whitespace-pre-wrap leading-relaxed max-w-sm">
+                      <div className="bg-wa-sent border border-wa-sent/50 rounded-xl px-4 py-3 text-sm text-wa-text whitespace-pre-wrap leading-relaxed max-w-sm">
                         {formMessage}
                       </div>
                     </div>

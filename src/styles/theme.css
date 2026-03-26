@@ -23,10 +23,15 @@
   --color-hot: #f97316;
   --color-wa-sent: #005c4b;
   --color-wa-received: #2a1f12;
+  --color-wa-text: #e9edef;
+  --color-wa-meta: rgba(255,255,255,0.4);
+  --color-option-bg: #241a0e;
+  --color-option-text: #faf5eb;
 }
 
 /* ── Dark Theme (warm brown/gold/coffee) ──────────────────── */
 .dark {
+  color-scheme: dark;
   --color-bg: #1a1209;
   --color-card: #241a0e;
   --color-elevated: #2e2214;
@@ -44,10 +49,15 @@
   --color-hot: #f97316;
   --color-wa-sent: #005c4b;
   --color-wa-received: #2a1f12;
+  --color-wa-text: #e9edef;
+  --color-wa-meta: rgba(255,255,255,0.4);
+  --color-option-bg: #241a0e;
+  --color-option-text: #faf5eb;
 }
 
 /* ── Light Theme (LCD-friendly, high contrast) ────────────── */
 .light {
+  color-scheme: light;
   --color-bg: #f5f0e8;
   --color-card: #ffffff;
   --color-elevated: #efe9df;
@@ -65,4 +75,8 @@
   --color-hot: #ea580c;
   --color-wa-sent: #d1fae5;
   --color-wa-received: #f5f0e8;
+  --color-wa-text: #1a1209;
+  --color-wa-meta: rgba(0,0,0,0.4);
+  --color-option-bg: #ffffff;
+  --color-option-text: #1a1209;
 }

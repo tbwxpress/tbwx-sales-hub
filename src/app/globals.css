@@ -88,9 +88,6 @@ body {
 
 /* Lead row hover */
 .lead-row:hover {
-  background-color: #2e221408;
-}
-.lead-row:hover {
   background-color: var(--color-elevated);
 }
 
@@ -217,7 +214,7 @@ input, select, textarea, button {
 
 /* ─── Gradient text utility ─── */
 .text-gradient-gold {
-  background: linear-gradient(135deg, #f5c518, #e6a000);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

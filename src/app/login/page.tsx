@@ -39,13 +39,13 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-bg px-4 relative overflow-hidden">
       {/* Radial glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-[0.07]"
-        style={{ background: 'radial-gradient(circle, #f5c518 0%, transparent 70%)' }}
+        style={{ background: 'radial-gradient(circle, var(--color-accent) 0%, transparent 70%)' }}
       />
 
       {/* Subtle waffle grid */}
       <div className="fixed inset-0 opacity-[0.02]" style={{
-        backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 48px, #f5c518 48px, #f5c518 49px),
-                          repeating-linear-gradient(90deg, transparent, transparent 48px, #f5c518 48px, #f5c518 49px)`,
+        backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 48px, var(--color-accent) 48px, var(--color-accent) 49px),
+                          repeating-linear-gradient(90deg, transparent, transparent 48px, var(--color-accent) 48px, var(--color-accent) 49px)`,
       }} />
 
       <div className="w-full max-w-[380px] relative z-10 animate-fade-in-up">
