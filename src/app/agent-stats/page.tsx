@@ -61,8 +61,8 @@ function WATokenCountdown() {
         isCritical
           ? 'bg-danger/10 border-danger/30 text-danger'
           : isUrgent
-          ? 'bg-[#f59e0b20] border-[#f59e0b30] text-[#fbbf24]'
-          : 'bg-[#22c55e15] border-[#22c55e25] text-[#4ade80]'
+          ? 'bg-warning/10 border-warning/20 text-warning'
+          : 'bg-success/10 border-success/20 text-success'
       }`}
     >
       <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -327,10 +327,10 @@ export default function AgentStatsPage() {
           {[
             { label: 'Assigned', value: totals.assigned, color: 'text-text' },
             { label: 'Contacted', value: totals.contacted, color: 'text-accent' },
-            { label: 'Replied', value: totals.replied, color: 'text-[#4ade80]' },
-            { label: 'Interested', value: totals.interested, color: 'text-[#22d3ee]' },
-            { label: 'Converted', value: totals.converted, color: 'text-[#34d399]' },
-            { label: 'Lost', value: totals.lost, color: 'text-[#f87171]' },
+            { label: 'Replied', value: totals.replied, color: 'text-status-replied' },
+            { label: 'Interested', value: totals.interested, color: 'text-status-interested' },
+            { label: 'Converted', value: totals.converted, color: 'text-status-converted' },
+            { label: 'Lost', value: totals.lost, color: 'text-status-lost' },
           ].map(card => (
             <div
               key={card.label}
@@ -417,31 +417,31 @@ export default function AgentStatsPage() {
 
                       {/* Replied */}
                       <td className="px-3 py-3 text-center">
-                        <span className="text-[#4ade80]">{m.replied}</span>
+                        <span className="text-status-replied">{m.replied}</span>
                       </td>
 
                       {/* Interested */}
                       <td className="px-3 py-3 text-center">
-                        <span className={m.interested > 0 ? 'text-[#22d3ee] font-semibold' : 'text-dim'}>{m.interested}</span>
+                        <span className={m.interested > 0 ? 'text-status-interested font-semibold' : 'text-dim'}>{m.interested}</span>
                       </td>
 
                       {/* Converted */}
                       <td className="px-3 py-3 text-center">
-                        <span className={m.converted > 0 ? 'text-[#34d399] font-semibold' : 'text-dim'}>{m.converted}</span>
+                        <span className={m.converted > 0 ? 'text-status-converted font-semibold' : 'text-dim'}>{m.converted}</span>
                       </td>
 
                       {/* Lost */}
                       <td className="px-3 py-3 text-center">
-                        <span className={m.lost > 0 ? 'text-[#f87171]' : 'text-dim'}>{m.lost}</span>
+                        <span className={m.lost > 0 ? 'text-status-lost' : 'text-dim'}>{m.lost}</span>
                       </td>
 
                       {/* Conversion Rate */}
                       <td className="px-3 py-3 text-center">
                         <div className="flex items-center justify-center gap-2">
                           <span className={`font-semibold ${
-                            m.conversion_rate >= 20 ? 'text-[#34d399]' :
-                            m.conversion_rate >= 10 ? 'text-[#fbbf24]' :
-                            m.conversion_rate > 0 ? 'text-[#fb923c]' :
+                            m.conversion_rate >= 20 ? 'text-status-converted' :
+                            m.conversion_rate >= 10 ? 'text-status-delayed' :
+                            m.conversion_rate > 0 ? 'text-priority-hot' :
                             'text-dim'
                           }`}>
                             {m.conversion_rate}%
@@ -449,12 +449,15 @@ export default function AgentStatsPage() {
                           {/* Mini bar */}
                           <div className="w-12 h-1.5 bg-elevated rounded-full overflow-hidden hidden lg:block">
                             <div
-                              className={`h-full rounded-full ${
-                                m.conversion_rate >= 20 ? 'bg-[#34d399]' :
-                                m.conversion_rate >= 10 ? 'bg-[#fbbf24]' :
-                                'bg-[#fb923c]'
-                              }`}
-                              style={{ width: `${Math.min(100, m.conversion_rate)}%` }}
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${Math.min(100, m.conversion_rate)}%`,
+                                backgroundColor: m.conversion_rate >= 20
+                                  ? 'var(--color-status-converted)'
+                                  : m.conversion_rate >= 10
+                                  ? 'var(--color-status-delayed)'
+                                  : 'var(--color-priority-hot)',
+                              }}
                             />
                           </div>
                         </div>
@@ -464,9 +467,9 @@ export default function AgentStatsPage() {
                       <td className="px-3 py-3 text-center">
                         <span className={`${
                           m.avg_response_days === 0 ? 'text-dim' :
-                          m.avg_response_days <= 3 ? 'text-[#4ade80]' :
-                          m.avg_response_days <= 7 ? 'text-[#fbbf24]' :
-                          'text-[#f87171]'
+                          m.avg_response_days <= 3 ? 'text-status-replied' :
+                          m.avg_response_days <= 7 ? 'text-status-delayed' :
+                          'text-status-lost'
                         }`}>
                           {m.avg_response_days > 0 ? `${m.avg_response_days}d` : '-'}
                         </span>
@@ -483,10 +486,10 @@ export default function AgentStatsPage() {
                     </td>
                     <td className="px-3 py-3 text-center font-bold text-text">{totals.assigned}</td>
                     <td className="px-3 py-3 text-center font-bold text-accent">{totals.contacted}</td>
-                    <td className="px-3 py-3 text-center font-bold text-[#4ade80]">{totals.replied}</td>
-                    <td className="px-3 py-3 text-center font-bold text-[#22d3ee]">{totals.interested}</td>
-                    <td className="px-3 py-3 text-center font-bold text-[#34d399]">{totals.converted}</td>
-                    <td className="px-3 py-3 text-center font-bold text-[#f87171]">{totals.lost}</td>
+                    <td className="px-3 py-3 text-center font-bold text-status-replied">{totals.replied}</td>
+                    <td className="px-3 py-3 text-center font-bold text-status-interested">{totals.interested}</td>
+                    <td className="px-3 py-3 text-center font-bold text-status-converted">{totals.converted}</td>
+                    <td className="px-3 py-3 text-center font-bold text-status-lost">{totals.lost}</td>
                     <td className="px-3 py-3 text-center font-bold text-accent">{totalConversionRate}%</td>
                     <td className="px-3 py-3 text-center text-dim">-</td>
                   </tr>

@@ -27,6 +27,27 @@
   --color-wa-meta: rgba(255,255,255,0.4);
   --color-option-bg: #241a0e;
   --color-option-text: #faf5eb;
+  /* Status badge text colors */
+  --color-status-new: #60a5fa;
+  --color-status-deck-sent: #a78bfa;
+  --color-status-replied: #4ade80;
+  --color-status-calling: #facc15;
+  --color-status-call-done: #2dd4bf;
+  --color-status-interested: #22d3ee;
+  --color-status-negotiation: #f472b6;
+  --color-status-converted: #34d399;
+  --color-status-delayed: #fbbf24;
+  --color-status-lost: #f87171;
+  /* Priority badge text colors */
+  --color-priority-hot: #fb923c;
+  --color-priority-warm: #facc15;
+  --color-priority-cold: #60a5fa;
+  /* Score tier colors */
+  --color-score-great: #22c55e;
+  --color-score-good: #3b82f6;
+  --color-score-fair: #f59e0b;
+  --color-score-low: #f97316;
+  --color-score-poor: #ef4444;
 }
 
 /* ── Dark Theme (warm brown/gold/coffee) ──────────────────── */
@@ -53,6 +74,24 @@
   --color-wa-meta: rgba(255,255,255,0.4);
   --color-option-bg: #241a0e;
   --color-option-text: #faf5eb;
+  --color-status-new: #60a5fa;
+  --color-status-deck-sent: #a78bfa;
+  --color-status-replied: #4ade80;
+  --color-status-calling: #facc15;
+  --color-status-call-done: #2dd4bf;
+  --color-status-interested: #22d3ee;
+  --color-status-negotiation: #f472b6;
+  --color-status-converted: #34d399;
+  --color-status-delayed: #fbbf24;
+  --color-status-lost: #f87171;
+  --color-priority-hot: #fb923c;
+  --color-priority-warm: #facc15;
+  --color-priority-cold: #60a5fa;
+  --color-score-great: #22c55e;
+  --color-score-good: #3b82f6;
+  --color-score-fair: #f59e0b;
+  --color-score-low: #f97316;
+  --color-score-poor: #ef4444;
 }
 
 /* ── Light Theme (LCD-friendly, high contrast) ────────────── */
@@ -79,4 +118,23 @@
   --color-wa-meta: rgba(0,0,0,0.4);
   --color-option-bg: #ffffff;
   --color-option-text: #1a1209;
+  /* Status colors — darker/saturated for light bg */
+  --color-status-new: #1d4ed8;
+  --color-status-deck-sent: #6d28d9;
+  --color-status-replied: #15803d;
+  --color-status-calling: #92400e;
+  --color-status-call-done: #0f766e;
+  --color-status-interested: #0e7490;
+  --color-status-negotiation: #be185d;
+  --color-status-converted: #065f46;
+  --color-status-delayed: #92400e;
+  --color-status-lost: #991b1b;
+  --color-priority-hot: #c2410c;
+  --color-priority-warm: #b45309;
+  --color-priority-cold: #1d4ed8;
+  --color-score-great: #16a34a;
+  --color-score-good: #1d4ed8;
+  --color-score-fair: #d97706;
+  --color-score-low: #ea580c;
+  --color-score-poor: #dc2626;
 }

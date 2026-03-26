@@ -25,11 +25,24 @@ interface Lead {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 80) return '#22c55e'
-  if (score >= 60) return '#3b82f6'
-  if (score >= 40) return '#f59e0b'
-  if (score >= 20) return '#f97316'
-  return '#ef4444'
+  if (score >= 80) return 'var(--color-score-great)'
+  if (score >= 60) return 'var(--color-score-good)'
+  if (score >= 40) return 'var(--color-score-fair)'
+  if (score >= 20) return 'var(--color-score-low)'
+  return 'var(--color-score-poor)'
+}
+function scoreBg(score: number): string {
+  return `color-mix(in srgb, ${scoreColor(score)} 15%, transparent)`
+}
+function scoreBorder(score: number): string {
+  return `color-mix(in srgb, ${scoreColor(score)} 30%, transparent)`
+}
+function makeStatusVars(cssVar: string): { bg: string; text: string; border: string } {
+  return {
+    bg: `color-mix(in srgb, ${cssVar} 15%, transparent)`,
+    text: cssVar,
+    border: `color-mix(in srgb, ${cssVar} 30%, transparent)`,
+  }
 }
 
 interface Stats {
@@ -71,22 +84,22 @@ interface Task {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  NEW:          { bg: '#3b82f620', text: '#60a5fa', border: '#3b82f630' },
-  DECK_SENT:    { bg: '#8b5cf620', text: '#a78bfa', border: '#8b5cf630' },
-  REPLIED:      { bg: '#22c55e20', text: '#4ade80', border: '#22c55e30' },
-  CALLING:      { bg: '#eab30820', text: '#facc15', border: '#eab30830' },
-  CALL_DONE:    { bg: '#14b8a620', text: '#2dd4bf', border: '#14b8a630' },
-  INTERESTED:   { bg: '#06b6d420', text: '#22d3ee', border: '#06b6d430' },
-  NEGOTIATION:  { bg: '#ec489920', text: '#f472b6', border: '#ec489930' },
-  CONVERTED:    { bg: '#10b98120', text: '#34d399', border: '#10b98130' },
-  DELAYED:      { bg: '#f59e0b20', text: '#fbbf24', border: '#f59e0b30' },
-  LOST:         { bg: '#ef444420', text: '#f87171', border: '#ef444430' },
+  NEW:         makeStatusVars('var(--color-status-new)'),
+  DECK_SENT:   makeStatusVars('var(--color-status-deck-sent)'),
+  REPLIED:     makeStatusVars('var(--color-status-replied)'),
+  CALLING:     makeStatusVars('var(--color-status-calling)'),
+  CALL_DONE:   makeStatusVars('var(--color-status-call-done)'),
+  INTERESTED:  makeStatusVars('var(--color-status-interested)'),
+  NEGOTIATION: makeStatusVars('var(--color-status-negotiation)'),
+  CONVERTED:   makeStatusVars('var(--color-status-converted)'),
+  DELAYED:     makeStatusVars('var(--color-status-delayed)'),
+  LOST:        makeStatusVars('var(--color-status-lost)'),
 }
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  HOT:  { bg: 'rgba(249,115,22,0.15)', text: '#fb923c', border: 'rgba(249,115,22,0.3)' },
-  WARM: { bg: 'rgba(234,179,8,0.15)', text: '#facc15', border: 'rgba(234,179,8,0.3)' },
-  COLD: { bg: 'rgba(59,130,246,0.15)', text: '#60a5fa', border: 'rgba(59,130,246,0.3)' },
+  HOT:  makeStatusVars('var(--color-priority-hot)'),
+  WARM: makeStatusVars('var(--color-priority-warm)'),
+  COLD: makeStatusVars('var(--color-priority-cold)'),
 }
 
 const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'REPLIED', 'CALLING', 'CALL_DONE', 'INTERESTED', 'NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST']
@@ -917,9 +930,9 @@ export default function DashboardPage() {
                             <span
                               className="inline-flex items-center justify-center w-8 h-8 rounded-full text-[11px] font-bold"
                               style={{
-                                backgroundColor: scoreColor(lead.lead_score) + '20',
+                                backgroundColor: scoreBg(lead.lead_score),
                                 color: scoreColor(lead.lead_score),
-                                border: `1px solid ${scoreColor(lead.lead_score)}30`,
+                                border: `1px solid ${scoreBorder(lead.lead_score)}`,
                               }}
                               title={`Lead Score: ${lead.lead_score}/100`}
                             >

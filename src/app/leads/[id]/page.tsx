@@ -49,11 +49,17 @@ function formatTime(ts: string): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 80) return '#22c55e'
-  if (score >= 60) return '#3b82f6'
-  if (score >= 40) return '#f59e0b'
-  if (score >= 20) return '#f97316'
-  return '#ef4444'
+  if (score >= 80) return 'var(--color-score-great)'
+  if (score >= 60) return 'var(--color-score-good)'
+  if (score >= 40) return 'var(--color-score-fair)'
+  if (score >= 20) return 'var(--color-score-low)'
+  return 'var(--color-score-poor)'
+}
+function scoreBg(score: number): string {
+  return `color-mix(in srgb, ${scoreColor(score)} 15%, transparent)`
+}
+function scoreBorder(score: number, opacity = 40): string {
+  return `color-mix(in srgb, ${scoreColor(score)} ${opacity}%, transparent)`
 }
 function scoreLabel(score: number): string {
   if (score >= 80) return 'Excellent'
@@ -567,9 +573,9 @@ export default function LeadDetailPage() {
                   <div
                     className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold"
                     style={{
-                      backgroundColor: scoreColor(leadScore) + '20',
+                      backgroundColor: scoreBg(leadScore),
                       color: scoreColor(leadScore),
-                      border: `2px solid ${scoreColor(leadScore)}40`,
+                      border: `2px solid ${scoreBorder(leadScore, 40)}`,
                     }}
                   >
                     {leadScore}
