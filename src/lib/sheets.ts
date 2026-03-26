@@ -1,5 +1,5 @@
 import { google } from 'googleapis'
-import type { Lead, LeadStatus, User, QuickReply, Message } from './types'
+import type { Lead, LeadStatus, User, QuickReply, Message, KnowledgeBaseEntry } from './types'
 import { LEAD_COLUMN_MAP, LEAD_WRITE_COLUMNS, SHEETS } from '@/config/client'
 
 // --- Auth setup ---
@@ -500,4 +500,91 @@ export async function getLeadStats(filterAgent?: string): Promise<{
       return new Date(l.next_followup) < now
     }).length,
   }
+}
+
+// --- Knowledge Base ---
+
+export async function getKnowledgeBase(): Promise<KnowledgeBaseEntry[]> {
+  const sheets = getSheets()
+  const kbTab = process.env.KNOWLEDGE_BASE_TAB_NAME || T.knowledgeBase
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.HUB_SHEET_ID,
+    range: `${kbTab}!${SHEETS.ranges.knowledgeBaseRange}`,
+  })
+  const rows = res.data.values || []
+  return rows.map(row => ({
+    id: row[0] || '',
+    category: row[1] || '',
+    title: row[2] || '',
+    content: row[3] || '',
+    link: row[4] || '',
+    created_by: row[5] || '',
+    created_at: row[6] || '',
+  }))
+}
+
+export async function createKnowledgeBaseEntry(entry: Omit<KnowledgeBaseEntry, 'id' | 'created_at'>): Promise<string> {
+  const sheets = getSheets()
+  const kbTab = process.env.KNOWLEDGE_BASE_TAB_NAME || T.knowledgeBase
+  const id = `kb_${Date.now()}`
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: process.env.HUB_SHEET_ID,
+    range: `${kbTab}!A:G`,
+    valueInputOption: 'RAW',
+    requestBody: {
+      values: [[id, entry.category, entry.title, entry.content, entry.link, entry.created_by, new Date().toISOString()]],
+    },
+  })
+  return id
+}
+
+export async function updateKnowledgeBaseEntry(entryId: string, fields: Partial<Pick<KnowledgeBaseEntry, 'category' | 'title' | 'content' | 'link'>>): Promise<void> {
+  const sheets = getSheets()
+  const kbTab = process.env.KNOWLEDGE_BASE_TAB_NAME || T.knowledgeBase
+  const entries = await getKnowledgeBase()
+  const idx = entries.findIndex(e => e.id === entryId)
+  if (idx === -1) throw new Error('Knowledge base entry not found')
+
+  const rowNum = idx + 2
+  const updated = { ...entries[idx], ...fields }
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: process.env.HUB_SHEET_ID!,
+    range: `${kbTab}!A${rowNum}:G${rowNum}`,
+    valueInputOption: 'RAW',
+    requestBody: {
+      values: [[updated.id, updated.category, updated.title, updated.content, updated.link, updated.created_by, updated.created_at]],
+    },
+  })
+}
+
+export async function deleteKnowledgeBaseEntry(entryId: string): Promise<void> {
+  const sheets = getSheets()
+  const kbTab = process.env.KNOWLEDGE_BASE_TAB_NAME || T.knowledgeBase
+  const entries = await getKnowledgeBase()
+  const idx = entries.findIndex(e => e.id === entryId)
+  if (idx === -1) throw new Error('Knowledge base entry not found')
+
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId: process.env.HUB_SHEET_ID!,
+    fields: 'sheets.properties',
+  })
+  const kbSheet = meta.data.sheets?.find(s => s.properties?.title === kbTab)
+  if (!kbSheet?.properties?.sheetId && kbSheet?.properties?.sheetId !== 0) throw new Error('Sheet not found')
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: process.env.HUB_SHEET_ID!,
+    requestBody: {
+      requests: [{
+        deleteDimension: {
+          range: {
+            sheetId: kbSheet.properties.sheetId,
+            dimension: 'ROWS',
+            startIndex: idx + 1,
+            endIndex: idx + 2,
+          },
+        },
+      }],
+    },
+  })
 }

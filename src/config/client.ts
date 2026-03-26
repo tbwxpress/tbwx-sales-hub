@@ -47,6 +47,7 @@ export const SHEETS = {
     sentMessages: process.env.SENT_MESSAGES_TAB_NAME || 'SentMessages',
     users: process.env.USERS_TAB_NAME || 'Users',
     quickReplies: process.env.QUICK_REPLIES_TAB_NAME || 'QuickReplies',
+    knowledgeBase: process.env.KNOWLEDGE_BASE_TAB_NAME || 'KnowledgeBase',
   },
   ranges: {
     /** How far right the leads data extends (e.g. A2:AC for 29 columns) */
@@ -59,6 +60,8 @@ export const SHEETS = {
     usersRange: 'A2:G',
     /** Range for quick replies tab */
     quickRepliesRange: 'A2:F',
+    /** Range for knowledge base tab */
+    knowledgeBaseRange: 'A2:G',
   },
 } as const
 

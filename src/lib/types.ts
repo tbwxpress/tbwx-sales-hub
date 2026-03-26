@@ -64,6 +64,16 @@ export interface QuickReply {
   created_at: string
 }
 
+export interface KnowledgeBaseEntry {
+  id: string
+  category: string
+  title: string
+  content: string
+  link: string
+  created_by: string
+  created_at: string
+}
+
 export interface ApiResponse<T = unknown> {
   success: boolean
   data?: T
