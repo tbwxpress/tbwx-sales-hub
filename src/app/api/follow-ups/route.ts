@@ -16,9 +16,9 @@ export async function GET() {
       l.lead_status !== 'LOST'
     )
 
-    // Agents only see their leads
+    // Agents see assigned leads + unassigned (if can_assign)
     if (user.role === 'agent') {
-      leads = leads.filter(l => l.assigned_to === user.name)
+      leads = leads.filter(l => l.assigned_to === user.name || (user.can_assign && !l.assigned_to))
     }
 
     const now = new Date()

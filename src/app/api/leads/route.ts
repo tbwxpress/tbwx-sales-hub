@@ -15,17 +15,36 @@ export async function GET(req: NextRequest) {
     const statsOnly = url.searchParams.get('stats')
 
     if (statsOnly === 'true') {
-      // Agents see only their own stats; admins see everything
-      const agentFilter = session!.role === 'agent' ? session!.name : undefined
-      const stats = await getLeadStats(agentFilter)
+      // Agents see own stats (+ unassigned if can_assign); admins see everything
+      if (session!.role === 'agent') {
+        let statsLeads = await getLeads()
+        statsLeads = statsLeads.filter(l => l.assigned_to === session!.name || (session!.can_assign && !l.assigned_to))
+        const now = new Date()
+        const stats = {
+          total: statsLeads.length,
+          new: statsLeads.filter(l => l.lead_status === 'NEW').length,
+          deck_sent: statsLeads.filter(l => l.lead_status === 'DECK_SENT').length,
+          replied: statsLeads.filter(l => l.lead_status === 'REPLIED').length,
+          calling: statsLeads.filter(l => l.lead_status === 'CALLING').length,
+          call_done: statsLeads.filter(l => l.lead_status === 'CALL_DONE').length,
+          interested: statsLeads.filter(l => l.lead_status === 'INTERESTED').length,
+          converted: statsLeads.filter(l => l.lead_status === 'CONVERTED').length,
+          delayed: statsLeads.filter(l => l.lead_status === 'DELAYED').length,
+          lost: statsLeads.filter(l => l.lead_status === 'LOST').length,
+          unassigned: statsLeads.filter(l => !l.assigned_to).length,
+          overdue_followups: statsLeads.filter(l => l.next_followup && new Date(l.next_followup) < now && l.lead_status !== 'CONVERTED' && l.lead_status !== 'LOST').length,
+        }
+        return NextResponse.json({ success: true, data: stats })
+      }
+      const stats = await getLeadStats()
       return NextResponse.json({ success: true, data: stats })
     }
 
     let leads = await getLeads()
 
-    // Agents only see their assigned leads (not unassigned)
+    // Agents see assigned leads + unassigned (if can_assign)
     if (session!.role === 'agent') {
-      leads = leads.filter(l => l.assigned_to === session!.name)
+      leads = leads.filter(l => l.assigned_to === session!.name || (session!.can_assign && !l.assigned_to))
     }
 
     if (status) {

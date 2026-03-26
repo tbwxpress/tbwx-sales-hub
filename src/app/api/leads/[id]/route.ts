@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, updateLead } from '@/lib/sheets'
+import { logAssignment } from '@/lib/db'
 import { LEAD_STATUSES } from '@/config/client'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -52,6 +53,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       } else if (body.lead_status === 'CONVERTED' || body.lead_status === 'LOST') {
         body.next_followup = ''
       }
+    }
+
+    // Log assignment changes
+    if (body.assigned_to !== undefined) {
+      const leads = await getLeads()
+      const lead = leads.find(l => l.row_number === rowNum)
+      await logAssignment({
+        lead_row: rowNum,
+        phone: lead?.phone || '',
+        from_agent: lead?.assigned_to || '',
+        to_agent: body.assigned_to,
+        assigned_by: user.name,
+      })
     }
 
     await updateLead(rowNum, body)

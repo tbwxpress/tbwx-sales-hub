@@ -1,4 +1,19 @@
-import { createClient, type Client } from '@libsql/client'
+import { createClient, type Client, type Row } from '@libsql/client'
+
+// Convert BigInt values to Number so JSON.stringify works
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function serializeRow(row: Row): Record<string, any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const out: Record<string, any> = {}
+  for (const [key, val] of Object.entries(row)) {
+    out[key] = typeof val === 'bigint' ? Number(val) : val
+  }
+  return out
+}
+
+function serializeRows(rows: Row[]) {
+  return rows.map(serializeRow)
+}
 
 // In production, use TURSO_DATABASE_URL + TURSO_AUTH_TOKEN
 // Locally, falls back to a file-based SQLite database
@@ -121,6 +136,18 @@ async function ensureInit(): Promise<Client> {
         created_at TEXT DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_drip_phone ON drip_state(phone);
+
+      CREATE TABLE IF NOT EXISTS assignment_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lead_row INTEGER NOT NULL,
+        phone TEXT DEFAULT '',
+        from_agent TEXT DEFAULT '',
+        to_agent TEXT DEFAULT '',
+        assigned_by TEXT NOT NULL DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_log_row ON assignment_log(lead_row);
+      CREATE INDEX IF NOT EXISTS idx_assignment_log_phone ON assignment_log(phone);
     `)
     _initialized = true
   }
@@ -196,7 +223,7 @@ export async function getContacts() {
     )
     ORDER BY m.timestamp DESC NULLS LAST
   `)
-  return result.rows
+  return serializeRows(result.rows)
 }
 
 export async function getContactsForAgent(assignedPhones: string[]) {
@@ -224,7 +251,7 @@ export async function getContactsForAgent(assignedPhones: string[]) {
     `,
     args: phones10,
   })
-  return result.rows
+  return serializeRows(result.rows)
 }
 
 export async function getUnreadCountForAgent(assignedPhones: string[]) {
@@ -243,7 +270,7 @@ export async function getContact(phone: string) {
   const db = await ensureInit()
   phone = normalizePhone(phone)
   const result = await db.execute({ sql: 'SELECT * FROM contacts WHERE phone = ?', args: [phone] })
-  return result.rows[0] || null
+  return result.rows[0] ? serializeRow(result.rows[0]) : null
 }
 
 // --- Message operations ---
@@ -287,7 +314,7 @@ export async function insertMessage(data: {
   // Update contact's updated_at
   await db.execute({ sql: "UPDATE contacts SET updated_at = datetime('now') WHERE phone = ?", args: [data.phone] })
 
-  return result.lastInsertRowid
+  return Number(result.lastInsertRowid)
 }
 
 export async function getMessages(phone: string, limit = 100, offset = 0) {
@@ -298,7 +325,7 @@ export async function getMessages(phone: string, limit = 100, offset = 0) {
     sql: `SELECT * FROM messages WHERE phone = ? OR phone = ? ORDER BY timestamp ASC LIMIT ? OFFSET ?`,
     args: [norm, phone, limit, offset],
   })
-  return result.rows
+  return serializeRows(result.rows)
 }
 
 export async function markMessagesRead(phone: string) {
@@ -327,7 +354,7 @@ export async function searchMessages(query: string) {
           LIMIT 50`,
     args: [`%${query}%`, `%${query}%`, `%${query}%`],
   })
-  return result.rows
+  return serializeRows(result.rows)
 }
 
 export async function updateMessageStatus(waMessageId: string, status: string) {
@@ -459,7 +486,7 @@ export async function insertCallLog(data: {
     sql: `INSERT INTO call_logs (phone, duration, outcome, notes, logged_by) VALUES (?, ?, ?, ?, ?)`,
     args: [data.phone, data.duration || '', data.outcome || '', data.notes || '', data.logged_by || ''],
   })
-  return result.lastInsertRowid
+  return Number(result.lastInsertRowid)
 }
 
 export async function getCallLogs(phone: string) {
@@ -469,7 +496,7 @@ export async function getCallLogs(phone: string) {
     sql: 'SELECT * FROM call_logs WHERE phone = ? OR phone = ? ORDER BY created_at DESC',
     args: [norm, phone],
   })
-  return result.rows
+  return serializeRows(result.rows)
 }
 
 // --- Lead notes ---
@@ -481,7 +508,7 @@ export async function insertNote(data: { phone: string; note: string; created_by
     sql: 'INSERT INTO lead_notes (phone, note, created_by) VALUES (?, ?, ?)',
     args: [data.phone, data.note, data.created_by || ''],
   })
-  return result.lastInsertRowid
+  return Number(result.lastInsertRowid)
 }
 
 export async function getNotes(phone: string) {
@@ -491,7 +518,7 @@ export async function getNotes(phone: string) {
     sql: 'SELECT * FROM lead_notes WHERE phone = ? OR phone = ? ORDER BY created_at DESC',
     args: [norm, phone],
   })
-  return result.rows
+  return serializeRows(result.rows)
 }
 
 // --- Tasks/Reminders ---
@@ -502,7 +529,7 @@ export async function insertTask(data: { phone?: string; title: string; due_at: 
     sql: 'INSERT INTO tasks (phone, title, due_at, created_by) VALUES (?, ?, ?, ?)',
     args: [data.phone || null, data.title, data.due_at, data.created_by || ''],
   })
-  return result.lastInsertRowid
+  return Number(result.lastInsertRowid)
 }
 
 export async function getTasks(filters?: { completed?: boolean; due_before?: string; phone?: string }) {
@@ -528,7 +555,7 @@ export async function getTasks(filters?: { completed?: boolean; due_before?: str
     sql: `SELECT t.*, c.name as contact_name FROM tasks t LEFT JOIN contacts c ON c.phone = t.phone ${where} ORDER BY t.due_at ASC`,
     args,
   })
-  return result.rows
+  return serializeRows(result.rows)
 }
 
 export async function completeTask(id: number) {
@@ -598,7 +625,7 @@ export async function migratePhoneNumbers(): Promise<{ merged: number; messages_
 export async function getDripState(phone: string) {
   const db = await ensureInit()
   const result = await db.execute({ sql: 'SELECT * FROM drip_state WHERE phone = ?', args: [phone] })
-  return result.rows[0] || null
+  return result.rows[0] ? serializeRow(result.rows[0]) : null
 }
 
 export async function upsertDripState(phone: string, data: {
@@ -647,7 +674,7 @@ export async function getDripLeads(): Promise<any[]> {
   const result = await db.execute(`
     SELECT * FROM drip_state WHERE enabled = 1 AND paused_at IS NULL
   `)
-  return result.rows as any[]
+  return serializeRows(result.rows) as any[]
 }
 
 export async function toggleDrip(phone: string, enabled: boolean) {
@@ -678,4 +705,29 @@ export async function getBulkDripState(): Promise<Record<string, { enabled: bool
     }
   }
   return map
+}
+
+// --- Assignment Log ---
+
+export async function logAssignment(data: {
+  lead_row: number
+  phone?: string
+  from_agent: string
+  to_agent: string
+  assigned_by: string
+}) {
+  const db = await ensureInit()
+  await db.execute({
+    sql: 'INSERT INTO assignment_log (lead_row, phone, from_agent, to_agent, assigned_by) VALUES (?, ?, ?, ?, ?)',
+    args: [data.lead_row, data.phone || '', data.from_agent, data.to_agent, data.assigned_by],
+  })
+}
+
+export async function getAssignmentHistory(leadRow: number) {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT * FROM assignment_log WHERE lead_row = ? ORDER BY created_at DESC',
+    args: [leadRow],
+  })
+  return serializeRows(result.rows)
 }

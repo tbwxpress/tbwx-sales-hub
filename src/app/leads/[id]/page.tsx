@@ -91,6 +91,9 @@ export default function LeadDetailPage() {
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
 
+  // Assignment history
+  const [assignHistory, setAssignHistory] = useState<{ from_agent: string; to_agent: string; assigned_by: string; created_at: string }[]>([])
+
   // Auto-message verification
   const [autoMsgStatus, setAutoMsgStatus] = useState<{
     auto_message_sent: boolean
@@ -188,6 +191,19 @@ export default function LeadDetailPage() {
     }
   }, [])
 
+  // Fetch assignment history
+  const fetchAssignHistory = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/leads/${id}/assignments`)
+      const json = await res.json()
+      if (json.success && json.data) {
+        setAssignHistory(json.data)
+      }
+    } catch {
+      // silent
+    }
+  }, [id])
+
   // Fetch auto-message verification status
   const fetchAutoMsgStatus = useCallback(async () => {
     try {
@@ -213,11 +229,11 @@ export default function LeadDetailPage() {
   useEffect(() => {
     async function load() {
       setLoading(true)
-      await Promise.all([fetchLead(), fetchMessages(), fetchUsers(), fetchQuickReplies(), fetchAutoMsgStatus()])
+      await Promise.all([fetchLead(), fetchMessages(), fetchUsers(), fetchQuickReplies(), fetchAutoMsgStatus(), fetchAssignHistory()])
       setLoading(false)
     }
     load()
-  }, [fetchLead, fetchMessages, fetchUsers, fetchQuickReplies, fetchAutoMsgStatus])
+  }, [fetchLead, fetchMessages, fetchUsers, fetchQuickReplies, fetchAutoMsgStatus, fetchAssignHistory])
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -267,6 +283,7 @@ export default function LeadDetailPage() {
           next_followup: 'Follow-up date',
         }
         setToast(`${labels[field] || field} updated`)
+        if (field === 'assigned_to') fetchAssignHistory()
       }
     } catch {
       // silent
@@ -553,6 +570,25 @@ export default function LeadDetailPage() {
                   </select>
                 ) : (
                   <p className="text-sm text-muted">{lead.assigned_to || 'Unassigned'}</p>
+                )}
+                {/* Assignment History */}
+                {assignHistory.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    <p className="text-[10px] text-dim uppercase tracking-wider">History</p>
+                    {assignHistory.slice(0, 5).map((h, i) => (
+                      <div key={i} className="flex items-center gap-1.5 text-[11px] text-muted">
+                        <svg className="w-3 h-3 shrink-0 text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                        </svg>
+                        <span>
+                          {h.from_agent || 'Unassigned'} → {h.to_agent || 'Unassigned'}
+                        </span>
+                        <span className="text-dim ml-auto whitespace-nowrap">
+                          {h.assigned_by} · {formatTime(h.created_at)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 

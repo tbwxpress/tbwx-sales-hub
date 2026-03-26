@@ -28,8 +28,8 @@ body {
 
 /* Selection */
 ::selection {
-  background: #f5c51840;
-  color: #faf5eb;
+  background: var(--color-accent-soft);
+  color: var(--color-text);
 }
 
 /* Status badges */
@@ -67,7 +67,7 @@ body {
 }
 .status-select:focus {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px #f5c51820;
+  box-shadow: 0 0 0 2px var(--color-accent-soft);
 }
 
 /* Toast animation */
@@ -101,14 +101,14 @@ input, select, textarea, button {
 
 /* ─── Glass morphism ─── */
 .glass {
-  background: rgba(36, 26, 14, 0.6);
+  background: color-mix(in srgb, var(--color-card) 60%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(61, 46, 26, 0.5);
+  border: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
 }
 
 .glass-nav {
-  background: rgba(36, 26, 14, 0.85);
+  background: color-mix(in srgb, var(--color-card) 85%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -290,7 +290,7 @@ input, select, textarea, button {
 
 /* ─── Input glow on focus ─── */
 input:focus, textarea:focus, select:focus {
-  box-shadow: 0 0 0 3px rgba(245, 197, 24, 0.08);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
 /* ─── Improved table rows ─── */
@@ -298,12 +298,12 @@ input:focus, textarea:focus, select:focus {
   transition: background-color 0.15s ease;
 }
 .table-row-hover:hover {
-  background-color: rgba(46, 34, 20, 0.5);
+  background-color: var(--color-elevated);
 }
 
 /* ─── Modal backdrop ─── */
 .modal-backdrop {
-  background: rgba(10, 8, 4, 0.75);
+  background: color-mix(in srgb, var(--color-bg) 75%, transparent);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }

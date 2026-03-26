@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
+import ThemeToggle from './ThemeToggle'
 
 interface User {
   name: string
@@ -181,7 +182,8 @@ export default function Navbar() {
           </div>
 
           {/* Right side */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
             {/* User info — hidden on small screens */}
             {user && (
               <div className="hidden sm:flex items-center gap-2">

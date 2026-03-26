@@ -1,63 +1,68 @@
 /* ═══════════════════════════════════════════════════════════
    TBWX Sales Hub — Theme Colors
    ═══════════════════════════════════════════════════════════
-   To deploy for a new client, change the hex values below.
-   All 18 color tokens live here — nowhere else.
-
-   RULES (Tailwind v4):
-   - Must use @theme inline { } — NOT @theme { }
-   - Must use raw hex values — NOT var() references
-   - Hex+alpha format: #RRGGBBAA (e.g. #f5c51820 = 12% opacity)
-
-   PRESET THEMES:
-   Copy-paste from src/styles/themes/ to swap palettes:
-   - tbwx.css     — warm brown/gold/coffee (current)
-   - blue-steel.css — cool blue/slate for tech clients
-   - forest.css   — green/earth tones for organic brands
+   Toggle via class="dark" or class="light" on <html>.
    ═══════════════════════════════════════════════════════════ */
 
 @theme inline {
-  /* ── Background surfaces ──────────────────────────────────
-     bg:           Page background (darkest)
-     card:         Card / panel background
-     elevated:     Hover states, raised surfaces
-     border:       Default border color
-     border-light: Lighter border for hover / focus states */
+  /* Tailwind needs these defaults for class generation */
   --color-bg: #1a1209;
   --color-card: #241a0e;
   --color-elevated: #2e2214;
   --color-border: #3d2e1a;
   --color-border-light: #4d3d28;
-
-  /* ── Text ─────────────────────────────────────────────────
-     text:   Primary text (near-white)
-     muted:  Secondary / helper text
-     dim:    Tertiary / disabled text */
   --color-text: #faf5eb;
   --color-muted: #a89274;
   --color-dim: #6b5a42;
-
-  /* ── Accent (brand primary) ──────────────────────────────
-     accent:       Buttons, links, active indicators
-     accent-hover: Darker shade for hover
-     accent-soft:  Transparent tint for backgrounds */
   --color-accent: #f5c518;
   --color-accent-hover: #e6b800;
   --color-accent-soft: #f5c51820;
-
-  /* ── Semantic (keep consistent across themes) ────────────
-     success: Confirmed / won / positive
-     warning: Needs attention
-     danger:  Error / lost / destructive
-     hot:     Hot leads, urgent items */
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
   --color-hot: #f97316;
-
-  /* ── WhatsApp chat bubbles ───────────────────────────────
-     wa-sent:     Outgoing message background
-     wa-received: Incoming message background */
   --color-wa-sent: #005c4b;
   --color-wa-received: #2a1f12;
+}
+
+/* ── Dark Theme (warm brown/gold/coffee) ──────────────────── */
+.dark {
+  --color-bg: #1a1209;
+  --color-card: #241a0e;
+  --color-elevated: #2e2214;
+  --color-border: #3d2e1a;
+  --color-border-light: #4d3d28;
+  --color-text: #faf5eb;
+  --color-muted: #a89274;
+  --color-dim: #6b5a42;
+  --color-accent: #f5c518;
+  --color-accent-hover: #e6b800;
+  --color-accent-soft: #f5c51820;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-hot: #f97316;
+  --color-wa-sent: #005c4b;
+  --color-wa-received: #2a1f12;
+}
+
+/* ── Light Theme (LCD-friendly, high contrast) ────────────── */
+.light {
+  --color-bg: #f5f0e8;
+  --color-card: #ffffff;
+  --color-elevated: #efe9df;
+  --color-border: #d4c9b8;
+  --color-border-light: #e2d9cb;
+  --color-text: #1a1209;
+  --color-muted: #6b5a42;
+  --color-dim: #a89274;
+  --color-accent: #b88d00;
+  --color-accent-hover: #9a7600;
+  --color-accent-soft: #b88d0018;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-hot: #ea580c;
+  --color-wa-sent: #d1fae5;
+  --color-wa-received: #f5f0e8;
 }

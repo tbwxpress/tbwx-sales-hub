@@ -13,28 +13,28 @@ export async function GET(req: NextRequest) {
 
     if (search) {
       const results = await searchMessages(search)
-      // For agents, filter search results to only their assigned leads
+      // For agents, filter search results to their visible leads
       if (user.role === 'agent') {
         const leads = await getLeads()
-        const assignedPhones = leads
-          .filter(l => l.assigned_to === user.name)
+        const visiblePhones = leads
+          .filter(l => l.assigned_to === user.name || (user.can_assign && !l.assigned_to))
           .map(l => l.phone.replace(/\D/g, '').slice(-10))
         const filtered = results.filter((r: any) => {
           const phone10 = String(r.phone || '').replace(/\D/g, '').slice(-10)
-          return assignedPhones.includes(phone10)
+          return visiblePhones.includes(phone10)
         })
         return NextResponse.json({ success: true, data: filtered })
       }
       return NextResponse.json({ success: true, data: results })
     }
 
-    // Agents see only their assigned leads' conversations
+    // Agents see assigned leads + unassigned (if can_assign)
     if (user.role === 'agent') {
       const leads = await getLeads()
-      const assignedPhones = leads
-        .filter(l => l.assigned_to === user.name)
+      const visiblePhones = leads
+        .filter(l => l.assigned_to === user.name || (user.can_assign && !l.assigned_to))
         .map(l => l.phone)
-      const contacts = await getContactsForAgent(assignedPhones)
+      const contacts = await getContactsForAgent(visiblePhones)
       return NextResponse.json({ success: true, data: contacts })
     }
 

@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
 
     // 3. Filter: only NEW leads (anything beyond NEW has already been handled)
     const SKIP_STATUSES = ['deck_sent', 'replied', 'calling', 'call_done', 'interested',
-      'negotiation', 'converted', 'delayed', 'lost']
+      'negotiation', 'converted', 'delayed', 'lost', 'contacted']
     const uncontacted = allLeads.filter(lead => {
       const status = lead.lead_status.toLowerCase()
       if (SKIP_STATUSES.includes(status)) return false

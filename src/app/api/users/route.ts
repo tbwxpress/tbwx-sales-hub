@@ -5,8 +5,7 @@ import { getUsers, createUser, updateUser } from '@/lib/users'
 export async function GET() {
   try {
     const session = await getSession()
-    const user = requireAuth(session)
-    requireAdmin(user)
+    requireAuth(session)
 
     const users = await getUsers()
     // Strip password hashes
