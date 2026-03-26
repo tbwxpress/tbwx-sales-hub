@@ -32,7 +32,7 @@ interface AgentMetrics {
   assigned: number
   contacted: number
   replied: number
-  hot: number
+  interested: number
   converted: number
   lost: number
   conversion_rate: number
@@ -83,8 +83,8 @@ function WATokenCountdown() {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 // Statuses that count as "lead has engaged" (non-overlapping with contacted)
-const TERMINAL_STATUSES = ['CONVERTED', 'LOST']
-const NOT_YET_CONTACTED = ['NEW', 'DECK_SENT']
+const TERMINAL_STATUSES = ['CONVERTED', 'LOST', 'DELAYED']
+const NOT_YET_CONTACTED = ['NEW']
 
 function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics[] {
   const metricsMap = new Map<string, AgentMetrics>()
@@ -95,7 +95,7 @@ function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics
       assigned: 0,
       contacted: 0,
       replied: 0,
-      hot: 0,
+      interested: 0,
       converted: 0,
       lost: 0,
       conversion_rate: 0,
@@ -112,7 +112,7 @@ function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics
     if (!metricsMap.has(agentName)) {
       metricsMap.set(agentName, {
         name: agentName,
-        assigned: 0, contacted: 0, replied: 0, hot: 0,
+        assigned: 0, contacted: 0, replied: 0, interested: 0,
         converted: 0, lost: 0, conversion_rate: 0, avg_response_days: 0,
       })
     }
@@ -132,9 +132,13 @@ function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics
       m.replied++
     }
 
-    // Hot = status HOT only (not priority — agent should move lead to HOT status)
-    if (status === 'HOT') {
-      m.hot++
+    // Interested = status INTERESTED (previously HOT)
+    if (status === 'INTERESTED') {
+      m.interested++
+    }
+
+    if (status === 'DELAYED') {
+      m.lost++
     }
 
     if (status === 'CONVERTED') {
@@ -247,11 +251,11 @@ export default function AgentStatsPage() {
       assigned: acc.assigned + m.assigned,
       contacted: acc.contacted + m.contacted,
       replied: acc.replied + m.replied,
-      hot: acc.hot + m.hot,
+      interested: acc.interested + m.interested,
       converted: acc.converted + m.converted,
       lost: acc.lost + m.lost,
     }),
-    { assigned: 0, contacted: 0, replied: 0, hot: 0, converted: 0, lost: 0 }
+    { assigned: 0, contacted: 0, replied: 0, interested: 0, converted: 0, lost: 0 }
   )
 
   const totalConversionRate = totals.assigned > 0
@@ -324,7 +328,7 @@ export default function AgentStatsPage() {
             { label: 'Assigned', value: totals.assigned, color: 'text-text' },
             { label: 'Contacted', value: totals.contacted, color: 'text-[#f5c518]' },
             { label: 'Replied', value: totals.replied, color: 'text-[#4ade80]' },
-            { label: 'Hot', value: totals.hot, color: 'text-[#fb923c]' },
+            { label: 'Interested', value: totals.interested, color: 'text-[#22d3ee]' },
             { label: 'Converted', value: totals.converted, color: 'text-[#34d399]' },
             { label: 'Lost', value: totals.lost, color: 'text-[#f87171]' },
           ].map(card => (
@@ -372,7 +376,7 @@ export default function AgentStatsPage() {
                   <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Assigned</th>
                   <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Contacted</th>
                   <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Replied</th>
-                  <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Hot</th>
+                  <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Interested</th>
                   <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Converted</th>
                   <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Lost</th>
                   <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Conv. Rate</th>
@@ -416,9 +420,9 @@ export default function AgentStatsPage() {
                         <span className="text-[#4ade80]">{m.replied}</span>
                       </td>
 
-                      {/* Hot */}
+                      {/* Interested */}
                       <td className="px-3 py-3 text-center">
-                        <span className={m.hot > 0 ? 'text-[#fb923c] font-semibold' : 'text-dim'}>{m.hot}</span>
+                        <span className={m.interested > 0 ? 'text-[#22d3ee] font-semibold' : 'text-dim'}>{m.interested}</span>
                       </td>
 
                       {/* Converted */}
@@ -480,7 +484,7 @@ export default function AgentStatsPage() {
                     <td className="px-3 py-3 text-center font-bold text-text">{totals.assigned}</td>
                     <td className="px-3 py-3 text-center font-bold text-[#f5c518]">{totals.contacted}</td>
                     <td className="px-3 py-3 text-center font-bold text-[#4ade80]">{totals.replied}</td>
-                    <td className="px-3 py-3 text-center font-bold text-[#fb923c]">{totals.hot}</td>
+                    <td className="px-3 py-3 text-center font-bold text-[#22d3ee]">{totals.interested}</td>
                     <td className="px-3 py-3 text-center font-bold text-[#34d399]">{totals.converted}</td>
                     <td className="px-3 py-3 text-center font-bold text-[#f87171]">{totals.lost}</td>
                     <td className="px-3 py-3 text-center font-bold text-accent">{totalConversionRate}%</td>

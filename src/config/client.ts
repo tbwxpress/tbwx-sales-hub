@@ -34,7 +34,7 @@ export const WHATSAPP = {
   /** Days to auto-set next follow-up after sending a message */
   autoFollowupDays: 3,
   /** Status to auto-set when a message is sent to a lead */
-  autoSentStatus: 'CONTACTED' as const,
+  autoSentStatus: 'DECK_SENT' as const,
   /** Status to auto-set when a lead replies */
   autoReplyStatus: 'REPLIED' as const,
 } as const
@@ -110,14 +110,13 @@ export const LEAD_WRITE_COLUMNS: Record<string, string> = {
 export const LEAD_STATUSES = [
   'NEW',
   'DECK_SENT',
-  'CONTACTED',
   'REPLIED',
+  'CALLING',
   'CALL_DONE',
   'INTERESTED',
-  'SITE_VISIT',
   'NEGOTIATION',
-  'HOT',
   'CONVERTED',
+  'DELAYED',
   'LOST',
 ] as const
 
@@ -127,15 +126,25 @@ export const LEAD_PRIORITIES = ['HOT', 'WARM', 'COLD'] as const
 export const STATUS_COLORS: Record<string, string> = {
   NEW: 'text-blue-400',
   DECK_SENT: 'text-purple-400',
-  CONTACTED: 'text-sky-400',
   REPLIED: 'text-emerald-400',
+  CALLING: 'text-yellow-400',
   CALL_DONE: 'text-teal-400',
-  INTERESTED: 'text-amber-400',
-  SITE_VISIT: 'text-indigo-400',
+  INTERESTED: 'text-cyan-400',
   NEGOTIATION: 'text-pink-400',
-  HOT: 'text-orange-400',
   CONVERTED: 'text-green-400',
+  DELAYED: 'text-amber-400',
   LOST: 'text-red-400',
+}
+
+export const FOLLOWUP_DAYS: Record<string, number> = {
+  NEW: 1,
+  DECK_SENT: 1,
+  REPLIED: 0,
+  CALLING: 1,
+  CALL_DONE: 2,
+  INTERESTED: 2,
+  NEGOTIATION: 2,
+  DELAYED: 7,
 }
 
 export const PRIORITY_COLORS: Record<string, string> = {

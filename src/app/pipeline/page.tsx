@@ -23,14 +23,14 @@ interface Lead {
 
 const PIPELINE_STAGES = [
   'NEW',
-  'CONTACTED',
-  'REPLIED',
-  'CALL_DONE',
   'DECK_SENT',
+  'REPLIED',
+  'CALLING',
+  'CALL_DONE',
   'INTERESTED',
-  'SITE_VISIT',
   'NEGOTIATION',
   'CONVERTED',
+  'DELAYED',
   'LOST',
 ] as const
 
@@ -38,14 +38,14 @@ type Stage = typeof PIPELINE_STAGES[number]
 
 const STAGE_LABELS: Record<Stage, string> = {
   NEW: 'New',
-  CONTACTED: 'Contacted',
-  REPLIED: 'Replied',
-  CALL_DONE: 'Call Done',
   DECK_SENT: 'Deck Sent',
+  REPLIED: 'Replied',
+  CALLING: 'Calling',
+  CALL_DONE: 'Call Done',
   INTERESTED: 'Interested',
-  SITE_VISIT: 'Site Visit',
   NEGOTIATION: 'Negotiation',
   CONVERTED: 'Converted',
+  DELAYED: 'Delayed',
   LOST: 'Lost',
 }
 
@@ -331,6 +331,7 @@ export default function PipelinePage() {
               const stageleads = leadsByStage[stage]
               const isConverted = stage === 'CONVERTED'
               const isLost = stage === 'LOST'
+              const isDelayed = stage === 'DELAYED'
 
               const isDragOver = dragOverStage === stage
 
@@ -363,9 +364,11 @@ export default function PipelinePage() {
                       ? 'border-accent/60 bg-accent/5 ring-1 ring-accent/30'
                       : isConverted
                         ? 'bg-card border-success/30'
-                        : isLost
-                          ? 'bg-card/60 border-danger/20'
-                          : 'bg-card border-border'
+                        : isDelayed
+                          ? 'bg-card/60 border-amber-500/20'
+                          : isLost
+                            ? 'bg-card/60 border-danger/20'
+                            : 'bg-card border-border'
                   }`}
                 >
                   {/* Column Header */}
@@ -373,14 +376,19 @@ export default function PipelinePage() {
                     className={`sticky top-0 z-10 px-3 py-2.5 border-b rounded-t-xl flex items-center justify-between ${
                       isConverted
                         ? 'bg-card border-success/20'
-                        : isLost
-                          ? 'bg-card/60 border-danger/15'
-                          : 'bg-card border-border'
+                        : isDelayed
+                          ? 'bg-card/60 border-amber-500/15'
+                          : isLost
+                            ? 'bg-card/60 border-danger/15'
+                            : 'bg-card border-border'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       {isConverted && (
                         <span className="w-2 h-2 rounded-full bg-success" />
+                      )}
+                      {isDelayed && (
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
                       )}
                       {isLost && (
                         <span className="w-2 h-2 rounded-full bg-danger" />
@@ -389,9 +397,11 @@ export default function PipelinePage() {
                         className={`text-xs font-semibold uppercase tracking-wider ${
                           isConverted
                             ? 'text-success'
-                            : isLost
-                              ? 'text-danger/70'
-                              : 'text-muted'
+                            : isDelayed
+                              ? 'text-amber-500/70'
+                              : isLost
+                                ? 'text-danger/70'
+                                : 'text-muted'
                         }`}
                       >
                         {STAGE_LABELS[stage]}
@@ -401,9 +411,11 @@ export default function PipelinePage() {
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                         isConverted
                           ? 'bg-success/15 text-success'
-                          : isLost
-                            ? 'bg-danger/10 text-danger/60'
-                            : 'bg-elevated/60 text-dim backdrop-blur-sm border border-border/30'
+                          : isDelayed
+                            ? 'bg-amber-500/10 text-amber-500/60'
+                            : isLost
+                              ? 'bg-danger/10 text-danger/60'
+                              : 'bg-elevated/60 text-dim backdrop-blur-sm border border-border/30'
                       }`}
                     >
                       {stageleads.length}
@@ -411,7 +423,7 @@ export default function PipelinePage() {
                   </div>
 
                   {/* Cards */}
-                  <div className={`flex-1 overflow-y-auto p-2 space-y-2 ${isLost ? 'opacity-60' : ''}`}>
+                  <div className={`flex-1 overflow-y-auto p-2 space-y-2 ${isLost || isDelayed ? 'opacity-60' : ''}`}>
                     {stageleads.length === 0 ? (
                       <div className="text-center py-8 border border-dashed border-border/50 rounded-lg mx-1 my-1">
                         <svg className="w-5 h-5 mx-auto text-dim/50 mb-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>

@@ -38,16 +38,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ success: false, error: `Invalid status: ${body.lead_status}` }, { status: 400 })
     }
 
-    // Set next_followup to 3 days from now if status is being changed and not CONVERTED/LOST
-    if (body.lead_status && !['CONVERTED', 'LOST'].includes(body.lead_status) && !body.next_followup) {
-      const nextDate = new Date()
-      nextDate.setDate(nextDate.getDate() + 3)
-      body.next_followup = nextDate.toISOString().split('T')[0]
-    }
-
-    // Clear next_followup if marking as CONVERTED or LOST
-    if (body.lead_status === 'CONVERTED' || body.lead_status === 'LOST') {
-      body.next_followup = ''
+    // Status-specific follow-up intervals
+    if (body.lead_status && !body.next_followup) {
+      const FOLLOWUP_DAYS: Record<string, number> = {
+        NEW: 1, DECK_SENT: 1, REPLIED: 0, CALLING: 1,
+        CALL_DONE: 2, INTERESTED: 2, NEGOTIATION: 2, DELAYED: 7,
+      }
+      const days = FOLLOWUP_DAYS[body.lead_status]
+      if (days !== undefined) {
+        const nextDate = new Date()
+        nextDate.setDate(nextDate.getDate() + days)
+        body.next_followup = nextDate.toISOString().split('T')[0]
+      } else if (body.lead_status === 'CONVERTED' || body.lead_status === 'LOST') {
+        body.next_followup = ''
+      }
     }
 
     await updateLead(rowNum, body)

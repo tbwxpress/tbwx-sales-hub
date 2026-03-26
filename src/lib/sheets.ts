@@ -468,31 +468,32 @@ export async function deleteQuickReply(qrId: string): Promise<void> {
 export async function getLeadStats(filterAgent?: string): Promise<{
   total: number
   new: number
-  contacted: number
+  deck_sent: number
   replied: number
+  calling: number
+  call_done: number
   interested: number
-  hot: number
   converted: number
+  delayed: number
   lost: number
   unassigned: number
   overdue_followups: number
 }> {
   let leads = await getLeads()
-
-  // If agent name provided, only count their assigned leads (not unassigned)
   if (filterAgent) {
     leads = leads.filter(l => l.assigned_to === filterAgent)
   }
-
   const now = new Date()
   return {
     total: leads.length,
-    new: leads.filter(l => l.lead_status === 'NEW' || l.lead_status === 'DECK_SENT').length,
-    contacted: leads.filter(l => l.lead_status === 'CONTACTED' || (l.lead_status as string) === 'Contacted').length,
+    new: leads.filter(l => l.lead_status === 'NEW').length,
+    deck_sent: leads.filter(l => l.lead_status === 'DECK_SENT').length,
     replied: leads.filter(l => l.lead_status === 'REPLIED').length,
+    calling: leads.filter(l => l.lead_status === 'CALLING').length,
+    call_done: leads.filter(l => l.lead_status === 'CALL_DONE').length,
     interested: leads.filter(l => l.lead_status === 'INTERESTED').length,
-    hot: leads.filter(l => l.lead_status === 'HOT' || l.lead_priority === 'HOT').length,
     converted: leads.filter(l => l.lead_status === 'CONVERTED').length,
+    delayed: leads.filter(l => l.lead_status === 'DELAYED').length,
     lost: leads.filter(l => l.lead_status === 'LOST').length,
     unassigned: leads.filter(l => !l.assigned_to).length,
     overdue_followups: leads.filter(l => {

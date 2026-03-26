@@ -140,7 +140,7 @@ async function markContacted(lead: RawLead, waMessageId: string) {
     requestBody: {
       valueInputOption: 'RAW',
       data: [
-        { range: `${tabName}!V${lead.row_number}`, values: [['CONTACTED']] },
+        { range: `${tabName}!V${lead.row_number}`, values: [['DECK_SENT']] },
         { range: `${tabName}!Y${lead.row_number}`, values: [[waMessageId]] },
         { range: `${tabName}!Z${lead.row_number}`, values: [[lead.lead_priority]] },
       ],
@@ -193,8 +193,8 @@ export async function POST(request: NextRequest) {
     const allLeads = [...newLeads, ...oldLeads]
 
     // 3. Filter: only NEW leads (anything beyond NEW has already been handled)
-    const SKIP_STATUSES = ['contacted', 'replied', 'call_done', 'deck_sent', 'interested',
-      'site_visit', 'negotiation', 'hot', 'converted', 'lost']
+    const SKIP_STATUSES = ['deck_sent', 'replied', 'calling', 'call_done', 'interested',
+      'negotiation', 'converted', 'delayed', 'lost']
     const uncontacted = allLeads.filter(lead => {
       const status = lead.lead_status.toLowerCase()
       if (SKIP_STATUSES.includes(status)) return false

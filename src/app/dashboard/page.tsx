@@ -26,11 +26,13 @@ interface Lead {
 interface Stats {
   total: number
   new: number
-  contacted: number
+  deck_sent: number
   replied: number
+  calling: number
+  call_done: number
   interested: number
-  hot: number
   converted: number
+  delayed: number
   lost: number
   unassigned: number
   overdue_followups: number
@@ -62,14 +64,13 @@ interface Task {
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   NEW:          { bg: '#3b82f620', text: '#60a5fa', border: '#3b82f630' },
   DECK_SENT:    { bg: '#8b5cf620', text: '#a78bfa', border: '#8b5cf630' },
-  CONTACTED:    { bg: '#f5c51820', text: '#f5c518', border: '#f5c51830' },
   REPLIED:      { bg: '#22c55e20', text: '#4ade80', border: '#22c55e30' },
+  CALLING:      { bg: '#eab30820', text: '#facc15', border: '#eab30830' },
   CALL_DONE:    { bg: '#14b8a620', text: '#2dd4bf', border: '#14b8a630' },
   INTERESTED:   { bg: '#06b6d420', text: '#22d3ee', border: '#06b6d430' },
-  SITE_VISIT:   { bg: '#6366f120', text: '#818cf8', border: '#6366f130' },
   NEGOTIATION:  { bg: '#ec489920', text: '#f472b6', border: '#ec489930' },
-  HOT:          { bg: '#f9731620', text: '#fb923c', border: '#f9731630' },
   CONVERTED:    { bg: '#10b98120', text: '#34d399', border: '#10b98130' },
+  DELAYED:      { bg: '#f59e0b20', text: '#fbbf24', border: '#f59e0b30' },
   LOST:         { bg: '#ef444420', text: '#f87171', border: '#ef444430' },
 }
 
@@ -79,7 +80,7 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string
   COLD: { bg: 'rgba(59,130,246,0.15)', text: '#60a5fa', border: 'rgba(59,130,246,0.3)' },
 }
 
-const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'CONTACTED', 'REPLIED', 'CALL_DONE', 'INTERESTED', 'SITE_VISIT', 'NEGOTIATION', 'HOT', 'CONVERTED', 'LOST']
+const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'REPLIED', 'CALLING', 'CALL_DONE', 'INTERESTED', 'NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST']
 const PRIORITY_OPTIONS = ['HOT', 'WARM', 'COLD']
 
 
@@ -131,7 +132,7 @@ function responseTimeBadge(lead: Lead): { label: string; colorClass: string } | 
     return { label: `${days}d`, colorClass: 'bg-red-500/15 text-red-400 border-red-500/30' }
   }
   // For leads beyond NEW status, show how long since creation (proxy for response time)
-  if (['CONTACTED', 'DECK_SENT', 'REPLIED', 'INTERESTED', 'HOT', 'CONVERTED', 'LOST'].includes(lead.lead_status)) {
+  if (['DECK_SENT', 'REPLIED', 'CALLING', 'CALL_DONE', 'INTERESTED', 'NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST'].includes(lead.lead_status)) {
     if (hours < 1) return { label: '<1h', colorClass: 'bg-green-500/15 text-green-400 border-green-500/30' }
     if (hours < 4) return { label: `${Math.floor(hours)}h`, colorClass: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' }
     if (hours < 24) return { label: `${Math.floor(hours)}h`, colorClass: 'bg-orange-500/15 text-orange-400 border-orange-500/30' }
@@ -466,7 +467,7 @@ export default function DashboardPage() {
   // ─── Stale Leads ─────────────────────────────────────────────────────────
 
   const staleLeads = leads.filter(l => {
-    if (['CONVERTED', 'LOST', 'REPLIED', 'HOT'].includes(l.lead_status)) return false
+    if (['CONVERTED', 'LOST', 'DELAYED'].includes(l.lead_status)) return false
     if (!l.created_time) return false
     const daysSince = hoursSinceCreation(l.created_time) / 24
     return daysSince > 14
@@ -478,11 +479,12 @@ export default function DashboardPage() {
   const STAT_FILTER_MAP: Record<string, string> = {
     'Total': '__ALL__',
     'New': 'NEW',
-    'Contacted': 'CONTACTED',
+    'Deck Sent': 'DECK_SENT',
     'Replied': 'REPLIED',
+    'Calling': 'CALLING',
     'Interested': 'INTERESTED',
-    'Hot': 'HOT',
     'Converted': 'CONVERTED',
+    'Delayed': 'DELAYED',
     'Lost': 'LOST',
     'Unassigned': '__UNASSIGNED__',
     'Overdue': '__OVERDUE__',
@@ -507,11 +509,12 @@ export default function DashboardPage() {
     ? [
         { label: 'Total', value: stats.total, color: 'text-text', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
         { label: 'New', value: stats.new, color: 'text-blue-400', icon: 'M12 6v6m0 0v6m0-6h6m-6 0H6' },
-        { label: 'Contacted', value: stats.contacted, color: 'text-yellow-400', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
+        { label: 'Deck Sent', value: stats.deck_sent, color: 'text-purple-400', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
         { label: 'Replied', value: stats.replied, color: 'text-green-400', icon: 'M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6' },
+        { label: 'Calling', value: stats.calling, color: 'text-yellow-400', icon: 'M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z' },
         { label: 'Interested', value: stats.interested, color: 'text-cyan-400', icon: 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z' },
-        { label: 'Hot', value: stats.hot, color: 'text-orange-400', icon: 'M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z' },
         { label: 'Converted', value: stats.converted, color: 'text-emerald-400', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+        { label: 'Delayed', value: stats.delayed, color: 'text-amber-400', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
         { label: 'Lost', value: stats.lost, color: 'text-red-400', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z' },
         { label: 'Unassigned', value: stats.unassigned, color: 'text-accent', icon: 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636' },
         { label: 'Overdue', value: stats.overdue_followups, color: 'text-red-400', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
