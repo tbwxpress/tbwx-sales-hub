@@ -3,7 +3,7 @@ import { google } from 'googleapis'
 import { sendTemplate } from '@/lib/whatsapp'
 import { sendFranchiseEmail } from '@/lib/email'
 import { logSentMessage, updateLead } from '@/lib/sheets'
-import { upsertContact, insertMessage } from '@/lib/db'
+import { upsertContact, insertMessage, getMessages } from '@/lib/db'
 
 /**
  * POST /api/cron/auto-send
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
     // 3. Filter: not contacted, has phone, not test
     const uncontacted = allLeads.filter(lead => {
       const status = lead.lead_status.toLowerCase()
-      if (status === 'contacted' || status === 'converted' || status === 'lost') return false
+      if (status === 'contacted' || status === 'converted' || status === 'lost' || status === 'replied') return false
       if (!lead.phone_formatted || lead.phone_formatted.length < 10) return false
       if (lead.full_name.toLowerCase().includes('test lead')) return false
       return true
@@ -248,6 +248,25 @@ export async function POST(request: NextRequest) {
       lead.lead_priority = calcPriority(lead.experience, lead.timeline)
 
       try {
+        // Double-check: skip if we already sent to this phone (prevents duplicates
+        // when Google Sheet update is slow and cron runs again before status propagates)
+        const existingMsgs = await getMessages(lead.phone_formatted, 10, 0)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const alreadySent = (existingMsgs || []).some(
+          (m: any) => m.direction === 'sent' && m.template_used === TEMPLATE_NAME
+        )
+        if (alreadySent) {
+          // Also mark sheet if it wasn't updated
+          try { await markContacted(lead, 'already-sent') } catch {}
+          results.push({
+            phone: lead.phone_formatted,
+            name: lead.full_name,
+            status: 'skipped',
+            error: 'Already sent (DB check)',
+          })
+          continue
+        }
+
         // Send WhatsApp template to lead
         const refId = `TBWX-${lead.row_number}`
         const waResult = await sendTemplate(
