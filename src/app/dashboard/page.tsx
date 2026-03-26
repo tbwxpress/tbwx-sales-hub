@@ -251,14 +251,29 @@ export default function DashboardPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      if (statusFilter) params.set('status', statusFilter)
+      // Handle special filters locally, pass regular ones to API
+      const isSpecialFilter = statusFilter.startsWith('__')
+      if (statusFilter && !isSpecialFilter) params.set('status', statusFilter)
       if (assignedFilter) params.set('assigned', assignedFilter)
 
       const qs = params.toString()
       const res = await fetch(`/api/leads${qs ? `?${qs}` : ''}`)
       const data = await res.json()
       if (data.success) {
-        setLeads(data.data)
+        let filtered = data.data
+        // Apply special client-side filters
+        if (statusFilter === '__UNASSIGNED__') {
+          filtered = filtered.filter((l: Lead) => !l.assigned_to)
+        } else if (statusFilter === '__OVERDUE__') {
+          const now = new Date()
+          filtered = filtered.filter((l: Lead) =>
+            l.next_followup &&
+            l.lead_status !== 'CONVERTED' &&
+            l.lead_status !== 'LOST' &&
+            new Date(l.next_followup) < now
+          )
+        }
+        setLeads(filtered)
       } else {
         setError(data.error || 'Failed to load leads')
       }
@@ -461,19 +476,31 @@ export default function DashboardPage() {
 
   // Map stat card labels to status filter values
   const STAT_FILTER_MAP: Record<string, string> = {
+    'Total': '__ALL__',
     'New': 'NEW',
+    'Contacted': 'CONTACTED',
     'Replied': 'REPLIED',
+    'Interested': 'INTERESTED',
     'Hot': 'HOT',
     'Converted': 'CONVERTED',
     'Lost': 'LOST',
+    'Unassigned': '__UNASSIGNED__',
+    'Overdue': '__OVERDUE__',
   }
 
   function handleStatClick(label: string) {
     const filterValue = STAT_FILTER_MAP[label]
-    if (filterValue) {
-      // Toggle: if already filtering by this, clear it
-      setStatusFilter(prev => prev === filterValue ? '' : filterValue)
+    if (!filterValue) return
+
+    if (filterValue === '__ALL__') {
+      // Clear all filters
+      setStatusFilter('')
+      setAssignedFilter('')
+      return
     }
+
+    // Toggle: if already filtering by this, clear it
+    setStatusFilter(prev => prev === filterValue ? '' : filterValue)
   }
 
   const statCards = stats
@@ -640,17 +667,19 @@ export default function DashboardPage() {
         <p className="text-[10px] font-semibold uppercase tracking-wider text-dim mb-2">Pipeline Overview</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-6 stagger-children">
           {statCards.map(card => {
-            const isClickable = card.label in STAT_FILTER_MAP
-            const isActive = statusFilter === STAT_FILTER_MAP[card.label]
+            const filterValue = STAT_FILTER_MAP[card.label]
+            const isActive = filterValue === '__ALL__'
+              ? !statusFilter && !assignedFilter
+              : statusFilter === filterValue
             return (
               <button
                 key={card.label}
-                onClick={() => isClickable && handleStatClick(card.label)}
-                className={`stat-card card-hover bg-card border rounded-lg px-4 py-3 transition-colors group text-left ${
+                onClick={() => handleStatClick(card.label)}
+                className={`stat-card card-hover bg-card border rounded-lg px-4 py-3 transition-colors group text-left cursor-pointer ${
                   isActive
                     ? 'border-accent/50 ring-1 ring-accent/20'
                     : 'border-border hover:border-border-light'
-                } ${isClickable ? 'cursor-pointer' : 'cursor-default'}`}
+                }`}
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <p className="text-[10px] text-dim uppercase tracking-wider font-medium">{card.label}</p>
