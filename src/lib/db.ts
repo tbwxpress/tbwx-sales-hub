@@ -109,10 +109,31 @@ async function ensureInit(): Promise<Client> {
         updated_at TEXT DEFAULT (datetime('now'))
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+      CREATE TABLE IF NOT EXISTS drip_state (
+        phone TEXT PRIMARY KEY,
+        sequence TEXT NOT NULL DEFAULT '',
+        current_step INTEGER DEFAULT 0,
+        last_sent_at TEXT,
+        enabled INTEGER DEFAULT 1,
+        paused_at TEXT,
+        pause_reason TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_drip_phone ON drip_state(phone);
     `)
     _initialized = true
   }
   return db
+}
+
+// --- Phone normalization ---
+// Always store phones as "91XXXXXXXXXX" (12 digits, India country code + 10 digit number)
+export function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '')
+  const last10 = digits.slice(-10)
+  if (last10.length < 10) return digits // can't normalize, return as-is
+  return `91${last10}`
 }
 
 // --- Contact operations ---
@@ -125,6 +146,7 @@ export async function upsertContact(phone: string, data: {
   city?: string
 }) {
   const db = await ensureInit()
+  phone = normalizePhone(phone)
   const existing = await db.execute({ sql: 'SELECT * FROM contacts WHERE phone = ?', args: [phone] })
 
   if (existing.rows.length > 0) {
@@ -177,8 +199,49 @@ export async function getContacts() {
   return result.rows
 }
 
+export async function getContactsForAgent(assignedPhones: string[]) {
+  const db = await ensureInit()
+  if (assignedPhones.length === 0) return []
+
+  // Match contacts by last 10 digits of phone
+  const conditions = assignedPhones.map(() => 'SUBSTR(c.phone, -10) = ?').join(' OR ')
+  const phones10 = assignedPhones.map(p => p.replace(/\D/g, '').slice(-10))
+
+  const result = await db.execute({
+    sql: `
+      SELECT
+        c.*,
+        m.text AS last_message,
+        m.direction AS last_direction,
+        m.timestamp AS last_message_at,
+        (SELECT COUNT(*) FROM messages WHERE phone = c.phone AND read = 0 AND direction = 'received') AS unread_count
+      FROM contacts c
+      LEFT JOIN messages m ON m.phone = c.phone AND m.timestamp = (
+        SELECT MAX(timestamp) FROM messages WHERE phone = c.phone
+      )
+      WHERE ${conditions}
+      ORDER BY m.timestamp DESC NULLS LAST
+    `,
+    args: phones10,
+  })
+  return result.rows
+}
+
+export async function getUnreadCountForAgent(assignedPhones: string[]) {
+  const db = await ensureInit()
+  if (assignedPhones.length === 0) return 0
+  const conditions = assignedPhones.map(() => 'SUBSTR(phone, -10) = ?').join(' OR ')
+  const phones10 = assignedPhones.map(p => p.replace(/\D/g, '').slice(-10))
+  const result = await db.execute({
+    sql: `SELECT COUNT(*) as count FROM messages WHERE read = 0 AND direction = 'received' AND (${conditions})`,
+    args: phones10,
+  })
+  return Number(result.rows[0]?.count ?? 0)
+}
+
 export async function getContact(phone: string) {
   const db = await ensureInit()
+  phone = normalizePhone(phone)
   const result = await db.execute({ sql: 'SELECT * FROM contacts WHERE phone = ?', args: [phone] })
   return result.rows[0] || null
 }
@@ -197,6 +260,7 @@ export async function insertMessage(data: {
   read?: boolean
 }) {
   const db = await ensureInit()
+  data.phone = normalizePhone(data.phone)
 
   // Check for duplicate wa_message_id
   if (data.wa_message_id) {
@@ -228,18 +292,21 @@ export async function insertMessage(data: {
 
 export async function getMessages(phone: string, limit = 100, offset = 0) {
   const db = await ensureInit()
+  const norm = normalizePhone(phone)
+  // Query both normalized and original to catch old data
   const result = await db.execute({
-    sql: `SELECT * FROM messages WHERE phone = ? ORDER BY timestamp ASC LIMIT ? OFFSET ?`,
-    args: [phone, limit, offset],
+    sql: `SELECT * FROM messages WHERE phone = ? OR phone = ? ORDER BY timestamp ASC LIMIT ? OFFSET ?`,
+    args: [norm, phone, limit, offset],
   })
   return result.rows
 }
 
 export async function markMessagesRead(phone: string) {
   const db = await ensureInit()
+  const norm = normalizePhone(phone)
   await db.execute({
-    sql: "UPDATE messages SET read = 1 WHERE phone = ? AND read = 0 AND direction = 'received'",
-    args: [phone],
+    sql: "UPDATE messages SET read = 1 WHERE (phone = ? OR phone = ?) AND read = 0 AND direction = 'received'",
+    args: [norm, phone],
   })
 }
 
@@ -387,6 +454,7 @@ export async function insertCallLog(data: {
   logged_by?: string
 }) {
   const db = await ensureInit()
+  data.phone = normalizePhone(data.phone)
   const result = await db.execute({
     sql: `INSERT INTO call_logs (phone, duration, outcome, notes, logged_by) VALUES (?, ?, ?, ?, ?)`,
     args: [data.phone, data.duration || '', data.outcome || '', data.notes || '', data.logged_by || ''],
@@ -396,9 +464,10 @@ export async function insertCallLog(data: {
 
 export async function getCallLogs(phone: string) {
   const db = await ensureInit()
+  const norm = normalizePhone(phone)
   const result = await db.execute({
-    sql: 'SELECT * FROM call_logs WHERE phone = ? ORDER BY created_at DESC',
-    args: [phone],
+    sql: 'SELECT * FROM call_logs WHERE phone = ? OR phone = ? ORDER BY created_at DESC',
+    args: [norm, phone],
   })
   return result.rows
 }
@@ -407,6 +476,7 @@ export async function getCallLogs(phone: string) {
 
 export async function insertNote(data: { phone: string; note: string; created_by?: string }) {
   const db = await ensureInit()
+  data.phone = normalizePhone(data.phone)
   const result = await db.execute({
     sql: 'INSERT INTO lead_notes (phone, note, created_by) VALUES (?, ?, ?)',
     args: [data.phone, data.note, data.created_by || ''],
@@ -416,9 +486,10 @@ export async function insertNote(data: { phone: string; note: string; created_by
 
 export async function getNotes(phone: string) {
   const db = await ensureInit()
+  const norm = normalizePhone(phone)
   const result = await db.execute({
-    sql: 'SELECT * FROM lead_notes WHERE phone = ? ORDER BY created_at DESC',
-    args: [phone],
+    sql: 'SELECT * FROM lead_notes WHERE phone = ? OR phone = ? ORDER BY created_at DESC',
+    args: [norm, phone],
   })
   return result.rows
 }
@@ -466,4 +537,145 @@ export async function completeTask(id: number) {
     sql: "UPDATE tasks SET completed = 1, completed_at = datetime('now') WHERE id = ?",
     args: [id],
   })
+}
+
+// --- Phone dedup migration ---
+// Merges duplicate contacts (same last 10 digits) into one normalized entry.
+// Moves all messages, call_logs, lead_notes to the normalized phone.
+export async function migratePhoneNumbers(): Promise<{ merged: number; messages_moved: number; contacts_deleted: number }> {
+  const db = await ensureInit()
+  let merged = 0, messagesMoved = 0, contactsDeleted = 0
+
+  // Find all contacts grouped by last 10 digits
+  const contacts = await db.execute('SELECT phone, name, is_lead, lead_row, lead_id, city, avatar_color, created_at FROM contacts ORDER BY created_at ASC')
+  const groups: Record<string, typeof contacts.rows> = {}
+  for (const row of contacts.rows) {
+    const phone = String(row.phone || '')
+    const key = phone.replace(/\D/g, '').slice(-10)
+    if (key.length < 10) continue
+    if (!groups[key]) groups[key] = []
+    groups[key].push(row)
+  }
+
+  for (const [key, rows] of Object.entries(groups)) {
+    if (rows.length <= 1) continue // no duplicates
+
+    const canonPhone = `91${key}`
+    merged++
+
+    // Pick the best contact data (prefer one with name, is_lead, etc.)
+    const best = rows.find(r => r.name && String(r.name).length > 0) || rows[0]
+
+    // Ensure canonical contact exists
+    const existing = await db.execute({ sql: 'SELECT phone FROM contacts WHERE phone = ?', args: [canonPhone] })
+    if (existing.rows.length === 0) {
+      await db.execute({
+        sql: 'INSERT INTO contacts (phone, name, is_lead, lead_row, lead_id, city, avatar_color, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [canonPhone, best.name || '', best.is_lead ?? 0, best.lead_row ?? null, best.lead_id || '', best.city || '', best.avatar_color || '#3b82f6', best.created_at || new Date().toISOString()],
+      })
+    }
+
+    // Move all messages, call_logs, lead_notes from duplicate phones to canonical
+    for (const row of rows) {
+      const oldPhone = String(row.phone || '')
+      if (oldPhone === canonPhone) continue
+
+      const moved = await db.execute({ sql: 'UPDATE messages SET phone = ? WHERE phone = ?', args: [canonPhone, oldPhone] })
+      messagesMoved += Number(moved.rowsAffected || 0)
+      await db.execute({ sql: 'UPDATE call_logs SET phone = ? WHERE phone = ?', args: [canonPhone, oldPhone] })
+      await db.execute({ sql: 'UPDATE lead_notes SET phone = ? WHERE phone = ?', args: [canonPhone, oldPhone] })
+      await db.execute({ sql: 'UPDATE tasks SET phone = ? WHERE phone = ?', args: [canonPhone, oldPhone] })
+      await db.execute({ sql: 'DELETE FROM contacts WHERE phone = ?', args: [oldPhone] })
+      contactsDeleted++
+    }
+  }
+
+  return { merged, messages_moved: messagesMoved, contacts_deleted: contactsDeleted }
+}
+
+// --- Drip sequence operations ---
+
+export async function getDripState(phone: string) {
+  const db = await ensureInit()
+  const result = await db.execute({ sql: 'SELECT * FROM drip_state WHERE phone = ?', args: [phone] })
+  return result.rows[0] || null
+}
+
+export async function upsertDripState(phone: string, data: {
+  sequence?: string
+  current_step?: number
+  last_sent_at?: string | null
+  enabled?: boolean
+  paused_at?: string | null
+  pause_reason?: string | null
+}) {
+  const db = await ensureInit()
+  const existing = await db.execute({ sql: 'SELECT * FROM drip_state WHERE phone = ?', args: [phone] })
+
+  if (existing.rows.length > 0) {
+    const updates: string[] = []
+    const values: (string | number | null)[] = []
+    if (data.sequence !== undefined) { updates.push('sequence = ?'); values.push(data.sequence) }
+    if (data.current_step !== undefined) { updates.push('current_step = ?'); values.push(data.current_step) }
+    if (data.last_sent_at !== undefined) { updates.push('last_sent_at = ?'); values.push(data.last_sent_at) }
+    if (data.enabled !== undefined) { updates.push('enabled = ?'); values.push(data.enabled ? 1 : 0) }
+    if (data.paused_at !== undefined) { updates.push('paused_at = ?'); values.push(data.paused_at) }
+    if (data.pause_reason !== undefined) { updates.push('pause_reason = ?'); values.push(data.pause_reason) }
+    if (updates.length > 0) {
+      values.push(phone)
+      await db.execute({ sql: `UPDATE drip_state SET ${updates.join(', ')} WHERE phone = ?`, args: values })
+    }
+  } else {
+    await db.execute({
+      sql: `INSERT INTO drip_state (phone, sequence, current_step, last_sent_at, enabled, paused_at, pause_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        phone,
+        data.sequence || '',
+        data.current_step ?? 0,
+        data.last_sent_at || null,
+        data.enabled !== undefined ? (data.enabled ? 1 : 0) : 1,
+        data.paused_at || null,
+        data.pause_reason || null,
+      ],
+    })
+  }
+}
+
+export async function getDripLeads(): Promise<any[]> {
+  const db = await ensureInit()
+  const result = await db.execute(`
+    SELECT * FROM drip_state WHERE enabled = 1 AND paused_at IS NULL
+  `)
+  return result.rows as any[]
+}
+
+export async function toggleDrip(phone: string, enabled: boolean) {
+  const db = await ensureInit()
+  const existing = await db.execute({ sql: 'SELECT * FROM drip_state WHERE phone = ?', args: [phone] })
+  if (existing.rows.length > 0) {
+    await db.execute({ sql: 'UPDATE drip_state SET enabled = ? WHERE phone = ?', args: [enabled ? 1 : 0, phone] })
+  } else {
+    await db.execute({
+      sql: 'INSERT INTO drip_state (phone, enabled) VALUES (?, ?)',
+      args: [phone, enabled ? 1 : 0],
+    })
+  }
+}
+
+export async function getBulkDripState(): Promise<Record<string, { enabled: boolean; sequence: string; current_step: number; paused_at: string | null }>> {
+  const db = await ensureInit()
+  const result = await db.execute('SELECT * FROM drip_state')
+  const map: Record<string, any> = {}
+  for (const row of result.rows) {
+    const phone = String(row.phone || '')
+    const key = phone.slice(-10)
+    map[key] = {
+      enabled: row.enabled === 1,
+      sequence: String(row.sequence || ''),
+      current_step: Number(row.current_step || 0),
+      paused_at: row.paused_at ? String(row.paused_at) : null,
+    }
+  }
+  return map
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, getLeadStats, createLead } from '@/lib/sheets'
+import { computeLeadScore } from '@/lib/scoring'
 
 export async function GET(req: NextRequest) {
   try {
@@ -43,10 +44,26 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // Sort: newest first
-    leads.sort((a, b) => new Date(b.created_time).getTime() - new Date(a.created_time).getTime())
+    // Attach computed scores
+    const scoredLeads = leads.map(l => ({ ...l, lead_score: computeLeadScore(l) }))
 
-    return NextResponse.json({ success: true, data: leads })
+    // Sort based on query parameter (default: score descending)
+    const sort = url.searchParams.get('sort') || 'score'
+    if (sort === 'newest') {
+      scoredLeads.sort((a, b) => new Date(b.created_time).getTime() - new Date(a.created_time).getTime())
+    } else if (sort === 'followup') {
+      scoredLeads.sort((a, b) => {
+        if (!a.next_followup && !b.next_followup) return 0
+        if (!a.next_followup) return 1
+        if (!b.next_followup) return -1
+        return new Date(a.next_followup).getTime() - new Date(b.next_followup).getTime()
+      })
+    } else {
+      // Default: score descending
+      scoredLeads.sort((a, b) => b.lead_score - a.lead_score)
+    }
+
+    return NextResponse.json({ success: true, data: scoredLeads })
   } catch (err) {
     return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed to fetch leads' }, { status: 500 })
   }

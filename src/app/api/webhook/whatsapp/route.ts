@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
-import { upsertContact, insertMessage, updateMessageStatus, getMessages, getContact } from '@/lib/db'
+import { upsertContact, insertMessage, updateMessageStatus, getMessages, getContact, getDripState, upsertDripState } from '@/lib/db'
 import { sendTemplate } from '@/lib/whatsapp'
 import { logSentMessage, getLeadByRow } from '@/lib/sheets'
 
@@ -105,6 +105,20 @@ export async function POST(req: NextRequest) {
             status: 'received',
             read: false,
           })
+
+          // Auto-pause drip sequence when lead replies
+          try {
+            const dripState = await getDripState(phone)
+            if (dripState && dripState.enabled === 1 && !dripState.paused_at) {
+              await upsertDripState(phone, {
+                paused_at: new Date().toISOString(),
+                pause_reason: 'Lead replied',
+              })
+              console.log(`[Webhook] Paused drip for ${phone} — lead replied`)
+            }
+          } catch {
+            // Non-critical — don't break webhook if drip pause fails
+          }
 
           // Auto-update lead status to REPLIED + schedule follow-up
           try {

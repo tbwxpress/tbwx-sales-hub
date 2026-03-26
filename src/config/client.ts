@@ -152,3 +152,28 @@ export const PRIORITY_COLORS: Record<string, string> = {
   WARM: 'text-amber-400 bg-amber-400/10',
   COLD: 'text-blue-400 bg-blue-400/10',
 }
+
+// ─── Drip Sequences ──────────────────────────────────────────────────
+// Automated follow-up message sequences per pipeline stage.
+// Each step defines days since sequence started and the template to send.
+// Templates must be approved WhatsApp Utility templates.
+export const DRIP_SEQUENCES: Record<string, { steps: { day: number; template: string; description: string }[] }> = {
+  DECK_SENT: {
+    steps: [
+      { day: 1, template: 'drip_deck_followup_1', description: 'Did you review the franchise deck?' },
+      { day: 3, template: 'drip_deck_followup_2', description: 'Partner earnings and ROI info' },
+      { day: 5, template: 'drip_deck_followup_3', description: 'Shall we schedule a call?' },
+    ],
+  },
+  CALL_DONE: {
+    steps: [
+      { day: 2, template: 'drip_postcall_followup_1', description: 'Post-call follow-up' },
+      { day: 4, template: 'drip_postcall_followup_2', description: 'Limited slots in your city' },
+    ],
+  },
+}
+
+// Statuses that should pause/stop drip sequences
+export const DRIP_PAUSE_STATUSES: string[] = ['INTERESTED', 'NEGOTIATION', 'CONVERTED', 'LOST']
+// Statuses that should delay drip (temporary pause)
+export const DRIP_DELAY_STATUSES: string[] = ['DELAYED']
