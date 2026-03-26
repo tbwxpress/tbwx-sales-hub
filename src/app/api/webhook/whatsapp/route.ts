@@ -106,12 +106,17 @@ export async function POST(req: NextRequest) {
             read: false,
           })
 
-          // Auto-update lead status to REPLIED if they are a lead
+          // Auto-update lead status to REPLIED + schedule follow-up
           try {
             const { updateLead } = await import('@/lib/sheets')
             const contact = await getContact(phone)
             if (contact && contact.is_lead && contact.lead_row) {
-              await updateLead(Number(contact.lead_row), { lead_status: 'REPLIED' })
+              const followup = new Date()
+              followup.setDate(followup.getDate() + 1) // Follow up within 24h of reply
+              await updateLead(Number(contact.lead_row), {
+                lead_status: 'REPLIED',
+                next_followup: followup.toISOString().split('T')[0],
+              })
             }
           } catch {
             // Non-critical — don't break webhook if sheet update fails

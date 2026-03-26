@@ -140,7 +140,7 @@ async function markContacted(lead: RawLead, waMessageId: string) {
     requestBody: {
       valueInputOption: 'RAW',
       data: [
-        { range: `${tabName}!V${lead.row_number}`, values: [['Contacted']] },
+        { range: `${tabName}!V${lead.row_number}`, values: [['CONTACTED']] },
         { range: `${tabName}!Y${lead.row_number}`, values: [[waMessageId]] },
         { range: `${tabName}!Z${lead.row_number}`, values: [[lead.lead_priority]] },
       ],

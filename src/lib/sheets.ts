@@ -465,24 +465,32 @@ export async function deleteQuickReply(qrId: string): Promise<void> {
 
 // --- Stats ---
 
-export async function getLeadStats(): Promise<{
+export async function getLeadStats(filterAgent?: string): Promise<{
   total: number
   new: number
   contacted: number
   replied: number
+  interested: number
   hot: number
   converted: number
   lost: number
   unassigned: number
   overdue_followups: number
 }> {
-  const leads = await getLeads()
+  let leads = await getLeads()
+
+  // If agent name provided, only count their assigned leads (not unassigned)
+  if (filterAgent) {
+    leads = leads.filter(l => l.assigned_to === filterAgent)
+  }
+
   const now = new Date()
   return {
     total: leads.length,
     new: leads.filter(l => l.lead_status === 'NEW' || l.lead_status === 'DECK_SENT').length,
-    contacted: leads.filter(l => l.lead_status === 'CONTACTED').length,
+    contacted: leads.filter(l => l.lead_status === 'CONTACTED' || l.lead_status === 'Contacted').length,
     replied: leads.filter(l => l.lead_status === 'REPLIED').length,
+    interested: leads.filter(l => l.lead_status === 'INTERESTED').length,
     hot: leads.filter(l => l.lead_status === 'HOT' || l.lead_priority === 'HOT').length,
     converted: leads.filter(l => l.lead_status === 'CONVERTED').length,
     lost: leads.filter(l => l.lead_status === 'LOST').length,

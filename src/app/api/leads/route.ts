@@ -14,15 +14,17 @@ export async function GET(req: NextRequest) {
     const statsOnly = url.searchParams.get('stats')
 
     if (statsOnly === 'true') {
-      const stats = await getLeadStats()
+      // Agents see only their own stats; admins see everything
+      const agentFilter = session!.role === 'agent' ? session!.name : undefined
+      const stats = await getLeadStats(agentFilter)
       return NextResponse.json({ success: true, data: stats })
     }
 
     let leads = await getLeads()
 
-    // Agents only see their assigned leads (unless admin)
+    // Agents only see their assigned leads (not unassigned)
     if (session!.role === 'agent') {
-      leads = leads.filter(l => l.assigned_to === session!.name || !l.assigned_to)
+      leads = leads.filter(l => l.assigned_to === session!.name)
     }
 
     if (status) {
