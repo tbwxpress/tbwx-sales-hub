@@ -70,6 +70,8 @@ export async function GET(req: NextRequest) {
     const sort = url.searchParams.get('sort') || 'score'
     if (sort === 'newest') {
       scoredLeads.sort((a, b) => new Date(b.created_time).getTime() - new Date(a.created_time).getTime())
+    } else if (sort === 'oldest') {
+      scoredLeads.sort((a, b) => new Date(a.created_time).getTime() - new Date(b.created_time).getTime())
     } else if (sort === 'followup') {
       scoredLeads.sort((a, b) => {
         if (!a.next_followup && !b.next_followup) return 0

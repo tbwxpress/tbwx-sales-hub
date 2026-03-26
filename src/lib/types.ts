@@ -41,6 +41,7 @@ export interface Lead {
   assigned_to: string
   next_followup: string
   notes: string
+  lead_score?: number
 }
 
 export interface Message {

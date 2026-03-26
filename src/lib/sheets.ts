@@ -160,6 +160,19 @@ export async function bulkUpdateField(rowNumbers: number[], field: string, value
   })
 }
 
+/**
+ * Clear all data in a lead row (soft-delete — preserves row numbers).
+ */
+export async function clearLeadRow(rowNumber: number): Promise<void> {
+  const sheets = getSheets()
+  const tab = process.env.LEADS_TAB_NAME || T.leads
+  // Clear columns A through Z for the row
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId: process.env.LEADS_SHEET_ID!,
+    range: `${tab}!A${rowNumber}:Z${rowNumber}`,
+  })
+}
+
 // --- Create Lead ---
 
 export async function createLead(data: {

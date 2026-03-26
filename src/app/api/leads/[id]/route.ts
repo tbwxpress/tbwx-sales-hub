@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
-import { getLeads, updateLead } from '@/lib/sheets'
+import { getLeads, updateLead, clearLeadRow } from '@/lib/sheets'
 import { logAssignment } from '@/lib/db'
 import { LEAD_STATUSES } from '@/config/client'
+import { computeLeadScore } from '@/lib/scoring'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -15,9 +16,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!lead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 })
     }
-    return NextResponse.json({ success: true, data: lead })
+    return NextResponse.json({ success: true, data: { ...lead, lead_score: computeLeadScore(lead) } })
   } catch (err) {
     return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await getSession()
+    const user = requireAuth(session)
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
+    const { id } = await params
+    const rowNum = parseInt(id)
+    await clearLeadRow(rowNum)
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Delete failed' }, { status: 500 })
   }
 }
 

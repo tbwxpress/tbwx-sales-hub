@@ -21,6 +21,15 @@ interface Lead {
   created_time: string
   wa_message_id: string
   next_followup: string
+  lead_score?: number
+}
+
+function scoreColor(score: number): string {
+  if (score >= 80) return '#22c55e'
+  if (score >= 60) return '#3b82f6'
+  if (score >= 40) return '#f59e0b'
+  if (score >= 20) return '#f97316'
+  return '#ef4444'
 }
 
 interface Stats {
@@ -197,6 +206,7 @@ export default function DashboardPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [assignedFilter, setAssignedFilter] = useState('')
+  const [sortBy, setSortBy] = useState('score')
 
   // Selection
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -256,6 +266,7 @@ export default function DashboardPage() {
       const isSpecialFilter = statusFilter.startsWith('__')
       if (statusFilter && !isSpecialFilter) params.set('status', statusFilter)
       if (assignedFilter) params.set('assigned', assignedFilter)
+      if (sortBy && sortBy !== 'score') params.set('sort', sortBy)
 
       const qs = params.toString()
       const res = await fetch(`/api/leads${qs ? `?${qs}` : ''}`)
@@ -281,7 +292,7 @@ export default function DashboardPage() {
     } catch {
       setError('Failed to load leads')
     }
-  }, [search, statusFilter, assignedFilter])
+  }, [search, statusFilter, assignedFilter, sortBy])
 
   const fetchAgents = useCallback(async (currentUser: SessionUser) => {
     if (currentUser.role === 'admin') {
@@ -342,7 +353,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return
     fetchLeads()
-  }, [search, statusFilter, assignedFilter, fetchLeads, user])
+  }, [search, statusFilter, assignedFilter, sortBy, fetchLeads, user])
 
   // ─── Handlers ────────────────────────────────────────────────────────────
 
@@ -350,6 +361,7 @@ export default function DashboardPage() {
     setSearch('')
     setStatusFilter('')
     setAssignedFilter('')
+    setSortBy('score')
   }
 
   function toggleSelect(rowNum: number) {
@@ -792,8 +804,20 @@ export default function DashboardPage() {
             ))}
           </select>
 
+          {/* Sort */}
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value)}
+            className="bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+          >
+            <option value="score">Sort: Lead Score</option>
+            <option value="newest">Sort: Newest First</option>
+            <option value="oldest">Sort: Oldest First</option>
+            <option value="followup">Sort: Follow-up Date</option>
+          </select>
+
           {/* Clear Filters */}
-          {(search || statusFilter || assignedFilter) && (
+          {(search || statusFilter || assignedFilter || sortBy !== 'score') && (
             <button
               onClick={clearFilters}
               className="text-sm text-dim hover:text-text transition-colors"
@@ -825,6 +849,7 @@ export default function DashboardPage() {
                     </th>
                   )}
                   <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider w-10">#</th>
+                  <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider w-14">Score</th>
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Name</th>
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Phone</th>
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">City</th>
@@ -842,7 +867,7 @@ export default function DashboardPage() {
                 {leads.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={user?.role === 'admin' || user?.can_assign ? 14 : 13}
+                      colSpan={user?.role === 'admin' || user?.can_assign ? 15 : 14}
                       className="px-3 py-16 text-center"
                     >
                       <div className="flex flex-col items-center gap-3">
@@ -885,6 +910,23 @@ export default function DashboardPage() {
 
                         {/* Serial Number */}
                         <td className="px-3 py-2.5 text-center text-xs text-dim font-mono">{idx + 1}</td>
+
+                        {/* Lead Score */}
+                        <td className="px-3 py-2.5 text-center">
+                          {lead.lead_score !== undefined && (
+                            <span
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-full text-[11px] font-bold"
+                              style={{
+                                backgroundColor: scoreColor(lead.lead_score) + '20',
+                                color: scoreColor(lead.lead_score),
+                                border: `1px solid ${scoreColor(lead.lead_score)}30`,
+                              }}
+                              title={`Lead Score: ${lead.lead_score}/100`}
+                            >
+                              {lead.lead_score}
+                            </span>
+                          )}
+                        </td>
 
                         {/* Name — clickable link */}
                         <td className="px-3 py-2.5">

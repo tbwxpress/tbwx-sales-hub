@@ -48,6 +48,21 @@ function formatTime(ts: string): string {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' ' + time
 }
 
+function scoreColor(score: number): string {
+  if (score >= 80) return '#22c55e'
+  if (score >= 60) return '#3b82f6'
+  if (score >= 40) return '#f59e0b'
+  if (score >= 20) return '#f97316'
+  return '#ef4444'
+}
+function scoreLabel(score: number): string {
+  if (score >= 80) return 'Excellent'
+  if (score >= 60) return 'Good'
+  if (score >= 40) return 'Average'
+  if (score >= 20) return 'Low'
+  return 'Cold'
+}
+
 function getDeliveryIcon(status: string) {
   switch (status?.toLowerCase()) {
     case 'sent': return '\u2713'
@@ -94,6 +109,20 @@ export default function LeadDetailPage() {
   // Assignment history
   const [assignHistory, setAssignHistory] = useState<{ from_agent: string; to_agent: string; assigned_by: string; created_at: string }[]>([])
 
+  // Lead score
+  const [leadScore, setLeadScore] = useState<number | null>(null)
+
+  // Drip state
+  const [dripState, setDripState] = useState<{ enabled: number; current_step: number; sequence: string; paused_at: string | null; pause_reason: string | null } | null>(null)
+  const [togglingDrip, setTogglingDrip] = useState(false)
+
+  // Session user
+  const [sessionUser, setSessionUser] = useState<{ name: string; role: string } | null>(null)
+
+  // Delete
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
   // Auto-message verification
   const [autoMsgStatus, setAutoMsgStatus] = useState<{
     auto_message_sent: boolean
@@ -135,6 +164,7 @@ export default function LeadDetailPage() {
       if (json.success && json.data) {
         setLead(json.data)
         setNotesValue(json.data.notes || '')
+        if (json.data.lead_score !== undefined) setLeadScore(json.data.lead_score)
       } else {
         setError(json.error || 'Lead not found')
       }
@@ -204,6 +234,54 @@ export default function LeadDetailPage() {
     }
   }, [id])
 
+  // Fetch drip state
+  const fetchDripState = useCallback(async () => {
+    if (!lead?.phone) return
+    try {
+      const res = await fetch(`/api/drip?phone=${encodeURIComponent(lead.phone)}`)
+      const json = await res.json()
+      if (json.success) setDripState(json.data)
+    } catch { /* silent */ }
+  }, [lead?.phone])
+
+  // Toggle drip sequence
+  const handleToggleDrip = async () => {
+    if (!lead?.phone) return
+    setTogglingDrip(true)
+    try {
+      const res = await fetch('/api/drip', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: lead.phone, enabled: !dripState?.enabled }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        await fetchDripState()
+        setToast(dripState?.enabled ? 'Drip sequence paused' : 'Drip sequence resumed')
+      }
+    } catch { /* silent */ }
+    setTogglingDrip(false)
+  }
+
+  // Delete lead (admin only)
+  const handleDeleteLead = async () => {
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/leads/${id}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (json.success) {
+        setToast('Lead deleted')
+        setTimeout(() => router.push('/dashboard'), 500)
+      } else {
+        setToast(json.error || 'Failed to delete')
+      }
+    } catch {
+      setToast('Failed to delete lead')
+    }
+    setDeleting(false)
+    setShowDeleteConfirm(false)
+  }
+
   // Fetch auto-message verification status
   const fetchAutoMsgStatus = useCallback(async () => {
     try {
@@ -234,6 +312,18 @@ export default function LeadDetailPage() {
     }
     load()
   }, [fetchLead, fetchMessages, fetchUsers, fetchQuickReplies, fetchAutoMsgStatus, fetchAssignHistory])
+
+  // Fetch drip state when lead is loaded
+  useEffect(() => {
+    if (lead?.phone) fetchDripState()
+  }, [lead?.phone, fetchDripState])
+
+  // Fetch session user (for admin detection)
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(json => {
+      if (json.success) setSessionUser(json.data)
+    }).catch(() => {})
+  }, [])
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -447,7 +537,7 @@ export default function LeadDetailPage() {
       <div className="flex h-[calc(100vh-57px)]">
 
         {/* LEFT SIDEBAR */}
-        <div className="w-1/3 min-w-[340px] max-w-[440px] border-r border-border overflow-y-auto bg-[#1a120a]">
+        <div className="w-1/3 min-w-[340px] max-w-[440px] border-r border-border overflow-y-auto bg-bg">
           <div className="p-5 space-y-5">
 
             {/* Lead Info Card */}
@@ -462,6 +552,83 @@ export default function LeadDetailPage() {
               <InfoRow label="Experience" value={lead.experience || '---'} />
               <InfoRow label="Timeline" value={lead.timeline || '---'} />
               <InfoRow label="Platform" value={lead.platform || '---'} />
+            </div>
+
+            {/* Lead Score Card */}
+            {leadScore !== null && (
+              <div className="bg-card rounded-lg border border-border p-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xs font-semibold text-dim uppercase tracking-wide">Lead Score</h2>
+                  <span className="text-[10px] font-medium" style={{ color: scoreColor(leadScore) }}>
+                    {scoreLabel(leadScore)}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-center gap-3">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold"
+                    style={{
+                      backgroundColor: scoreColor(leadScore) + '20',
+                      color: scoreColor(leadScore),
+                      border: `2px solid ${scoreColor(leadScore)}40`,
+                    }}
+                  >
+                    {leadScore}
+                  </div>
+                  <div className="flex-1">
+                    <div className="w-full h-2 bg-elevated rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${leadScore}%`, backgroundColor: scoreColor(leadScore) }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[9px] text-dim">0</span>
+                      <span className="text-[9px] text-dim">100</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Drip Sequence Card */}
+            <div className="bg-card rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-xs font-semibold text-dim uppercase tracking-wide">Follow-up Sequence</h2>
+                <button
+                  onClick={handleToggleDrip}
+                  disabled={togglingDrip}
+                  className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${
+                    dripState?.enabled ? 'bg-success' : 'bg-elevated border border-border'
+                  } disabled:opacity-50`}
+                  title={dripState?.enabled ? 'Pause drip sequence' : 'Resume drip sequence'}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${
+                    dripState?.enabled ? 'translate-x-5' : 'translate-x-0.5'
+                  }`} />
+                </button>
+              </div>
+              {dripState ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                      dripState.enabled
+                        ? 'bg-success/15 text-success border border-success/25'
+                        : 'bg-elevated text-dim border border-border'
+                    }`}>
+                      {dripState.enabled ? 'Active' : 'Paused'}
+                    </span>
+                    <span className="text-dim">Step {dripState.current_step + 1}</span>
+                    {dripState.sequence && (
+                      <span className="text-dim">· {dripState.sequence}</span>
+                    )}
+                  </div>
+                  {dripState.pause_reason && (
+                    <p className="text-[10px] text-dim">Paused: {dripState.pause_reason}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-dim">No sequence started</p>
+              )}
             </div>
 
             {/* n8n Auto-Message Status */}
@@ -670,6 +837,44 @@ export default function LeadDetailPage() {
             >
               Back to Dashboard
             </button>
+
+            {/* Admin: Delete Lead */}
+            {sessionUser?.role === 'admin' && (
+              <div className="pt-3 border-t border-border">
+                {!showDeleteConfirm ? (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="w-full text-xs text-dim hover:text-danger transition-colors py-2"
+                  >
+                    Delete this lead
+                  </button>
+                ) : (
+                  <div className="bg-danger/10 border border-danger/20 rounded-md p-3 space-y-2">
+                    <p className="text-xs text-danger font-medium">
+                      Delete this lead permanently?
+                    </p>
+                    <p className="text-[10px] text-dim">
+                      This will clear all data for {lead.full_name} from the sheet. This cannot be undone.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleDeleteLead}
+                        disabled={deleting}
+                        className="flex-1 bg-danger/20 hover:bg-danger/30 border border-danger/30 text-danger text-xs rounded-md px-3 py-1.5 font-medium transition-colors disabled:opacity-50"
+                      >
+                        {deleting ? 'Deleting...' : 'Confirm Delete'}
+                      </button>
+                      <button
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="flex-1 bg-elevated border border-border text-muted text-xs rounded-md px-3 py-1.5 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
