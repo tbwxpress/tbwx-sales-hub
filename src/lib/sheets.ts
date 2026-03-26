@@ -488,7 +488,7 @@ export async function getLeadStats(filterAgent?: string): Promise<{
   return {
     total: leads.length,
     new: leads.filter(l => l.lead_status === 'NEW' || l.lead_status === 'DECK_SENT').length,
-    contacted: leads.filter(l => l.lead_status === 'CONTACTED' || l.lead_status === 'Contacted').length,
+    contacted: leads.filter(l => l.lead_status === 'CONTACTED' || (l.lead_status as string) === 'Contacted').length,
     replied: leads.filter(l => l.lead_status === 'REPLIED').length,
     interested: leads.filter(l => l.lead_status === 'INTERESTED').length,
     hot: leads.filter(l => l.lead_status === 'HOT' || l.lead_priority === 'HOT').length,
