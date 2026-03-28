@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
+import AgentQueue from '@/components/AgentQueue'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -545,6 +546,12 @@ export default function DashboardPage() {
         { label: 'Overdue', value: stats.overdue_followups, color: 'text-red-400', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
       ]
     : []
+
+  // ─── Role-Aware: Agents see action queue ────────────────────────────────
+
+  if (!loading && user && user.role === 'agent') {
+    return <AgentQueue user={user} />
+  }
 
   // ─── Loading State ───────────────────────────────────────────────────────
 
