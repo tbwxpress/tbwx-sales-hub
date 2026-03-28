@@ -94,31 +94,31 @@
   --color-score-poor: #ef4444;
 }
 
-/* ── Light Theme (LCD-friendly, high contrast) ────────────── */
+/* ── Light Theme (Warm Parchment) ─────────────────────────── */
 .light {
   color-scheme: light;
-  --color-bg: #f5f0e8;
+  --color-bg: #faf6f0;
   --color-card: #ffffff;
-  --color-elevated: #efe9df;
-  --color-border: #d4c9b8;
-  --color-border-light: #e2d9cb;
-  --color-text: #1a1209;
-  --color-muted: #6b5a42;
-  --color-dim: #a89274;
-  --color-accent: #b88d00;
+  --color-elevated: #f5ede0;
+  --color-border: #e8ddd0;
+  --color-border-light: #f0e6d6;
+  --color-text: #2d1f0a;
+  --color-muted: #8a7055;
+  --color-dim: #b0967a;
+  --color-accent: #b8932a;
   --color-accent-hover: #9a7600;
-  --color-accent-soft: #b88d0018;
-  --color-success: #16a34a;
-  --color-warning: #d97706;
+  --color-accent-soft: #b8932a20;
+  --color-success: #15803d;
+  --color-warning: #b45309;
   --color-danger: #dc2626;
-  --color-hot: #ea580c;
-  --color-wa-sent: #d1fae5;
-  --color-wa-received: #f5f0e8;
-  --color-wa-text: #1a1209;
-  --color-wa-meta: rgba(0,0,0,0.4);
+  --color-hot: #c2410c;
+  --color-wa-sent: #d1f0e0;
+  --color-wa-received: #faf6f0;
+  --color-wa-text: #1a0f00;
+  --color-wa-meta: rgba(0,0,0,0.45);
   --color-option-bg: #ffffff;
-  --color-option-text: #1a1209;
-  /* Status colors — darker/saturated for light bg */
+  --color-option-text: #2d1f0a;
+  /* Status colors — saturated for warm light bg */
   --color-status-new: #1d4ed8;
   --color-status-deck-sent: #6d28d9;
   --color-status-replied: #15803d;
@@ -132,9 +132,9 @@
   --color-priority-hot: #c2410c;
   --color-priority-warm: #b45309;
   --color-priority-cold: #1d4ed8;
-  --color-score-great: #16a34a;
+  --color-score-great: #15803d;
   --color-score-good: #1d4ed8;
-  --color-score-fair: #d97706;
-  --color-score-low: #ea580c;
+  --color-score-fair: #b45309;
+  --color-score-low: #c2410c;
   --color-score-poor: #dc2626;
 }
