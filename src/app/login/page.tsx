@@ -37,95 +37,149 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg px-4 relative overflow-hidden">
-      {/* Radial glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-[0.07]"
-        style={{ background: 'radial-gradient(circle, var(--color-accent) 0%, transparent 70%)' }}
-      />
+    <div className="min-h-screen flex" style={{ background: 'var(--color-bg)' }}>
 
-      {/* Subtle waffle grid */}
-      <div className="fixed inset-0 opacity-[0.02]" style={{
-        backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 48px, var(--color-accent) 48px, var(--color-accent) 49px),
-                          repeating-linear-gradient(90deg, transparent, transparent 48px, var(--color-accent) 48px, var(--color-accent) 49px)`,
-      }} />
-
-      <div className="w-full max-w-[380px] relative z-10 animate-fade-in-up">
-        {/* Logo + Brand */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={BRAND.logo}
-              alt={BRAND.name}
-              width={88}
-              height={88}
-              className="rounded-2xl shadow-2xl shadow-black/40 ring-1 ring-white/5"
-            />
+      {/* ── Left: Brand Panel (hidden on mobile) ── */}
+      <div
+        className="hidden md:flex flex-col items-center justify-center w-1/2 relative overflow-hidden"
+        style={{
+          background: 'linear-gradient(145deg, #1e1510 0%, #0f0a04 100%)',
+          borderRight: '1px solid rgba(212,175,55,0.12)',
+        }}
+      >
+        {/* Subtle waffle grid */}
+        <div
+          className="absolute inset-0 opacity-[0.025]"
+          style={{
+            backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 48px, var(--color-accent) 48px, var(--color-accent) 49px),
+                              repeating-linear-gradient(90deg, transparent, transparent 48px, var(--color-accent) 48px, var(--color-accent) 49px)`,
+          }}
+        />
+        {/* Content */}
+        <div className="relative z-10 flex flex-col items-center text-center px-12">
+          <div className="text-8xl mb-6 drop-shadow-2xl select-none" style={{ filter: 'drop-shadow(0 0 32px rgba(212,175,55,0.3))' }}>
+            🧇
           </div>
-          <h1 className="text-2xl font-bold text-gradient-gold tracking-tight">Sales Hub</h1>
-          <p className="text-muted mt-1.5 text-sm">{BRAND.short}</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="glass rounded-2xl p-7 space-y-5 shadow-2xl shadow-black/30">
-          {error && (
-            <div className="bg-danger/10 border border-danger/30 text-danger text-sm rounded-xl p-3 flex items-center gap-2 animate-scale-in">
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-              </svg>
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-muted mb-1.5 uppercase tracking-wider">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              className="w-full bg-elevated/80 border border-border rounded-xl px-4 py-3 text-text placeholder-dim focus:outline-none focus:border-accent/60 transition-all text-sm"
-              placeholder={BRAND.supportEmail || 'you@example.com'}
-            />
+          <div className="text-4xl font-extrabold tracking-tight mb-1" style={{ color: 'var(--color-accent)' }}>
+            TBWX
           </div>
-
-          <div>
-            <label className="block text-xs font-medium text-muted mb-1.5 uppercase tracking-wider">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-              className="w-full bg-elevated/80 border border-border rounded-xl px-4 py-3 text-text placeholder-dim focus:outline-none focus:border-accent/60 transition-all text-sm"
-              placeholder="Enter your password"
-            />
+          <div className="text-base font-semibold mb-6" style={{ color: 'var(--color-text)' }}>
+            Sales Hub
           </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-accent hover:bg-accent-hover text-[#1a1209] font-bold rounded-xl px-4 py-3 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm tracking-wide glow-accent-sm hover:glow-accent"
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="w-4 h-4 border-2 border-[#1a1209] border-t-transparent rounded-full animate-spin" />
-                Signing in...
-              </span>
-            ) : 'Sign In'}
-          </button>
-        </form>
-
-        <div className="text-center mt-8 space-y-2">
-          <p className="text-dim text-xs italic">{BRAND.tagline}</p>
-          <div className="flex items-center justify-center gap-1.5 text-dim">
-            <span className="text-[10px]">Powered & Built by</span>
-            <a href="https://nofluff.pro" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] font-semibold text-[#5cc8ff] hover:text-[#7dd6ff] transition-colors">
+          <div className="w-12 h-px mb-6" style={{ background: 'var(--color-accent)', opacity: 0.4 }} />
+          <div className="text-sm italic mb-12" style={{ color: 'var(--color-dim)' }}>
+            &quot;Just Waffle It.&quot;
+          </div>
+          <div className="flex items-center gap-1.5" style={{ color: 'var(--color-dim)' }}>
+            <span className="text-[10px]">Powered by</span>
+            <a
+              href="https://nofluff.pro"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] font-semibold transition-colors"
+              style={{ color: '#5cc8ff' }}
+            >
               NoFluff.Pro
             </a>
           </div>
         </div>
       </div>
+
+      {/* ── Right: Form Panel ── */}
+      <div className="flex flex-col items-center justify-center w-full md:w-1/2 px-6 relative overflow-hidden">
+        {/* Radial glow */}
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full pointer-events-none"
+          style={{ background: 'radial-gradient(circle, var(--color-accent) 0%, transparent 70%)', opacity: 0.05 }}
+        />
+
+        <div className="w-full max-w-[380px] relative z-10">
+          {/* Mobile-only logo */}
+          <div className="flex flex-col items-center mb-8 md:hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={BRAND.logo} alt={BRAND.name} width={72} height={72} className="rounded-2xl mb-4 shadow-2xl shadow-black/40" />
+            <h1 className="text-xl font-bold" style={{ color: 'var(--color-accent)' }}>Sales Hub</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--color-muted)' }}>{BRAND.short}</p>
+          </div>
+
+          {/* Welcome heading */}
+          <div className="mb-7">
+            <h2 className="text-xl font-bold" style={{ color: 'var(--color-text)' }}>Welcome back</h2>
+            <p className="text-xs mt-1" style={{ color: 'var(--color-muted)' }}>Sign in to your workspace</p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="rounded-2xl p-7 space-y-5 shadow-2xl shadow-black/30" style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}>
+            {error && (
+              <div
+                className="text-sm rounded-xl p-3 flex items-center gap-2"
+                style={{ background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-danger) 30%, transparent)', color: 'var(--color-danger)' }}
+              >
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'var(--color-muted)' }}>Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                className="w-full rounded-xl px-4 py-3 text-sm transition-all focus:outline-none"
+                style={{
+                  background: 'var(--color-elevated)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
+                placeholder={BRAND.supportEmail || 'you@example.com'}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'var(--color-muted)' }}>Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                className="w-full rounded-xl px-4 py-3 text-sm transition-all focus:outline-none"
+                style={{
+                  background: 'var(--color-elevated)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
+                placeholder="Enter your password"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full font-bold rounded-xl px-4 py-3 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm tracking-wide"
+              style={{ background: 'var(--color-accent)', color: '#1a1209' }}
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 border-2 border-[#1a1209] border-t-transparent rounded-full animate-spin" />
+                  Signing in...
+                </span>
+              ) : 'Sign In'}
+            </button>
+          </form>
+
+          {/* Mobile tagline */}
+          <div className="text-center mt-6 md:hidden">
+            <p className="text-xs italic" style={{ color: 'var(--color-dim)' }}>{BRAND.tagline}</p>
+          </div>
+        </div>
+      </div>
+
     </div>
   )
 }
