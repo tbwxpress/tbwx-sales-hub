@@ -51,7 +51,7 @@
 }
 
 /* ── Dark Theme (warm brown/gold/coffee) ──────────────────── */
-.dark {
+html.dark {
   color-scheme: dark;
   --color-bg: #1a1209;
   --color-card: #241a0e;
@@ -95,7 +95,7 @@
 }
 
 /* ── Light Theme (Warm Parchment) ─────────────────────────── */
-.light {
+html.light {
   color-scheme: light;
   --color-bg: #faf6f0;
   --color-card: #ffffff;
