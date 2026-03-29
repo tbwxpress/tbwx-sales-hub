@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         <meta name="theme-color" content={process.env.NEXT_PUBLIC_THEME_COLOR || '#1a1209'} />
         {/* Restore saved theme before paint to prevent flash */}
-        <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem('theme');if(t)document.documentElement.className=t}catch(e){}` }} />
+        <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem('theme');if(t){var cl=document.documentElement.classList;cl.remove('dark','light');cl.add(t)}}catch(e){}` }} />
       </head>
       <body className="bg-bg text-text min-h-screen antialiased transition-colors duration-200">
         <CommandPalette />

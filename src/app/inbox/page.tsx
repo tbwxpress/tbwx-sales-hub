@@ -2,6 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Navbar from '@/components/Navbar'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface Contact {
   phone: string
@@ -597,113 +604,96 @@ export default function InboxPage() {
         </div>
       )}
 
-      {/* Reminder Modal */}
-      {showReminderModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop p-4">
-          <div className="glass border border-border rounded-xl p-5 w-full max-w-sm space-y-4 animate-scale-in">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-text">Set Reminder</h3>
-              <button onClick={() => setShowReminderModal(false)} className="text-dim hover:text-text text-xs">Close</button>
-            </div>
+      {/* Reminder Modal — shadcn Dialog */}
+      <Dialog open={showReminderModal} onOpenChange={setShowReminderModal}>
+        <DialogContent className="sm:max-w-sm" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+          <DialogHeader>
+            <DialogTitle className="text-sm" style={{ color: 'var(--color-text)' }}>Set Reminder</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
             <div>
-              <label className="block text-xs font-medium text-dim mb-1">What to do</label>
-              <input
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>What to do</label>
+              <Input
                 value={reminderTitle}
                 onChange={e => setReminderTitle(e.target.value)}
                 placeholder="e.g. Call back, Send deck, Follow up..."
-                className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+                className="text-sm"
+                style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
                 autoFocus
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-dim mb-1">Date</label>
-                <input
-                  type="date"
-                  value={reminderDate}
-                  onChange={e => setReminderDate(e.target.value)}
-                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
-                />
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Date</label>
+                <Input type="date" value={reminderDate} onChange={e => setReminderDate(e.target.value)} className="text-sm" style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-dim mb-1">Time</label>
-                <input
-                  type="time"
-                  value={reminderTime}
-                  onChange={e => setReminderTime(e.target.value)}
-                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
-                />
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Time</label>
+                <Input type="time" value={reminderTime} onChange={e => setReminderTime(e.target.value)} className="text-sm" style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
               </div>
             </div>
             {activeContact && (
-              <p className="text-[10px] text-dim">For: {activeContact.name || activePhone}</p>
+              <p className="text-[10px]" style={{ color: 'var(--color-dim)' }}>For: {activeContact.name || activePhone}</p>
             )}
-            <button
+            <Button
               onClick={handleSaveReminder}
               disabled={savingReminder || !reminderTitle.trim() || !reminderDate}
-              className="w-full bg-accent hover:bg-accent-hover text-[#1a1209] text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+              className="w-full font-semibold"
+              style={{ background: 'var(--color-accent)', color: '#1a1209' }}
             >
               {savingReminder ? 'Saving...' : 'Set Reminder'}
-            </button>
+            </Button>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
-      {/* Call Log Modal */}
-      {showCallModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop p-4">
-          <div className="glass border border-border rounded-xl p-5 w-full max-w-md space-y-4 animate-scale-in">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-text">Log Call</h3>
-              <button onClick={() => setShowCallModal(false)} className="text-dim hover:text-text text-xs">Close</button>
-            </div>
+      {/* Call Log Modal — shadcn Dialog */}
+      <Dialog open={showCallModal} onOpenChange={setShowCallModal}>
+        <DialogContent className="sm:max-w-md" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+          <DialogHeader>
+            <DialogTitle className="text-sm" style={{ color: 'var(--color-text)' }}>Log Call</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-dim mb-1">Duration</label>
-                <input
-                  value={callDuration}
-                  onChange={e => setCallDuration(e.target.value)}
-                  placeholder="e.g. 5 min"
-                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
-                />
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Duration</label>
+                <Input value={callDuration} onChange={e => setCallDuration(e.target.value)} placeholder="e.g. 5 min" className="text-sm" style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-dim mb-1">Outcome</label>
-                <select
-                  value={callOutcome}
-                  onChange={e => setCallOutcome(e.target.value)}
-                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
-                >
-                  <option value="no_answer">No Answer</option>
-                  <option value="answered">Answered</option>
-                  <option value="busy">Busy</option>
-                  <option value="callback">Callback Scheduled</option>
-                  <option value="interested">Interested</option>
-                  <option value="not_interested">Not Interested</option>
-                  <option value="wrong_number">Wrong Number</option>
-                </select>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Outcome</label>
+                <Select value={callOutcome} onValueChange={v => v && setCallOutcome(v)}>
+                  <SelectTrigger className="text-sm" style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+                    <SelectItem value="no_answer">No Answer</SelectItem>
+                    <SelectItem value="answered">Answered</SelectItem>
+                    <SelectItem value="busy">Busy</SelectItem>
+                    <SelectItem value="callback">Callback Scheduled</SelectItem>
+                    <SelectItem value="interested">Interested</SelectItem>
+                    <SelectItem value="not_interested">Not Interested</SelectItem>
+                    <SelectItem value="wrong_number">Wrong Number</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-dim mb-1">Notes</label>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Notes</label>
               <textarea
                 value={callNotes}
                 onChange={e => setCallNotes(e.target.value)}
                 rows={3}
                 placeholder="Call summary, next steps..."
-                className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50 resize-none"
+                className="w-full rounded-md px-3 py-2 text-sm resize-none focus:outline-none"
+                style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
               />
             </div>
-            <button
-              onClick={handleLogCall}
-              disabled={savingCall}
-              className="w-full bg-accent hover:bg-accent-hover text-[#1a1209] text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-            >
+            <Button onClick={handleLogCall} disabled={savingCall} className="w-full font-semibold" style={{ background: 'var(--color-accent)', color: '#1a1209' }}>
               {savingCall ? 'Saving...' : 'Save Call Log'}
-            </button>
+            </Button>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar — Contact List */}
@@ -739,15 +729,16 @@ export default function InboxPage() {
             </div>
             {/* Search */}
             <div className="relative">
-              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 z-10" style={{ color: 'var(--color-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
               </svg>
-              <input
+              <Input
                 type="text"
                 placeholder="Search contacts..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-elevated/60 backdrop-blur-sm border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50"
+                className="pl-8 text-sm"
+                style={{ background: 'color-mix(in srgb, var(--color-elevated) 60%, transparent)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
               />
             </div>
           </div>
@@ -1008,32 +999,30 @@ export default function InboxPage() {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs mt-3 pt-3 border-t border-border/50">
                       <div>
                         <span className="text-dim block text-[10px] uppercase tracking-wider mb-1">Status</span>
-                        <select
-                          value={leadInfo.lead_status}
-                          onChange={e => updateLeadFromInbox('lead_status', e.target.value)}
-                          disabled={updatingLead}
-                          className="status-select text-[10px]"
-                          style={{ padding: '2px 20px 2px 8px', fontSize: '11px' }}
-                        >
-                          {['NEW','DECK_SENT','REPLIED','CALLING','CALL_DONE','INTERESTED','NEGOTIATION','CONVERTED','DELAYED','LOST'].map(s => (
-                            <option key={s} value={s} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>{s.replace('_', ' ')}</option>
-                          ))}
-                        </select>
+                        <Select value={leadInfo.lead_status} onValueChange={v => v && updateLeadFromInbox('lead_status', v)} disabled={updatingLead}>
+                          <SelectTrigger className="h-7 text-[11px]" style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+                            {['NEW','DECK_SENT','REPLIED','CALLING','CALL_DONE','INTERESTED','NEGOTIATION','CONVERTED','DELAYED','LOST'].map(s => (
+                              <SelectItem key={s} value={s} className="text-[11px]">{s.replace('_', ' ')}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div>
                         <span className="text-dim block text-[10px] uppercase tracking-wider mb-1">Priority</span>
-                        <select
-                          value={leadInfo.lead_priority || ''}
-                          onChange={e => updateLeadFromInbox('lead_priority', e.target.value)}
-                          disabled={updatingLead}
-                          className="status-select text-[10px]"
-                          style={{ padding: '2px 20px 2px 8px', fontSize: '11px' }}
-                        >
-                          <option value="" style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>—</option>
-                          {['HOT','WARM','COLD'].map(p => (
-                            <option key={p} value={p} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>{p}</option>
-                          ))}
-                        </select>
+                        <Select value={leadInfo.lead_priority || '__none__'} onValueChange={v => v && updateLeadFromInbox('lead_priority', v === '__none__' ? '' : v)} disabled={updatingLead}>
+                          <SelectTrigger className="h-7 text-[11px]" style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+                            <SelectItem value="__none__" className="text-[11px]">—</SelectItem>
+                            {['HOT','WARM','COLD'].map(p => (
+                              <SelectItem key={p} value={p} className="text-[11px]">{p}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div>
                         <span className="text-dim block text-[10px] uppercase tracking-wider">Assigned</span>

@@ -10,7 +10,8 @@ export default function ThemeToggle() {
     const saved = localStorage.getItem('theme') as 'dark' | 'light' | null
     if (saved) {
       setTheme(saved)
-      document.documentElement.className = saved
+      document.documentElement.classList.remove('dark', 'light')
+      document.documentElement.classList.add(saved)
     }
     setMounted(true)
   }, [])
@@ -18,7 +19,8 @@ export default function ThemeToggle() {
   function toggle() {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
-    document.documentElement.className = next
+    document.documentElement.classList.remove('dark', 'light')
+    document.documentElement.classList.add(next)
     localStorage.setItem('theme', next)
   }
 
