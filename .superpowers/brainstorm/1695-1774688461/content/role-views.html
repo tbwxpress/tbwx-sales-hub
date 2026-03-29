@@ -1,0 +1,185 @@
+<h2>Role-aware landing pages — does this feel right?</h2>
+<p class="subtitle">Same app, different first screen based on who you are. Click each tab to preview.</p>
+
+<div style="display:flex;gap:0;margin-bottom:0;border-bottom:1px solid rgba(255,255,255,0.06);">
+  <button onclick="showRole('admin')" id="tab-admin" style="background:#d4af3715;border:none;border-bottom:2px solid #d4af37;padding:10px 20px;color:#d4af37;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:1px;">👑 ADMIN VIEW</button>
+  <button onclick="showRole('agent')" id="tab-agent" style="background:transparent;border:none;border-bottom:2px solid transparent;padding:10px 20px;color:#6b5d3f;font-size:11px;font-weight:600;cursor:pointer;letter-spacing:1px;">🎯 AGENT VIEW</button>
+</div>
+
+<!-- Admin View -->
+<div id="view-admin" style="background:#0f0a04;border:1px solid rgba(255,255,255,0.06);border-top:none;border-radius:0 0 12px 12px;padding:20px;">
+  <!-- Navbar -->
+  <div style="background:linear-gradient(90deg,#0f0a04,#1a1209,#0f0a04);border-bottom:1px solid rgba(212,175,55,0.15);margin:-20px -20px 20px;padding:12px 20px;display:flex;align-items:center;">
+    <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#d4af37,#b8932a);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#0f0a04;margin-right:10px;">TB</div>
+    <span style="color:#f5ead4;font-size:11px;font-weight:700;margin-right:24px;">TBWX Sales Hub</span>
+    <div style="display:flex;gap:2px;flex:1;justify-content:center;">
+      <span style="color:#d4af37;font-size:10px;font-weight:600;border-bottom:2px solid #d4af37;padding:4px 12px;">Dashboard</span>
+      <span style="color:#6b5d3f;font-size:10px;padding:4px 12px;">Leads</span>
+      <span style="color:#6b5d3f;font-size:10px;padding:4px 12px;">Inbox</span>
+      <span style="color:#6b5d3f;font-size:10px;padding:4px 12px;">Pipeline</span>
+      <span style="color:#6b5d3f;font-size:10px;padding:4px 12px;">Stats</span>
+      <span style="color:#6b5d3f;font-size:10px;padding:4px 12px;">Admin</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="color:#9b8b6a;font-size:9px;">Gavish · Admin</span>
+      <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#d4af37,#b8932a);display:flex;align-items:center;justify-content:center;color:#0f0a04;font-size:9px;font-weight:900;">G</div>
+    </div>
+  </div>
+
+  <!-- Welcome -->
+  <div style="margin-bottom:16px;">
+    <div style="color:#f5ead4;font-size:16px;font-weight:700;">Good morning, Gavish 👋</div>
+    <div style="color:#9b8b6a;font-size:11px;margin-top:2px;">Here's how the pipeline looks today — Friday, Mar 28</div>
+  </div>
+
+  <!-- Stat cards -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+    <div style="background:linear-gradient(145deg,#1e1510,#160f08);border:1px solid rgba(255,255,255,0.05);border-radius:10px;padding:14px;">
+      <div style="color:#9b8b6a;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">Total Leads</div>
+      <div style="color:#f5ead4;font-size:26px;font-weight:800;line-height:1;">247</div>
+      <div style="color:#4ade80;font-size:9px;margin-top:4px;">↑ 12 this week</div>
+    </div>
+    <div style="background:linear-gradient(145deg,#1e1510,#160f08);border:1px solid rgba(255,255,255,0.05);border-radius:10px;padding:14px;">
+      <div style="color:#9b8b6a;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">Replied</div>
+      <div style="color:#4ade80;font-size:26px;font-weight:800;line-height:1;">89</div>
+      <div style="color:#9b8b6a;font-size:9px;margin-top:4px;">36% reply rate</div>
+    </div>
+    <div style="background:linear-gradient(145deg,#1e1510,#160f08);border:1px solid rgba(255,255,255,0.05);border-radius:10px;padding:14px;">
+      <div style="color:#9b8b6a;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">Hot Leads 🔥</div>
+      <div style="color:#fb923c;font-size:26px;font-weight:800;line-height:1;">12</div>
+      <div style="color:#fb923c;font-size:9px;margin-top:4px;">Need attention now</div>
+    </div>
+    <div style="background:linear-gradient(145deg,#1e1510,#160f08);border:1px solid rgba(255,255,255,0.05);border-radius:10px;padding:14px;">
+      <div style="color:#9b8b6a;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">Converted</div>
+      <div style="color:#d4af37;font-size:26px;font-weight:800;line-height:1;">3</div>
+      <div style="color:#d4af37;font-size:9px;margin-top:4px;">This month</div>
+    </div>
+  </div>
+
+  <!-- Pipeline health + stale leads -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <div style="background:linear-gradient(145deg,#1e1510,#160f08);border:1px solid rgba(255,255,255,0.05);border-radius:10px;padding:14px;">
+      <div style="color:#9b8b6a;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Agent Performance</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#4ade80,#16a34a);display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#0a1209;">A1</div>
+          <div style="flex:1;height:4px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;">
+            <div style="width:78%;height:100%;background:linear-gradient(90deg,#4ade80,#22c55e);border-radius:2px;"></div>
+          </div>
+          <span style="color:#9b8b6a;font-size:8px;">78%</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#d4af37,#b8932a);display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#0f0a04;">A2</div>
+          <div style="flex:1;height:4px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;">
+            <div style="width:54%;height:100%;background:linear-gradient(90deg,#d4af37,#b8932a);border-radius:2px;"></div>
+          </div>
+          <span style="color:#9b8b6a;font-size:8px;">54%</span>
+        </div>
+      </div>
+    </div>
+    <div style="background:linear-gradient(145deg,#1e1510,#160f08);border:1px solid rgba(251,146,60,0.12);border-radius:10px;padding:14px;">
+      <div style="color:#fb923c;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">⚠ Stale Leads</div>
+      <div style="color:#f5ead4;font-size:11px;margin-bottom:4px;">7 leads not contacted in 3+ days</div>
+      <div style="background:rgba(251,146,60,0.1);border:1px solid rgba(251,146,60,0.2);border-radius:6px;padding:6px 10px;color:#fb923c;font-size:9px;font-weight:600;cursor:pointer;text-align:center;">View Stale Leads →</div>
+    </div>
+  </div>
+</div>
+
+<!-- Agent View (hidden by default) -->
+<div id="view-agent" style="display:none;background:#0f0a04;border:1px solid rgba(255,255,255,0.06);border-top:none;border-radius:0 0 12px 12px;padding:20px;">
+  <!-- Navbar -->
+  <div style="background:linear-gradient(90deg,#0f0a04,#1a1209,#0f0a04);border-bottom:1px solid rgba(212,175,55,0.15);margin:-20px -20px 20px;padding:12px 20px;display:flex;align-items:center;">
+    <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#d4af37,#b8932a);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#0f0a04;margin-right:10px;">TB</div>
+    <span style="color:#f5ead4;font-size:11px;font-weight:700;margin-right:24px;">TBWX Sales Hub</span>
+    <div style="display:flex;gap:2px;flex:1;justify-content:center;">
+      <span style="color:#d4af37;font-size:10px;font-weight:600;border-bottom:2px solid #d4af37;padding:4px 12px;">My Tasks</span>
+      <span style="color:#6b5d3f;font-size:10px;padding:4px 12px;">Leads</span>
+      <span style="color:#6b5d3f;font-size:10px;padding:4px 12px;">Inbox <span style="background:#4ade80;border-radius:10px;padding:1px 5px;color:#0a1209;font-size:7px;font-weight:800;">3</span></span>
+      <span style="color:#6b5d3f;font-size:10px;padding:4px 12px;">Pipeline</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="color:#9b8b6a;font-size:9px;">Rahul · Agent</span>
+      <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#6b5d3f,#4a3f2a);display:flex;align-items:center;justify-content:center;color:#f5ead4;font-size:9px;font-weight:900;">R</div>
+    </div>
+  </div>
+
+  <!-- Agent action queue -->
+  <div style="margin-bottom:16px;">
+    <div style="color:#f5ead4;font-size:16px;font-weight:700;">Morning, Rahul 🎯</div>
+    <div style="color:#9b8b6a;font-size:11px;margin-top:2px;">Here's your action queue for today</div>
+  </div>
+
+  <!-- Priority action cards -->
+  <div style="background:rgba(251,146,60,0.06);border:1px solid rgba(251,146,60,0.2);border-radius:10px;padding:14px;margin-bottom:10px;">
+    <div style="color:#fb923c;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">🔥 Act Now — 3 Replies Waiting</div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <div style="background:#0f0a04;border-radius:8px;padding:10px;display:flex;align-items:center;gap:10px;">
+        <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#4ade80,#16a34a);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#0a1209;flex-shrink:0;">PS</div>
+        <div style="flex:1;">
+          <div style="color:#f5ead4;font-size:11px;font-weight:600;">Priya Sharma</div>
+          <div style="color:#9b8b6a;font-size:9px;">"Very interested, want to know investment details"</div>
+        </div>
+        <div style="background:#4ade8015;border:1px solid rgba(74,222,128,0.3);border-radius:6px;padding:4px 10px;color:#4ade80;font-size:9px;font-weight:600;white-space:nowrap;">Reply Now →</div>
+      </div>
+      <div style="background:#0f0a04;border-radius:8px;padding:10px;display:flex;align-items:center;gap:10px;">
+        <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#fb923c,#ea580c);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;flex-shrink:0;">RK</div>
+        <div style="flex:1;">
+          <div style="color:#f5ead4;font-size:11px;font-weight:600;">Ritesh Kumar</div>
+          <div style="color:#9b8b6a;font-size:9px;">"When can we meet? Mumbai works for me"</div>
+        </div>
+        <div style="background:#fb923c15;border:1px solid rgba(251,146,60,0.3);border-radius:6px;padding:4px 10px;color:#fb923c;font-size:9px;font-weight:600;white-space:nowrap;">Reply Now →</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:rgba(212,175,55,0.04);border:1px solid rgba(212,175,55,0.12);border-radius:10px;padding:14px;margin-bottom:10px;">
+    <div style="color:#d4af37;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">📅 Follow-ups Due Today — 2</div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <div style="background:#0f0a04;border-radius:8px;padding:10px;display:flex;align-items:center;gap:10px;">
+        <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#a78bfa,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;flex-shrink:0;">AM</div>
+        <div style="flex:1;">
+          <div style="color:#f5ead4;font-size:11px;font-weight:600;">Anjali Mehta</div>
+          <div style="color:#9b8b6a;font-size:9px;">Scheduled follow-up · Score 72 · Deck sent 3 days ago</div>
+        </div>
+        <div style="background:#d4af3710;border:1px solid rgba(212,175,55,0.2);border-radius:6px;padding:4px 10px;color:#d4af37;font-size:9px;font-weight:600;white-space:nowrap;">Follow Up →</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:10px;padding:14px;">
+    <div style="color:#9b8b6a;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✓ Today's Progress</div>
+    <div style="display:flex;gap:12px;">
+      <div style="text-align:center;">
+        <div style="color:#4ade80;font-size:18px;font-weight:800;">4</div>
+        <div style="color:#6b5d3f;font-size:8px;">Replied</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="color:#d4af37;font-size:18px;font-weight:800;">2</div>
+        <div style="color:#6b5d3f;font-size:8px;">Called</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="color:#a78bfa;font-size:18px;font-weight:800;">1</div>
+        <div style="color:#6b5d3f;font-size:8px;">Negotiating</div>
+      </div>
+      <div style="flex:1;display:flex;align-items:center;">
+        <div style="width:100%;height:6px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden;">
+          <div style="width:58%;height:100%;background:linear-gradient(90deg,#d4af37,#b8932a);border-radius:3px;"></div>
+        </div>
+      </div>
+      <div style="color:#d4af37;font-size:10px;font-weight:700;align-self:center;">58%</div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showRole(role) {
+  document.getElementById('view-admin').style.display = role === 'admin' ? 'block' : 'none';
+  document.getElementById('view-agent').style.display = role === 'agent' ? 'block' : 'none';
+  document.getElementById('tab-admin').style.color = role === 'admin' ? '#d4af37' : '#6b5d3f';
+  document.getElementById('tab-admin').style.borderBottom = role === 'admin' ? '2px solid #d4af37' : '2px solid transparent';
+  document.getElementById('tab-admin').style.background = role === 'admin' ? '#d4af3715' : 'transparent';
+  document.getElementById('tab-agent').style.color = role === 'agent' ? '#d4af37' : '#6b5d3f';
+  document.getElementById('tab-agent').style.borderBottom = role === 'agent' ? '2px solid #d4af37' : '2px solid transparent';
+  document.getElementById('tab-agent').style.background = role === 'agent' ? '#d4af3715' : 'transparent';
+}
+</script>

@@ -1,0 +1,46 @@
+<h2>Breaking this into 4 waves</h2>
+<p class="subtitle">All 8 areas selected — here's a proposed sequence. Each wave is a separate spec + plan + deploy cycle. Which wave do you want to start with?</p>
+
+<div class="options">
+
+  <div class="option" data-choice="wave1" onclick="toggleSelect(this)">
+    <div class="letter">1</div>
+    <div class="content">
+      <h3>Foundation + First Impressions</h3>
+      <p><strong>Navbar rebuild</strong> · <strong>Login page</strong> · <strong>Admin dashboard overhaul</strong></p>
+      <p style="margin-top:8px;font-size:11px;opacity:0.7">Why first: Navbar is on every page — fix it once, benefits everything. Login is the first screen anyone sees (especially for the NoFluff demo). Admin dashboard is the most important screen for Gavish.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="wave2" onclick="toggleSelect(this)">
+    <div class="letter">2</div>
+    <div class="content">
+      <h3>Core Agent Workflows</h3>
+      <p><strong>Leads page</strong> · <strong>Inbox / WhatsApp chat</strong> · <strong>Pipeline kanban</strong></p>
+      <p style="margin-top:8px;font-size:11px;opacity:0.7">Why second: These are the pages agents use every day. Polish them after the foundation is solid. Inbox especially is where the most time is spent.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="wave3" onclick="toggleSelect(this)">
+    <div class="letter">3</div>
+    <div class="content">
+      <h3>New Features</h3>
+      <p><strong>Notifications</strong> · <strong>Global search</strong> · <strong>Activity timeline</strong> · <strong>Bulk actions</strong> · <strong>Lead scoring display</strong></p>
+      <p style="margin-top:8px;font-size:11px;opacity:0.7">Why third: New capabilities built on top of a polished base. Each feature needs its own scoping — "New Features" is too vague for one spec.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="wave4" onclick="toggleSelect(this)">
+    <div class="letter">4</div>
+    <div class="content">
+      <h3>NoFluff Demo Instance</h3>
+      <p><strong>demo.nofluff.pro</strong> · white-label branding · fake seed data · client-facing polish</p>
+      <p style="margin-top:8px;font-size:11px;opacity:0.7">Why last: Depends on everything above being production-quality. A demo of a rough app does more harm than good.</p>
+    </div>
+  </div>
+
+</div>
+
+<div style="margin-top:24px;padding:16px;border-radius:10px;background:rgba(212,175,55,0.08);border:1px solid rgba(212,175,55,0.2)">
+  <p style="font-size:11px;opacity:0.8;margin:0"><strong style="color:#d4af37">Recommendation:</strong> Start with Wave 1. It unlocks every other wave and makes the biggest visible difference immediately. After Wave 1 is live, we brainstorm Wave 2.</p>
+</div>

@@ -2,6 +2,10 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { BRAND } from '@/config/client'
 import CommandPalette from '@/components/CommandPalette'
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: BRAND.name,
@@ -11,7 +15,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" className={cn("dark", "font-sans", geist.variable)} suppressHydrationWarning>
       <head>
         <link
           href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Inter:wght@400;500;600;700&display=swap"

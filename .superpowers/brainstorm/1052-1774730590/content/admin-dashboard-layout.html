@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard Layout</title>
+<script src="http://localhost:62615/helper.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0f0a04; color: #f5ead4; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; }
+h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.subtitle { font-size: 12px; color: #9b8b6a; margin-bottom: 24px; }
+
+.layouts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.layout-card {
+  border: 1px solid rgba(212,175,55,0.15);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.layout-card:hover { border-color: rgba(212,175,55,0.4); transform: translateY(-2px); }
+.layout-card.selected { border-color: #d4af37; box-shadow: 0 0 0 2px rgba(212,175,55,0.25); }
+
+.mockup-area {
+  padding: 14px;
+  background: #0f0a04;
+  min-height: 280px;
+}
+
+/* Shared elements */
+.mock-navbar {
+  background: #160f08;
+  border: 1px solid rgba(212,175,55,0.15);
+  border-radius: 7px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 9px;
+  color: #9b8b6a;
+}
+.mock-logo { width: 18px; height: 18px; background: linear-gradient(135deg,#d4af37,#9b6a1a); border-radius: 4px; flex-shrink:0; }
+.mock-links { display: flex; gap: 12px; flex: 1; justify-content: center; font-size: 8px; }
+.mock-link-active { color: #d4af37; border-bottom: 1px solid #d4af37; padding-bottom: 1px; }
+.mock-pill { background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.25); border-radius: 10px; padding: 2px 7px; font-size: 8px; color: #d4af37; }
+.mock-avatar { width: 18px; height: 18px; background: #2a1c08; border-radius: 50%; border: 1px solid #d4af37; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: 700; color: #d4af37; }
+
+.mock-greeting { font-size: 10px; font-weight: 700; color: #f5ead4; margin-bottom: 10px; }
+
+/* Layout A — 4 stats top, 2-col panels below */
+.stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin-bottom: 10px; }
+.stat-card {
+  background: #160f08;
+  border: 1px solid rgba(212,175,55,0.12);
+  border-radius: 7px;
+  padding: 8px 7px;
+}
+.stat-val { font-size: 16px; font-weight: 800; color: #d4af37; line-height: 1; }
+.stat-val.green { color: #4ade80; }
+.stat-val.orange { color: #fb923c; }
+.stat-val.blue { color: #60a5fa; }
+.stat-lbl { font-size: 7px; color: #9b8b6a; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.panel {
+  background: #160f08;
+  border: 1px solid rgba(212,175,55,0.12);
+  border-radius: 7px;
+  padding: 8px;
+}
+.panel-title { font-size: 8px; font-weight: 700; color: #9b8b6a; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+
+.agent-row { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+.agent-dot { width: 14px; height: 14px; border-radius: 50%; background: #2a1c08; border: 1px solid #d4af37; font-size: 6px; color: #d4af37; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+.agent-bar-wrap { flex: 1; height: 5px; background: #2a1c08; border-radius: 3px; overflow: hidden; }
+.agent-bar { height: 100%; background: linear-gradient(90deg, #d4af37, #b8932a); border-radius: 3px; }
+.agent-pct { font-size: 7px; color: #9b8b6a; width: 22px; text-align: right; }
+
+.stale-row { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; padding: 4px 5px; background: rgba(251,146,60,0.06); border-left: 2px solid #fb923c; border-radius: 3px; }
+.stale-name { font-size: 8px; color: #f5ead4; flex: 1; }
+.stale-days { font-size: 7px; color: #fb923c; }
+
+/* Layout B — stacked with lead table */
+.full-panel { background: #160f08; border: 1px solid rgba(212,175,55,0.12); border-radius: 7px; padding: 8px; margin-bottom: 8px; }
+.lead-table-row { display: flex; gap: 6px; align-items: center; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 7px; color: #9b8b6a; }
+.lead-table-row .name { color: #f5ead4; flex: 1; font-weight: 600; }
+.badge { padding: 1px 5px; border-radius: 3px; font-size: 6px; font-weight: 700; background: rgba(96,165,250,0.15); color: #60a5fa; }
+.badge.hot { background: rgba(251,146,60,0.15); color: #fb923c; }
+.badge.replied { background: rgba(74,222,128,0.15); color: #4ade80; }
+
+.card-label {
+  padding: 12px 14px;
+  background: #160f08;
+  border-top: 1px solid rgba(212,175,55,0.1);
+}
+.card-label h3 { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+.card-label p { font-size: 10px; color: #9b8b6a; line-height: 1.5; }
+</style>
+</head>
+<body>
+<h2>Admin Dashboard — Layout</h2>
+<p class="subtitle">How should the admin landing page be structured?</p>
+
+<div class="layouts">
+
+  <!-- OPTION A -->
+  <div class="layout-card" data-choice="panels" onclick="toggleSelect(this)">
+    <div class="mockup-area">
+      <div class="mock-navbar">
+        <div class="mock-logo"></div>
+        <div class="mock-links">
+          <span>Dashboard</span><span>Inbox</span><span class="mock-link-active">Follow-ups</span><span>Pipeline</span>
+        </div>
+        <div class="mock-pill">🌙 Dark</div>
+        <div class="mock-avatar">G</div>
+      </div>
+      <div class="mock-greeting">Good morning, Gavish 👋</div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-val">248</div><div class="stat-lbl">Total Leads</div></div>
+        <div class="stat-card"><div class="stat-val green">34</div><div class="stat-lbl">Replied</div></div>
+        <div class="stat-card"><div class="stat-val orange">12</div><div class="stat-lbl">Hot</div></div>
+        <div class="stat-card"><div class="stat-val blue">19</div><div class="stat-lbl">Converted</div></div>
+      </div>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-title">Agent Performance</div>
+          <div class="agent-row"><div class="agent-dot">R</div><div class="agent-bar-wrap"><div class="agent-bar" style="width:78%"></div></div><div class="agent-pct">78%</div></div>
+          <div class="agent-row"><div class="agent-dot">S</div><div class="agent-bar-wrap"><div class="agent-bar" style="width:52%"></div></div><div class="agent-pct">52%</div></div>
+          <div class="agent-row"><div class="agent-dot">A</div><div class="agent-bar-wrap"><div class="agent-bar" style="width:41%"></div></div><div class="agent-pct">41%</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title" style="color:#fb923c">⚠ Stale Leads</div>
+          <div class="stale-row"><span class="stale-name">Mohan K.</span><span class="stale-days">6d no contact</span></div>
+          <div class="stale-row"><span class="stale-name">Priya R.</span><span class="stale-days">5d no contact</span></div>
+          <div class="stale-row"><span class="stale-name">Vinod S.</span><span class="stale-days">4d no contact</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-label">
+      <h3>A — Stats + Two Panels</h3>
+      <p>4 stat cards on top, then agent performance + stale leads side-by-side. Clean overview, no lead table — admin clicks through to Leads page for details.</p>
+    </div>
+  </div>
+
+  <!-- OPTION B -->
+  <div class="layout-card" data-choice="with-table" onclick="toggleSelect(this)">
+    <div class="mockup-area">
+      <div class="mock-navbar">
+        <div class="mock-logo"></div>
+        <div class="mock-links">
+          <span>Dashboard</span><span>Inbox</span><span class="mock-link-active">Follow-ups</span><span>Pipeline</span>
+        </div>
+        <div class="mock-pill">🌙 Dark</div>
+        <div class="mock-avatar">G</div>
+      </div>
+      <div class="mock-greeting">Good morning, Gavish 👋</div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-val">248</div><div class="stat-lbl">Total Leads</div></div>
+        <div class="stat-card"><div class="stat-val green">34</div><div class="stat-lbl">Replied</div></div>
+        <div class="stat-card"><div class="stat-val orange">12</div><div class="stat-lbl">Hot</div></div>
+        <div class="stat-card"><div class="stat-val blue">19</div><div class="stat-lbl">Converted</div></div>
+      </div>
+      <div class="full-panel">
+        <div class="panel-title">Recent Leads</div>
+        <div class="lead-table-row"><span class="name">Rohit M.</span><span>Kisanganj</span><span class="badge replied">REPLIED</span></div>
+        <div class="lead-table-row"><span class="name">Neha A.</span><span>Ranchi</span><span class="badge hot">HOT</span></div>
+        <div class="lead-table-row"><span class="name">Ram K.</span><span>Pune</span><span class="badge">NEW</span></div>
+        <div class="lead-table-row" style="border-bottom:none"><span class="name">Shaji P.</span><span>Kochi</span><span class="badge">NEW</span></div>
+      </div>
+      <div class="two-col">
+        <div class="panel" style="padding:6px 8px">
+          <div class="panel-title">Agent Performance</div>
+          <div class="agent-row"><div class="agent-dot">R</div><div class="agent-bar-wrap"><div class="agent-bar" style="width:78%"></div></div><div class="agent-pct">78%</div></div>
+          <div class="agent-row"><div class="agent-dot">S</div><div class="agent-bar-wrap"><div class="agent-bar" style="width:52%"></div></div><div class="agent-pct">52%</div></div>
+        </div>
+        <div class="panel" style="padding:6px 8px">
+          <div class="panel-title" style="color:#fb923c">⚠ Stale</div>
+          <div class="stale-row"><span class="stale-name">Mohan K.</span><span class="stale-days">6d</span></div>
+          <div class="stale-row"><span class="stale-name">Priya R.</span><span class="stale-days">5d</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-label">
+      <h3>B — Stats + Table + Panels</h3>
+      <p>Same 4 stats, then a recent leads mini-table in the middle, then agent + stale panels. More data at a glance but denser.</p>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

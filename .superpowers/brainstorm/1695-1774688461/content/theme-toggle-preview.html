@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  body { background: #0f0a04; transition: background 0.3s; }
+
+  /* ───── DARK theme ───── */
+  body.dark { --bg: #0f0a04; --surface-1: #160f08; --surface-2: #1e1510; --border: rgba(255,255,255,0.06); --border-accent: rgba(212,175,55,0.2); --accent: #d4af37; --accent-dim: #9b8b6a; --text-primary: #f5ead4; --text-secondary: #9b8b6a; --text-dim: #6b5d3f; --nav-bg: linear-gradient(90deg,#0f0a04,#1a1209,#0f0a04); --card-bg: linear-gradient(145deg,#1e1510,#160f08); --stat-green: #4ade80; --stat-orange: #fb923c; --toggle-bg: rgba(212,175,55,0.12); --toggle-border: rgba(212,175,55,0.3); }
+
+  /* ───── WARM PARCHMENT light theme ───── */
+  body.light-parchment { --bg: #faf6f0; --surface-1: #ffffff; --surface-2: #f5ede0; --border: #e8ddd0; --border-accent: #d4af37; --accent: #b8932a; --accent-dim: #8a7055; --text-primary: #2d1f0a; --text-secondary: #8a7055; --text-dim: #b0967a; --nav-bg: linear-gradient(90deg,#faf6f0,#f5ede0,#faf6f0); --card-bg: #ffffff; --stat-green: #15803d; --stat-orange: #c2410c; --toggle-bg: rgba(184,147,42,0.12); --toggle-border: rgba(184,147,42,0.35); }
+
+  /* ───── COOL PEARL light theme ───── */
+  body.light-pearl { --bg: #f4f6f9; --surface-1: #ffffff; --surface-2: #edf0f5; --border: #dde2eb; --border-accent: #b8932a; --accent: #b8932a; --accent-dim: #64748b; --text-primary: #0f172a; --text-secondary: #64748b; --text-dim: #94a3b8; --nav-bg: linear-gradient(90deg,#f4f6f9,#edf0f5,#f4f6f9); --card-bg: #ffffff; --stat-green: #15803d; --stat-orange: #c2410c; --toggle-bg: rgba(184,147,42,0.1); --toggle-border: rgba(184,147,42,0.3); }
+
+  /* ───── CHAMPAGNE SAND light theme ───── */
+  body.light-champagne { --bg: #f7f3ec; --surface-1: #fffdf8; --surface-2: #f0e8d8; --border: #e5d9c8; --border-accent: #d4af37; --accent: #b8932a; --accent-dim: #7a6040; --text-primary: #1a0f00; --text-secondary: #7a6040; --text-dim: #a08060; --nav-bg: #f7f3ec; --card-bg: #fffdf8; --stat-green: #15803d; --stat-orange: #c2410c; --toggle-bg: rgba(212,175,55,0.12); --toggle-border: rgba(212,175,55,0.4); }
+
+  body { background: var(--bg); transition: background 0.3s; }
+
+  .navbar {
+    background: var(--nav-bg);
+    border-bottom: 1px solid var(--border-accent);
+    padding: 0 20px;
+    height: 54px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky; top: 0;
+    transition: all 0.3s;
+  }
+  .logo-box {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg,#d4af37,#b8932a);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 900; color: #fff;
+    box-shadow: 0 2px 8px rgba(212,175,55,0.35);
+    flex-shrink: 0;
+  }
+  .brand { color: var(--text-primary); font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .nav-links { flex: 1; display: flex; justify-content: center; gap: 2px; }
+  .nav-link { color: var(--text-dim); font-size: 10px; font-weight: 500; padding: 6px 14px; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+  .nav-link.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+  .nav-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+  /* Toggle button */
+  .theme-toggle {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--toggle-bg);
+    border: 1px solid var(--toggle-border);
+    border-radius: 20px; padding: 5px 12px;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .theme-toggle-icon { font-size: 13px; }
+  .theme-toggle-label { font-size: 10px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg,#d4af37,#b8932a); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 900; }
+
+  .page { padding: 24px 20px; }
+  .greeting { margin-bottom: 20px; }
+  .greeting h1 { color: var(--text-primary); font-size: 18px; font-weight: 700; }
+  .greeting p { color: var(--text-secondary); font-size: 11px; margin-top: 3px; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 14px; }
+  .stat-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+    transition: all 0.3s;
+  }
+  .stat-label { color: var(--text-secondary); font-size: 8px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
+  .stat-value { font-size: 26px; font-weight: 800; line-height: 1; }
+  .stat-sub { font-size: 9px; margin-top: 5px; color: var(--text-dim); }
+
+  .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; transition: all 0.3s; }
+  .panel-label { color: var(--text-secondary); font-size: 8px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; }
+
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .agent-avatar { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: 800; color: #fff; flex-shrink: 0; }
+  .bar-track { flex: 1; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; }
+  .bar-pct { color: var(--text-secondary); font-size: 8px; }
+
+  .stale-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; border-left: 3px solid #fb923c; }
+
+  /* Light theme picker */
+  .theme-picker { padding: 16px 20px; display: flex; align-items: center; gap: 10px; background: var(--surface-2); border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .picker-label { color: var(--text-secondary); font-size: 10px; font-weight: 600; white-space: nowrap; }
+  .swatch { display: flex; align-items: center; gap: 6px; background: var(--surface-1); border: 2px solid var(--border); border-radius: 20px; padding: 5px 12px; cursor: pointer; font-size: 10px; color: var(--text-primary); font-weight: 500; transition: all 0.2s; white-space: nowrap; }
+  .swatch.active { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+  .swatch-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+</style>
+</head>
+<body class="dark">
+
+<!-- Navbar -->
+<div class="navbar">
+  <div class="logo-box">TB</div>
+  <span class="brand">TBWX Sales Hub</span>
+  <div class="nav-links">
+    <div class="nav-link active">Dashboard</div>
+    <div class="nav-link">Leads</div>
+    <div class="nav-link">Inbox ·3</div>
+    <div class="nav-link">Pipeline</div>
+    <div class="nav-link">Stats</div>
+  </div>
+  <div class="nav-right">
+    <div class="theme-toggle" onclick="cycleTheme()">
+      <span class="theme-toggle-icon" id="toggle-icon">🌙</span>
+      <span class="theme-toggle-label" id="toggle-label">Dark</span>
+    </div>
+    <div class="avatar">G</div>
+  </div>
+</div>
+
+<!-- Dashboard content -->
+<div class="page">
+  <div class="greeting">
+    <h1>Good morning, Gavish 👋</h1>
+    <p>Here's how the pipeline looks today — Friday, Mar 28</p>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Leads</div>
+      <div class="stat-value" style="color:var(--text-primary)">247</div>
+      <div class="stat-sub">↑ 12 this week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Replied</div>
+      <div class="stat-value" style="color:var(--stat-green)">89</div>
+      <div class="stat-sub" style="color:var(--stat-green)">36% reply rate</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Hot Leads 🔥</div>
+      <div class="stat-value" style="color:var(--stat-orange)">12</div>
+      <div class="stat-sub" style="color:var(--stat-orange)">Need attention now</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Converted</div>
+      <div class="stat-value" style="color:var(--accent)">3</div>
+      <div class="stat-sub" style="color:var(--accent-dim)">This month</div>
+    </div>
+  </div>
+
+  <div class="bottom-grid">
+    <div class="panel">
+      <div class="panel-label">Agent Performance</div>
+      <div class="bar-row">
+        <div class="agent-avatar" style="background:linear-gradient(135deg,#4ade80,#16a34a)">A1</div>
+        <div class="bar-track"><div class="bar-fill" style="width:78%;background:linear-gradient(90deg,#4ade80,#22c55e)"></div></div>
+        <span class="bar-pct">78%</span>
+      </div>
+      <div class="bar-row">
+        <div class="agent-avatar" style="background:linear-gradient(135deg,#d4af37,#b8932a)">A2</div>
+        <div class="bar-track"><div class="bar-fill" style="width:54%;background:linear-gradient(90deg,#d4af37,#b8932a)"></div></div>
+        <span class="bar-pct">54%</span>
+      </div>
+      <div class="bar-row">
+        <div class="agent-avatar" style="background:linear-gradient(135deg,#a78bfa,#7c3aed)">A3</div>
+        <div class="bar-track"><div class="bar-fill" style="width:31%;background:linear-gradient(90deg,#a78bfa,#7c3aed)"></div></div>
+        <span class="bar-pct">31%</span>
+      </div>
+    </div>
+    <div class="stale-card">
+      <div class="panel-label" style="color:#fb923c">⚠ Stale Leads — 7</div>
+      <div style="color:var(--text-primary);font-size:12px;margin-bottom:10px;">7 leads not contacted in 3+ days. They're going cold.</div>
+      <div style="background:rgba(251,146,60,0.1);border:1px solid rgba(251,146,60,0.3);border-radius:8px;padding:8px 14px;color:#fb923c;font-size:10px;font-weight:600;cursor:pointer;text-align:center;">View Stale Leads →</div>
+    </div>
+  </div>
+</div>
+
+<!-- Light theme swatches (shown only in light mode) -->
+<div class="theme-picker" id="light-picker" style="display:none">
+  <span class="picker-label">Light style:</span>
+  <div class="swatch active" onclick="setTheme('light-parchment',this)"><div class="swatch-dot" style="background:#f5ede0;border:1px solid #d4af37"></div>Warm Parchment</div>
+  <div class="swatch" onclick="setTheme('light-pearl',this)"><div class="swatch-dot" style="background:#edf0f5;border:1px solid #b8c0d0"></div>Cool Pearl</div>
+  <div class="swatch" onclick="setTheme('light-champagne',this)"><div class="swatch-dot" style="background:#f7f3ec;border:1px solid #e5d9c8"></div>Champagne Sand</div>
+</div>
+
+<script>
+let isDark = true;
+let currentLight = 'light-parchment';
+
+function cycleTheme() {
+  isDark = !isDark;
+  const body = document.body;
+  const icon = document.getElementById('toggle-icon');
+  const label = document.getElementById('toggle-label');
+  const picker = document.getElementById('light-picker');
+
+  body.className = isDark ? 'dark' : currentLight;
+  icon.textContent = isDark ? '🌙' : '☀️';
+  label.textContent = isDark ? 'Dark' : 'Light';
+  picker.style.display = isDark ? 'none' : 'flex';
+}
+
+function setTheme(theme, el) {
+  currentLight = theme;
+  document.body.className = theme;
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+}
+</script>
+</body>
+</html>

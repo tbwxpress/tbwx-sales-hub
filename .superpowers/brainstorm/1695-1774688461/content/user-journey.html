@@ -1,0 +1,79 @@
+<h2>Who uses the Sales Hub — and what do they need?</h2>
+<p class="subtitle">Before we design anything, let's nail the user journey. Two types of users, very different needs.</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+
+  <div style="background:#1a1209;border:1px solid rgba(212,175,55,0.25);border-radius:12px;padding:20px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#d4af37,#b8932a);display:flex;align-items:center;justify-content:center;font-size:16px;">👑</div>
+      <div>
+        <div style="color:#f5ead4;font-weight:700;font-size:13px;">Admin (Gavish)</div>
+        <div style="color:#9b8b6a;font-size:10px;">Runs the business</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="background:rgba(212,175,55,0.06);border-radius:8px;padding:10px;">
+        <div style="color:#d4af37;font-size:10px;font-weight:700;margin-bottom:2px;">Morning check-in</div>
+        <div style="color:#9b8b6a;font-size:10px;">How many new leads came in? Who replied? Any hot leads ready to close?</div>
+      </div>
+      <div style="background:rgba(212,175,55,0.06);border-radius:8px;padding:10px;">
+        <div style="color:#d4af37;font-size:10px;font-weight:700;margin-bottom:2px;">Mid-day oversight</div>
+        <div style="color:#9b8b6a;font-size:10px;">Are agents following up? Is the pipeline moving? Any stale leads?</div>
+      </div>
+      <div style="background:rgba(212,175,55,0.06);border-radius:8px;padding:10px;">
+        <div style="color:#d4af37;font-size:10px;font-weight:700;margin-bottom:2px;">End of day</div>
+        <div style="color:#9b8b6a;font-size:10px;">How many converted this week? Agent performance review.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:#1a1209;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6b5d3f,#4a3f2a);display:flex;align-items:center;justify-content:center;font-size:16px;">🎯</div>
+      <div>
+        <div style="color:#f5ead4;font-weight:700;font-size:13px;">Sales Agent</div>
+        <div style="color:#9b8b6a;font-size:10px;">Closes deals every day</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;">
+        <div style="color:#e8d5a3;font-size:10px;font-weight:700;margin-bottom:2px;">Opens app → instant confusion 😟</div>
+        <div style="color:#9b8b6a;font-size:10px;">Currently: loads dashboard with stats. Agent thinks "ok... now what?"</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;">
+        <div style="color:#e8d5a3;font-size:10px;font-weight:700;margin-bottom:2px;">Needs to know: who to call NOW</div>
+        <div style="color:#9b8b6a;font-size:10px;">Leads that replied, leads that are hot, leads with follow-ups due today.</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;">
+        <div style="color:#e8d5a3;font-size:10px;font-weight:700;margin-bottom:2px;">Needs to know: what to say</div>
+        <div style="color:#9b8b6a;font-size:10px;">Quick reply suggestions, templates, last conversation context — all in one click.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<h3 style="color:#f5ead4;margin-bottom:12px;">The core UX problem to solve 👇</h3>
+<div class="options">
+  <div class="option" data-choice="A" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Action-First Dashboard</h3>
+      <p>When an agent logs in, they see: <strong style="color:#d4af37;">"You have 3 replies waiting · 2 follow-ups due today · 1 HOT lead to call"</strong> — with direct action buttons. No hunting. Zero confusion.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="B" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Smart Inbox-First</h3>
+      <p>Landing page IS the inbox/task list. Replies, follow-ups, and hot leads all in one unified feed — sorted by urgency. Agent just works down the list. Like email but for leads.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="C" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Both — Role-Aware Landing</h3>
+      <p>Admin lands on stats/overview. Agent lands on their action queue. Same app, different default view based on role. Everyone sees exactly what they need first.</p>
+    </div>
+  </div>
+</div>
