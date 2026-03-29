@@ -285,6 +285,47 @@ function AdminHeader({
         ))}
       </div>
 
+      {/* Recent Leads mini-table */}
+      {(() => {
+        const recent = [...leads].sort((a, b) => new Date(b.created_time).getTime() - new Date(a.created_time).getTime()).slice(0, 8)
+        const statusColor: Record<string, string> = {
+          NEW: 'var(--color-accent)', DECK_SENT: 'var(--color-muted)', REPLIED: 'var(--color-success)',
+          CALLING: '#a78bfa', CALL_DONE: '#818cf8', INTERESTED: 'var(--color-status-interested)',
+          NEGOTIATION: '#f59e0b', CONVERTED: 'var(--color-status-converted)', DELAYED: '#f59e0b', LOST: 'var(--color-danger)',
+        }
+        const priorityColor: Record<string, string> = { HOT: 'var(--color-hot)', WARM: '#fbbf24', COLD: '#60a5fa' }
+        return (
+          <div className="rounded-xl border mb-3 overflow-hidden" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <span className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-muted)' }}>Recent Leads</span>
+              <Link href="/dashboard" className="text-[10px] font-medium transition-colors" style={{ color: 'var(--color-accent)' }}>View all →</Link>
+            </div>
+            <div className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
+              {recent.map((lead, i) => {
+                const sc = statusColor[lead.lead_status] || 'var(--color-muted)'
+                const pc = priorityColor[lead.lead_priority] || 'var(--color-dim)'
+                const daysAgo = Math.floor((Date.now() - new Date(lead.created_time).getTime()) / (1000*60*60*24))
+                return (
+                  <Link key={lead.row_number} href={`/leads/${lead.row_number}`} className="flex items-center gap-3 px-4 py-2.5 transition-colors duration-150" style={{ background: i % 2 === 1 ? 'color-mix(in srgb, var(--color-elevated) 30%, transparent)' : 'transparent' }}>
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold" style={{ background: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
+                      {lead.full_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs font-medium truncate block" style={{ color: 'var(--color-text)' }}>{lead.full_name}</span>
+                      <span className="text-[10px]" style={{ color: 'var(--color-dim)' }}>{lead.city}</span>
+                    </div>
+                    <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ background: `color-mix(in srgb, ${sc} 15%, transparent)`, color: sc }}>{lead.lead_status.replace('_', ' ')}</span>
+                    <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full shrink-0 hidden sm:block" style={{ background: `color-mix(in srgb, ${pc} 15%, transparent)`, color: pc }}>{lead.lead_priority}</span>
+                    <span className="text-[10px] shrink-0 hidden md:block" style={{ color: 'var(--color-dim)' }}>{lead.assigned_to || '—'}</span>
+                    <span className="text-[10px] shrink-0" style={{ color: 'var(--color-dim)' }}>{daysAgo === 0 ? 'today' : `${daysAgo}d ago`}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Two-panel row: Agent Performance + Stale Leads */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
 

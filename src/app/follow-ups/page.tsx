@@ -37,10 +37,24 @@ export default function FollowUpsPage() {
       <Navbar />
       <div className="max-w-5xl mx-auto px-4 py-6 flex-1 animate-fade-in">
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-text">Follow-ups</h1>
-          <p className="text-sm text-dim mt-0.5">
-            {overdue.length} overdue, {upcoming.length} upcoming
-          </p>
+          <div className="flex items-baseline justify-between mb-4">
+            <div>
+              <h1 className="text-xl font-bold text-text">Follow-ups</h1>
+              <p className="text-xs text-dim mt-0.5">Scheduled tasks for your leads</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl p-4 border" style={{ background: 'var(--color-card)', borderColor: overdue.length > 0 ? 'rgba(239,68,68,0.25)' : 'var(--color-border)', borderLeft: overdue.length > 0 ? '3px solid var(--color-danger)' : undefined }}>
+              <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: overdue.length > 0 ? 'var(--color-danger)' : 'var(--color-muted)' }}>Overdue</div>
+              <div className="text-3xl font-extrabold leading-none" style={{ color: overdue.length > 0 ? 'var(--color-danger)' : 'var(--color-dim)' }}>{overdue.length}</div>
+              <div className="text-[10px] mt-1" style={{ color: 'var(--color-dim)' }}>{overdue.length === 0 ? 'all caught up!' : 'need immediate attention'}</div>
+            </div>
+            <div className="rounded-xl p-4 border" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+              <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-muted)' }}>Upcoming</div>
+              <div className="text-3xl font-extrabold leading-none" style={{ color: 'var(--color-accent)' }}>{upcoming.length}</div>
+              <div className="text-[10px] mt-1" style={{ color: 'var(--color-dim)' }}>scheduled ahead</div>
+            </div>
+          </div>
         </div>
 
         {loading ? (

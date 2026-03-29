@@ -299,27 +299,25 @@ export default function PipelinePage() {
         )}
 
         {/* Header with stats */}
-        <div className="max-w-7xl mx-auto mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-bold text-text">Sales Pipeline</h1>
-            <p className="text-xs text-muted mt-0.5">Drag cards between columns or click to move</p>
+        <div className="max-w-7xl mx-auto mb-5">
+          <div className="flex items-baseline justify-between mb-4">
+            <div>
+              <h1 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>Sales Pipeline</h1>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted)' }}>Drag cards between columns or click to move</p>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="stat-card bg-card border border-border rounded-lg px-4 py-2 flex items-center gap-3">
-              <div className="text-center">
-                <p className="text-lg font-bold text-text">{totalLeads}</p>
-                <p className="text-[10px] text-dim uppercase tracking-wider">Total</p>
-              </div>
-              <div className="w-px h-8 bg-border" />
-              <div className="text-center">
-                <p className="text-lg font-bold text-success">{convertedCount}</p>
-                <p className="text-[10px] text-dim uppercase tracking-wider">Won</p>
-              </div>
-              <div className="w-px h-8 bg-border" />
-              <div className="text-center">
-                <p className="text-lg font-bold text-accent">{conversionRate}%</p>
-                <p className="text-[10px] text-dim uppercase tracking-wider">Rate</p>
-              </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-xl p-4 border" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+              <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-muted)' }}>Total Leads</div>
+              <div className="text-3xl font-extrabold leading-none" style={{ color: 'var(--color-accent)' }}>{totalLeads}</div>
+            </div>
+            <div className="rounded-xl p-4 border" style={{ background: 'var(--color-card)', borderColor: 'rgba(34,197,94,0.2)' }}>
+              <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-muted)' }}>Won</div>
+              <div className="text-3xl font-extrabold leading-none" style={{ color: 'var(--color-success)' }}>{convertedCount}</div>
+            </div>
+            <div className="rounded-xl p-4 border" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+              <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-muted)' }}>Conversion Rate</div>
+              <div className="text-3xl font-extrabold leading-none" style={{ color: 'var(--color-accent)' }}>{conversionRate}%</div>
             </div>
           </div>
         </div>
