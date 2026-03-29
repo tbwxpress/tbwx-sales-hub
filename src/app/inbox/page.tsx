@@ -831,12 +831,12 @@ export default function InboxPage() {
                       <span className="text-sm font-medium text-text truncate">
                         {contact.name || formatPhoneDisplay(contact.phone)}
                       </span>
-                      <span className="text-[10px] text-dim flex-shrink-0 ml-2">
+                      <span className="text-[10px] text-muted flex-shrink-0 ml-2">
                         {formatTime(contact.last_message_at)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between mt-0.5">
-                      <span className="text-xs text-dim truncate">
+                      <span className="text-xs text-muted truncate">
                         {contact.last_direction === 'sent' && (
                           <span className="text-muted mr-0.5">You: </span>
                         )}
@@ -854,10 +854,10 @@ export default function InboxPage() {
                     {/* Tags */}
                     <div className="flex items-center gap-1 mt-1">
                       {contact.is_lead ? (
-                        <span className="text-[9px] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium">Lead</span>
+                        <span className="text-[9px] bg-accent/20 text-accent px-1.5 py-0.5 rounded font-semibold">Lead</span>
                       ) : null}
                       {contact.city && (
-                        <span className="text-[9px] bg-elevated text-dim px-1.5 py-0.5 rounded">{contact.city}</span>
+                        <span className="text-[9px] bg-elevated text-muted px-1.5 py-0.5 rounded font-medium" style={{ border: '1px solid var(--color-border)' }}>{contact.city}</span>
                       )}
                     </div>
                   </div>
@@ -912,12 +912,12 @@ export default function InboxPage() {
                   <div className="text-sm font-semibold text-text truncate">
                     {activeContact?.name || formatPhoneDisplay(activePhone)}
                   </div>
-                  <div className="text-[11px] text-dim flex items-center gap-2 flex-wrap">
+                  <div className="text-[11px] text-muted flex items-center gap-2 flex-wrap">
                     <span>+{activePhone}</span>
                     {activeContact?.is_lead ? (
-                      <span className="bg-accent/15 text-accent px-1.5 py-0.5 rounded text-[9px] font-medium">Lead</span>
+                      <span className="bg-accent/20 text-accent px-1.5 py-0.5 rounded text-[9px] font-semibold">Lead</span>
                     ) : null}
-                    {activeContact?.city && <span>{activeContact.city}</span>}
+                    {activeContact?.city && <span className="font-medium">{activeContact.city}</span>}
                   </div>
                 </div>
 
