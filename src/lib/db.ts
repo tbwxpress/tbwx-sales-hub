@@ -148,6 +148,31 @@ async function ensureInit(): Promise<Client> {
       );
       CREATE INDEX IF NOT EXISTS idx_assignment_log_row ON assignment_log(lead_row);
       CREATE INDEX IF NOT EXISTS idx_assignment_log_phone ON assignment_log(phone);
+
+      CREATE TABLE IF NOT EXISTS voice_agent_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        phone TEXT NOT NULL,
+        lead_id TEXT DEFAULT '',
+        call_sid TEXT DEFAULT '',
+        status TEXT DEFAULT 'initiated',
+        duration_seconds INTEGER DEFAULT 0,
+        interest_level TEXT DEFAULT '',
+        preferred_city TEXT DEFAULT '',
+        callback_time TEXT DEFAULT '',
+        questions TEXT DEFAULT '',
+        summary TEXT DEFAULT '',
+        transcript TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (phone) REFERENCES contacts(phone) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_voice_calls_phone ON voice_agent_calls(phone);
+      CREATE INDEX IF NOT EXISTS idx_voice_calls_sid ON voice_agent_calls(call_sid);
+
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL DEFAULT '',
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
     `)
     _initialized = true
   }
@@ -730,4 +755,104 @@ export async function getAssignmentHistory(leadRow: number) {
     args: [leadRow],
   })
   return serializeRows(result.rows)
+}
+
+// --- Voice Agent Call operations ---
+
+export async function insertVoiceAgentCall(data: {
+  phone: string
+  lead_id?: string
+  call_sid?: string
+  status?: string
+  duration_seconds?: number
+  interest_level?: string
+  preferred_city?: string
+  callback_time?: string
+  questions?: string
+  summary?: string
+  transcript?: string
+}) {
+  const db = await ensureInit()
+  data.phone = normalizePhone(data.phone)
+  const result = await db.execute({
+    sql: `INSERT INTO voice_agent_calls (phone, lead_id, call_sid, status, duration_seconds, interest_level, preferred_city, callback_time, questions, summary, transcript)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      data.phone,
+      data.lead_id || '',
+      data.call_sid || '',
+      data.status || 'initiated',
+      data.duration_seconds || 0,
+      data.interest_level || '',
+      data.preferred_city || '',
+      data.callback_time || '',
+      data.questions || '',
+      data.summary || '',
+      data.transcript || '',
+    ],
+  })
+  return Number(result.lastInsertRowid)
+}
+
+export async function updateVoiceAgentCall(callSid: string, data: {
+  status?: string
+  duration_seconds?: number
+  interest_level?: string
+  preferred_city?: string
+  callback_time?: string
+  questions?: string
+  summary?: string
+  transcript?: string
+}) {
+  const db = await ensureInit()
+  const updates: string[] = []
+  const values: (string | number | null)[] = []
+  if (data.status !== undefined) { updates.push('status = ?'); values.push(data.status) }
+  if (data.duration_seconds !== undefined) { updates.push('duration_seconds = ?'); values.push(data.duration_seconds) }
+  if (data.interest_level !== undefined) { updates.push('interest_level = ?'); values.push(data.interest_level) }
+  if (data.preferred_city !== undefined) { updates.push('preferred_city = ?'); values.push(data.preferred_city) }
+  if (data.callback_time !== undefined) { updates.push('callback_time = ?'); values.push(data.callback_time) }
+  if (data.questions !== undefined) { updates.push('questions = ?'); values.push(data.questions) }
+  if (data.summary !== undefined) { updates.push('summary = ?'); values.push(data.summary) }
+  if (data.transcript !== undefined) { updates.push('transcript = ?'); values.push(data.transcript) }
+  if (updates.length > 0) {
+    values.push(callSid)
+    await db.execute({ sql: `UPDATE voice_agent_calls SET ${updates.join(', ')} WHERE call_sid = ?`, args: values })
+  }
+}
+
+export async function getVoiceAgentCalls(phone: string) {
+  const db = await ensureInit()
+  const norm = normalizePhone(phone)
+  const result = await db.execute({
+    sql: 'SELECT * FROM voice_agent_calls WHERE phone = ? OR phone = ? ORDER BY created_at DESC',
+    args: [norm, phone],
+  })
+  return serializeRows(result.rows)
+}
+
+export async function getVoiceAgentCallBySid(callSid: string) {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT * FROM voice_agent_calls WHERE call_sid = ? LIMIT 1',
+    args: [callSid],
+  })
+  return result.rows[0] ? serializeRow(result.rows[0]) : null
+}
+
+// --- Settings operations ---
+
+export async function getSetting(key: string): Promise<string | null> {
+  const db = await ensureInit()
+  const result = await db.execute({ sql: 'SELECT value FROM settings WHERE key = ?', args: [key] })
+  return result.rows[0] ? String(result.rows[0].value) : null
+}
+
+export async function setSetting(key: string, value: string) {
+  const db = await ensureInit()
+  await db.execute({
+    sql: `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+          ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+    args: [key, value, value],
+  })
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import type { Lead, Message, QuickReply, ApiResponse } from '@/lib/types'
+import VoiceAgentCard from '@/components/VoiceAgentCard'
 
 // Status and priority options
 const STATUSES = ['NEW', 'DECK_SENT', 'CONTACTED', 'REPLIED', 'INTERESTED', 'HOT', 'CONVERTED', 'LOST'] as const
@@ -693,6 +694,13 @@ export default function LeadDetailPage() {
                 <p className="text-xs text-dim">Loading...</p>
               )}
             </div>
+
+            {/* AI Voice Agent Card */}
+            <VoiceAgentCard
+              phone={lead.phone}
+              leadName={lead.full_name}
+              leadId={String(lead.row_number || '')}
+            />
 
             {/* Manage Card */}
             <div className="bg-card rounded-lg border border-border p-4 space-y-4">

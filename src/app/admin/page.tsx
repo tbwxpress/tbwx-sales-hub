@@ -22,6 +22,10 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null)
 
+  // Voice agent settings
+  const [autoCallEnabled, setAutoCallEnabled] = useState(false)
+  const [togglingAutoCall, setTogglingAutoCall] = useState(false)
+
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
       if (d.success) {
@@ -30,7 +34,30 @@ export default function AdminPage() {
       }
     })
     fetchUsers()
+    fetchVoiceAgentSettings()
   }, [router])
+
+  async function fetchVoiceAgentSettings() {
+    try {
+      const res = await fetch('/api/settings/voice-agent')
+      const data = await res.json()
+      setAutoCallEnabled(data.auto_call_enabled || false)
+    } catch { /* silent */ }
+  }
+
+  async function toggleAutoCall() {
+    setTogglingAutoCall(true)
+    try {
+      const res = await fetch('/api/settings/voice-agent', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !autoCallEnabled }),
+      })
+      const data = await res.json()
+      if (data.success) setAutoCallEnabled(data.auto_call_enabled)
+    } catch { /* silent */ }
+    setTogglingAutoCall(false)
+  }
 
   async function fetchUsers() {
     const res = await fetch('/api/users')
@@ -189,6 +216,60 @@ export default function AdminPage() {
             ))}
           </div>
         )}
+
+        {/* Voice Agent Settings */}
+        <div className="mt-8 mb-6">
+          <h2 className="text-lg font-bold text-text mb-1">AI Voice Agent</h2>
+          <p className="text-sm text-dim mb-4">Configure the AI calling agent for franchise leads</p>
+
+          <div className="bg-card border border-border rounded-xl p-5 space-y-5">
+            {/* Auto-call toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/15 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-text">Auto-call new leads</p>
+                  <p className="text-xs text-dim mt-0.5">
+                    When enabled, the AI agent automatically calls every new lead that comes in
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={toggleAutoCall}
+                disabled={togglingAutoCall}
+                className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
+                  autoCallEnabled ? 'bg-purple-500' : 'bg-border'
+                } disabled:opacity-50`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
+                  autoCallEnabled ? 'translate-x-6' : 'translate-x-0.5'
+                }`} />
+              </button>
+            </div>
+
+            {/* Status indicator */}
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-elevated border border-border">
+              <span className={`w-2 h-2 rounded-full ${autoCallEnabled ? 'bg-purple-400 animate-pulse' : 'bg-zinc-500'}`} />
+              <span className="text-xs text-muted">
+                {autoCallEnabled
+                  ? 'AI agent will call new leads automatically'
+                  : 'Auto-calling is off — use the manual "Call via AI" button on each lead'}
+              </span>
+            </div>
+
+            {/* Info box */}
+            <div className="bg-purple-500/5 border border-purple-500/15 rounded-lg p-3">
+              <p className="text-xs text-purple-300/80 leading-relaxed">
+                The AI voice agent introduces TBWX, answers franchise questions, checks if the WhatsApp deck was received,
+                and gauges interest level. Call summaries and transcripts are logged on each lead&apos;s detail page.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
       <PoweredBy />
     </div>
