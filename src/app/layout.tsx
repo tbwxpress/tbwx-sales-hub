@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { BRAND } from '@/config/client'
+import CommandPalette from '@/components/CommandPalette'
 
 export const metadata: Metadata = {
   title: BRAND.name,
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem('theme');if(t)document.documentElement.className=t}catch(e){}` }} />
       </head>
       <body className="bg-bg text-text min-h-screen antialiased transition-colors duration-200">
+        <CommandPalette />
         {children}
       </body>
     </html>

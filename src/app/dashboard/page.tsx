@@ -643,6 +643,33 @@ export default function DashboardPage() {
     }
   }
 
+  const [bulkStatus, setBulkStatus] = useState('')
+
+  async function bulkStatusChange() {
+    if (!bulkStatus || selected.size === 0) return
+    setAssigning(true)
+    try {
+      const ids = Array.from(selected)
+      await Promise.all(ids.map(id =>
+        fetch(`/api/leads/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lead_status: bulkStatus }),
+        })
+      ))
+      setLeads(prev => prev.map(l =>
+        selected.has(l.row_number) ? { ...l, lead_status: bulkStatus } : l
+      ))
+      setToast(`${selected.size} leads updated to ${bulkStatus.replace('_', ' ')}`)
+      setSelected(new Set())
+      setBulkStatus('')
+      fetchStats()
+    } catch {
+      setError('Bulk status update failed')
+    }
+    setAssigning(false)
+  }
+
   async function bulkAssign() {
     if (!assignTo || selected.size === 0) return
     setAssigning(true)
@@ -1436,7 +1463,8 @@ export default function DashboardPage() {
                 lead{selected.size !== 1 ? 's' : ''} selected
               </span>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Bulk Assign */}
                 <select
                   value={assignTo}
                   onChange={e => setAssignTo(e.target.value)}
@@ -1450,17 +1478,39 @@ export default function DashboardPage() {
                     : user && <option value={user.name}>{user.name}</option>
                   }
                 </select>
-
                 <button
                   onClick={bulkAssign}
                   disabled={!assignTo || assigning}
                   className="bg-accent hover:bg-accent-hover disabled:bg-accent/30 disabled:cursor-not-allowed text-[#1a1209] text-sm font-semibold px-4 py-1.5 rounded-md transition-colors"
                 >
-                  {assigning ? 'Assigning...' : 'Assign'}
+                  {assigning ? 'Working...' : 'Assign'}
                 </button>
 
+                <div className="w-px h-6 bg-border mx-1" />
+
+                {/* Bulk Status Change */}
+                <select
+                  value={bulkStatus}
+                  onChange={e => setBulkStatus(e.target.value)}
+                  className="bg-card border border-border rounded-md px-3 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50"
+                >
+                  <option value="">Change status...</option>
+                  {STATUS_OPTIONS.map(s => (
+                    <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                  ))}
+                </select>
                 <button
-                  onClick={() => setSelected(new Set())}
+                  onClick={bulkStatusChange}
+                  disabled={!bulkStatus || assigning}
+                  className="bg-accent hover:bg-accent-hover disabled:bg-accent/30 disabled:cursor-not-allowed text-[#1a1209] text-sm font-semibold px-4 py-1.5 rounded-md transition-colors"
+                >
+                  {assigning ? 'Working...' : 'Update'}
+                </button>
+
+                <div className="w-px h-6 bg-border mx-1" />
+
+                <button
+                  onClick={() => { setSelected(new Set()); setBulkStatus(''); setAssignTo('') }}
                   className="text-sm text-dim hover:text-text transition-colors"
                 >
                   Cancel

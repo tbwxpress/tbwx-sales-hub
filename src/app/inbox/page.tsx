@@ -83,6 +83,10 @@ export default function InboxPage() {
   const [newChatName, setNewChatName] = useState('')
   // Lead details panel
   const [showLeadDetails, setShowLeadDetails] = useState(false)
+  // Full lead info from API
+  interface LeadInfo { row_number: number; full_name: string; lead_status: string; lead_priority: string; assigned_to: string; email: string; city: string; state: string; next_followup: string; lead_score?: number }
+  const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null)
+  const [updatingLead, setUpdatingLead] = useState(false)
   // Call logging
   const [showCallModal, setShowCallModal] = useState(false)
   const [callDuration, setCallDuration] = useState('')
@@ -256,6 +260,7 @@ export default function InboxPage() {
     setMsgLoading(true)
     prevMsgCountRef.current = 0
     setShowSidebar(false) // Hide sidebar on mobile
+    setLeadInfo(null)
     fetchMessages(contact.phone).finally(() => setMsgLoading(false))
     // Fetch call logs + notes
     fetch(`/api/inbox/${contact.phone}/calls`)
@@ -266,6 +271,36 @@ export default function InboxPage() {
       .then(r => r.json())
       .then(d => { if (d.success) setLeadNotes(d.data) })
       .catch(() => {})
+    // Fetch lead info if this is a lead
+    if (contact.is_lead && contact.lead_row) {
+      fetch(`/api/leads/${contact.lead_row}`)
+        .then(r => r.json())
+        .then(d => { if (d.success) setLeadInfo(d.data) })
+        .catch(() => {})
+    }
+  }
+
+  // Update lead field from inbox
+  async function updateLeadFromInbox(field: string, value: string) {
+    if (!leadInfo) return
+    setUpdatingLead(true)
+    try {
+      const res = await fetch(`/api/leads/${leadInfo.row_number}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setLeadInfo(prev => prev ? { ...prev, [field]: value } : null)
+        setToast(`${field === 'lead_status' ? 'Status' : 'Priority'} updated`)
+      } else {
+        setToast(data.error || 'Update failed')
+      }
+    } catch {
+      setToast('Update failed')
+    }
+    setUpdatingLead(false)
   }
 
   // Send message
@@ -960,13 +995,59 @@ export default function InboxPage() {
                     </div>
                     <div>
                       <span className="text-dim block text-[10px] uppercase tracking-wider">City</span>
-                      <span className="text-text font-medium">{activeContact.city || 'N/A'}</span>
+                      <span className="text-text font-medium">{leadInfo?.city || activeContact.city || 'N/A'}{leadInfo?.state ? `, ${leadInfo.state}` : ''}</span>
                     </div>
                     <div>
                       <span className="text-dim block text-[10px] uppercase tracking-wider">Type</span>
                       <span className="text-text font-medium">{activeContact.is_lead ? 'Lead' : 'Contact'}</span>
                     </div>
                   </div>
+
+                  {/* Lead-specific info: Status, Priority, Assigned, Score */}
+                  {leadInfo && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs mt-3 pt-3 border-t border-border/50">
+                      <div>
+                        <span className="text-dim block text-[10px] uppercase tracking-wider mb-1">Status</span>
+                        <select
+                          value={leadInfo.lead_status}
+                          onChange={e => updateLeadFromInbox('lead_status', e.target.value)}
+                          disabled={updatingLead}
+                          className="status-select text-[10px]"
+                          style={{ padding: '2px 20px 2px 8px', fontSize: '11px' }}
+                        >
+                          {['NEW','DECK_SENT','REPLIED','CALLING','CALL_DONE','INTERESTED','NEGOTIATION','CONVERTED','DELAYED','LOST'].map(s => (
+                            <option key={s} value={s} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>{s.replace('_', ' ')}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <span className="text-dim block text-[10px] uppercase tracking-wider mb-1">Priority</span>
+                        <select
+                          value={leadInfo.lead_priority || ''}
+                          onChange={e => updateLeadFromInbox('lead_priority', e.target.value)}
+                          disabled={updatingLead}
+                          className="status-select text-[10px]"
+                          style={{ padding: '2px 20px 2px 8px', fontSize: '11px' }}
+                        >
+                          <option value="" style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>—</option>
+                          {['HOT','WARM','COLD'].map(p => (
+                            <option key={p} value={p} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>{p}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <span className="text-dim block text-[10px] uppercase tracking-wider">Assigned</span>
+                        <span className="text-text font-medium">{leadInfo.assigned_to || 'Unassigned'}</span>
+                      </div>
+                      <div>
+                        <span className="text-dim block text-[10px] uppercase tracking-wider">Score</span>
+                        <span className="text-text font-medium">{leadInfo.lead_score ?? '—'}</span>
+                        {leadInfo.next_followup && (
+                          <span className="text-dim block text-[9px] mt-0.5">Follow-up: {new Date(leadInfo.next_followup).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Call Logs */}
                   {callLogs.length > 0 && (

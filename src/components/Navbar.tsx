@@ -219,6 +219,18 @@ export default function Navbar() {
 
           {/* RIGHT: Controls */}
           <div className="flex items-center justify-end gap-2">
+            {/* Search trigger */}
+            <button
+              onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors duration-150"
+              style={{ color: 'var(--color-muted)' }}
+              title="Search (⌘K)"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <kbd className="text-[9px] font-mono px-1 py-0.5 rounded hidden lg:inline" style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)' }}>⌘K</kbd>
+            </button>
             <ThemeToggle />
             {/* Avatar with dropdown */}
             {user && (
