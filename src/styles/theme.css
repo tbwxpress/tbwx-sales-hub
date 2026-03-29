@@ -12,8 +12,8 @@
   --color-border: #3d2e1a;
   --color-border-light: #4d3d28;
   --color-text: #faf5eb;
-  --color-muted: #b8a080;
-  --color-dim: #8c7a60;
+  --color-muted: #cdb898;
+  --color-dim: #a09078;
   --color-accent: #f5c518;
   --color-accent-hover: #e6b800;
   --color-accent-soft: #f5c51820;
@@ -59,8 +59,8 @@ html.dark {
   --color-border: #3d2e1a;
   --color-border-light: #4d3d28;
   --color-text: #faf5eb;
-  --color-muted: #b8a080;
-  --color-dim: #8c7a60;
+  --color-muted: #cdb898;
+  --color-dim: #a09078;
   --color-accent: #f5c518;
   --color-accent-hover: #e6b800;
   --color-accent-soft: #f5c51820;
@@ -97,14 +97,14 @@ html.dark {
 /* ── Light Theme (Warm Parchment) ─────────────────────────── */
 html.light {
   color-scheme: light;
-  --color-bg: #faf6f0;
+  --color-bg: #f8f4ec;
   --color-card: #ffffff;
-  --color-elevated: #f0e8da;
-  --color-border: #ddd0be;
-  --color-border-light: #e8ddd0;
-  --color-text: #2d1f0a;
-  --color-muted: #6e5a40;
-  --color-dim: #8a7558;
+  --color-elevated: #eee6d6;
+  --color-border: #d4c4aa;
+  --color-border-light: #e0d4c0;
+  --color-text: #1a1005;
+  --color-muted: #5a4530;
+  --color-dim: #7a6548;
   --color-accent: #b8932a;
   --color-accent-hover: #9a7600;
   --color-accent-soft: #b8932a20;
