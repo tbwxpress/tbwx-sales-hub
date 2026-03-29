@@ -319,7 +319,7 @@ export default function Navbar() {
                   <path strokeLinecap="round" strokeLinejoin="round" d={link.icon} />
                 </svg>
                 {link.label}
-                {'badge' in link && link.badge != null && link.badge > 0 && (
+                {'badge' in link && typeof link.badge === 'number' && link.badge > 0 && (
                   <span className="ml-auto bg-[#25d366] text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
                     {link.badge > 9 ? '9+' : link.badge}
                   </span>

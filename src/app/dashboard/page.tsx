@@ -196,6 +196,188 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   )
 }
 
+// ─── Admin Header Component ──────────────────────────────────────────────────
+
+function AdminHeader({
+  user,
+  stats,
+  leads,
+  agents,
+}: {
+  user: SessionUser
+  stats: Stats | null
+  leads: Lead[]
+  agents: AgentUser[]
+}) {
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })
+
+  const featuredStats = [
+    {
+      label: 'Total Leads',
+      value: stats?.total ?? 0,
+      color: 'var(--color-accent)',
+      sub: `${stats?.new ?? 0} new today`,
+    },
+    {
+      label: 'Replied',
+      value: stats?.replied ?? 0,
+      color: 'var(--color-success)',
+      sub: 'awaiting response',
+    },
+    {
+      label: 'Hot Leads',
+      value: leads.filter(l => l.lead_priority === 'HOT' && !['CONVERTED', 'LOST'].includes(l.lead_status)).length,
+      color: 'var(--color-hot)',
+      sub: 'need attention now',
+    },
+    {
+      label: 'Converted',
+      value: stats?.converted ?? 0,
+      color: 'var(--color-status-converted)',
+      sub: `${stats?.lost ?? 0} lost`,
+    },
+  ]
+
+  const agentPerf = agents.map(agent => {
+    const assigned = leads.filter(l => l.assigned_to?.toLowerCase() === agent.name.toLowerCase())
+    const contacted = assigned.filter(l => !['NEW', 'DECK_SENT'].includes(l.lead_status))
+    const pct = assigned.length > 0 ? Math.round((contacted.length / assigned.length) * 100) : 0
+    return { name: agent.name, pct, contacted: contacted.length, total: assigned.length }
+  }).filter(a => a.total > 0).sort((a, b) => b.pct - a.pct)
+
+  const staleLeads = leads.filter(l => {
+    if (['CONVERTED', 'LOST', 'DELAYED'].includes(l.lead_status)) return false
+    if (!l.next_followup) return false
+    const daysPast = (Date.now() - new Date(l.next_followup).getTime()) / (1000 * 60 * 60 * 24)
+    return daysPast > 3
+  }).slice(0, 5)
+
+  return (
+    <div className="mb-6">
+      {/* Greeting */}
+      <div className="flex items-baseline justify-between mb-5">
+        <div>
+          <h1 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>
+            {greeting}, {user.name} 👋
+          </h1>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted)' }}>{today}</p>
+        </div>
+      </div>
+
+      {/* 4 Featured Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        {featuredStats.map(stat => (
+          <div
+            key={stat.label}
+            className="rounded-xl p-4 border"
+            style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}
+          >
+            <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-muted)' }}>
+              {stat.label}
+            </div>
+            <div className="text-3xl font-extrabold leading-none mb-1.5" style={{ color: stat.color }}>
+              {stat.value}
+            </div>
+            <div className="text-[10px]" style={{ color: 'var(--color-dim)' }}>{stat.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Two-panel row: Agent Performance + Stale Leads */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+
+        {/* Agent Performance (wider) */}
+        <div
+          className="lg:col-span-3 rounded-xl p-4 border"
+          style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}
+        >
+          <div className="text-[9px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-muted)' }}>
+            Agent Performance
+          </div>
+          {agentPerf.length === 0 ? (
+            <p className="text-xs" style={{ color: 'var(--color-dim)' }}>No agent data yet</p>
+          ) : (
+            <div className="space-y-3">
+              {agentPerf.map(agent => (
+                <div key={agent.name} className="flex items-center gap-3">
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+                    style={{ background: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}
+                  >
+                    {agent.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium truncate" style={{ color: 'var(--color-text)' }}>{agent.name}</span>
+                      <span className="text-[10px] ml-2 shrink-0" style={{ color: 'var(--color-muted)' }}>
+                        {agent.contacted}/{agent.total}
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-elevated)' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{
+                          width: `${agent.pct}%`,
+                          background: 'linear-gradient(90deg, var(--color-accent), var(--color-accent-hover))',
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-bold w-10 text-right shrink-0" style={{ color: 'var(--color-accent)' }}>
+                    {agent.pct}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Stale Leads (narrower) */}
+        <div
+          className="lg:col-span-2 rounded-xl p-4 border"
+          style={{
+            background: 'var(--color-card)',
+            borderColor: 'var(--color-border)',
+            borderLeft: '3px solid var(--color-warning)',
+          }}
+        >
+          <div className="text-[9px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-warning)' }}>
+            ⚠ Stale Follow-ups
+          </div>
+          {staleLeads.length === 0 ? (
+            <p className="text-xs" style={{ color: 'var(--color-dim)' }}>All follow-ups are on track</p>
+          ) : (
+            <div className="space-y-2">
+              {staleLeads.map(lead => {
+                const daysPast = Math.floor((Date.now() - new Date(lead.next_followup).getTime()) / (1000 * 60 * 60 * 24))
+                return (
+                  <Link
+                    key={lead.row_number}
+                    href={`/leads/${lead.row_number}`}
+                    className="flex items-center justify-between py-1.5 px-2 rounded-lg transition-colors duration-150"
+                    style={{ background: 'color-mix(in srgb, var(--color-warning) 6%, transparent)' }}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium truncate" style={{ color: 'var(--color-text)' }}>{lead.full_name}</div>
+                      <div className="text-[10px]" style={{ color: 'var(--color-muted)' }}>{lead.city}</div>
+                    </div>
+                    <span className="text-[10px] font-semibold ml-2 shrink-0" style={{ color: 'var(--color-warning)' }}>
+                      {daysPast}d overdue
+                    </span>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -698,35 +880,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ─── Stats Cards ────────────────────────────────────────────── */}
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-dim mb-2">Pipeline Overview</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-6 stagger-children">
-          {statCards.map(card => {
-            const filterValue = STAT_FILTER_MAP[card.label]
-            const isActive = filterValue === '__ALL__'
-              ? !statusFilter && !assignedFilter
-              : statusFilter === filterValue
-            return (
-              <button
-                key={card.label}
-                onClick={() => handleStatClick(card.label)}
-                className={`stat-card card-hover bg-card border rounded-lg px-4 py-3 transition-colors group text-left cursor-pointer ${
-                  isActive
-                    ? 'border-accent/50 ring-1 ring-accent/20'
-                    : 'border-border hover:border-border-light'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-[10px] text-dim uppercase tracking-wider font-medium">{card.label}</p>
-                  <svg className="w-3.5 h-3.5 text-dim group-hover:text-muted transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d={card.icon} />
-                  </svg>
-                </div>
-                <p className={`text-2xl font-bold ${card.color}`}>{card.value}</p>
-              </button>
-            )
-          })}
-        </div>
+        {/* ─── Admin Header ─────────────────────────────────────────── */}
+        <AdminHeader user={user!} stats={stats} leads={leads} agents={agents} />
 
         {/* ─── Filter Bar ─────────────────────────────────────────────── */}
         <div className="flex items-center justify-between mb-2">
