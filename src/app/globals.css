@@ -366,6 +366,15 @@ input:focus, textarea:focus, select:focus {
   .hide-desktop { display: none !important; }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   shadcn/ui Theme Integration
+   ═══════════════════════════════════════════════════════════
+   IMPORTANT: Do NOT redefine --color-card, --color-muted,
+   --color-accent, or --color-border here — those are owned
+   by theme.css (TBWX theme). Only define shadcn-specific
+   variables (primary, secondary, destructive, popover, etc.)
+   ═══════════════════════════════════════════════════════════ */
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
@@ -384,12 +393,12 @@ input:focus, textarea:focus, select:focus {
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
-  --color-border: var(--border);
+  /* --color-border: owned by theme.css */
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
+  /* --color-accent: owned by theme.css */
   --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
+  /* --color-muted: owned by theme.css */
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
@@ -397,7 +406,7 @@ input:focus, textarea:focus, select:focus {
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
+  /* --color-card: owned by theme.css */
   --color-foreground: var(--foreground);
   --color-background: var(--background);
   --radius-sm: calc(var(--radius) * 0.6);
@@ -409,81 +418,72 @@ input:focus, textarea:focus, select:focus {
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ── Light mode (aligned with TBWX Warm Parchment) ────────── */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --background: #f8f4ec;
+  --foreground: #1a1005;
+  --card-foreground: #1a1005;
+  --popover: #ffffff;
+  --popover-foreground: #1a1005;
+  --primary: #b8932a;
+  --primary-foreground: #ffffff;
+  --secondary: #eee6d6;
+  --secondary-foreground: #1a1005;
+  --muted-foreground: #5a4530;
+  --accent-foreground: #1a1005;
+  --destructive: #dc2626;
+  --input: #d4c4aa;
+  --ring: #b8932a;
+  --chart-1: #b8932a;
+  --chart-2: #5a4530;
+  --chart-3: #7a6548;
+  --chart-4: #3d2e1a;
+  --chart-5: #1a1005;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: #f8f4ec;
+  --sidebar-foreground: #1a1005;
+  --sidebar-primary: #b8932a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eee6d6;
+  --sidebar-accent-foreground: #1a1005;
+  --sidebar-border: #d4c4aa;
+  --sidebar-ring: #b8932a;
 }
 
+/* ── Dark mode (aligned with TBWX Warm Brown/Gold/Coffee) ─── */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #1a1209;
+  --foreground: #faf5eb;
+  --card-foreground: #faf5eb;
+  --popover: #241a0e;
+  --popover-foreground: #faf5eb;
+  --primary: #f5c518;
+  --primary-foreground: #1a1209;
+  --secondary: #2e2214;
+  --secondary-foreground: #faf5eb;
+  --muted-foreground: #cdb898;
+  --accent-foreground: #faf5eb;
+  --destructive: #ef4444;
+  --input: #3d2e1a;
+  --ring: #f5c518;
+  --chart-1: #f5c518;
+  --chart-2: #cdb898;
+  --chart-3: #a09078;
+  --chart-4: #3d2e1a;
+  --chart-5: #2e2214;
+  --sidebar: #1a1209;
+  --sidebar-foreground: #faf5eb;
+  --sidebar-primary: #f5c518;
+  --sidebar-primary-foreground: #1a1209;
+  --sidebar-accent: #2e2214;
+  --sidebar-accent-foreground: #faf5eb;
+  --sidebar-border: #3d2e1a;
+  --sidebar-ring: #f5c518;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
   }
   html {
     @apply font-sans;

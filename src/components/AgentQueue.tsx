@@ -14,6 +14,7 @@ interface Lead {
   assigned_to: string
   next_followup: string
   created_time: string
+  notes: string
 }
 
 interface SessionUser {
@@ -308,8 +309,118 @@ export default function AgentQueue({ user }: { user: SessionUser }) {
           </section>
         )}
 
-        {/* All my leads link */}
-        {!loading && (
+        {/* ─── My Leads Summary ──────────────────────────────────── */}
+        {!loading && myLeads.length > 0 && (
+          <section className="mt-5">
+            <div className="flex items-center justify-between mb-2">
+              <h2
+                className="text-[10px] font-semibold uppercase tracking-widest flex items-center gap-1.5"
+                style={{ color: 'var(--color-muted)' }}
+              >
+                <span className="w-2 h-2 rounded-full inline-block" style={{ background: 'var(--color-accent)' }} />
+                My Leads ({myLeads.length})
+              </h2>
+              <Link
+                href="/leads"
+                className="text-[10px] font-semibold transition-colors"
+                style={{ color: 'var(--color-accent)' }}
+              >
+                View all →
+              </Link>
+            </div>
+
+            {/* Stat pills */}
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {[
+                { label: 'New', value: myLeads.filter(l => l.lead_status === 'NEW').length, color: 'var(--color-status-new)' },
+                { label: 'Contacted', value: myLeads.filter(l => !['NEW', 'CONVERTED', 'LOST'].includes(l.lead_status)).length, color: 'var(--color-status-replied)' },
+                { label: 'Converted', value: myLeads.filter(l => l.lead_status === 'CONVERTED').length, color: 'var(--color-status-converted)' },
+                { label: 'Lost', value: myLeads.filter(l => l.lead_status === 'LOST').length, color: 'var(--color-status-lost)' },
+              ].map(s => (
+                <div
+                  key={s.label}
+                  className="rounded-lg p-2.5 border text-center"
+                  style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}
+                >
+                  <div className="text-lg font-bold leading-none mb-0.5" style={{ color: s.color }}>{s.value}</div>
+                  <div className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--color-dim)' }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Recent leads mini-table */}
+            <div
+              className="rounded-xl border overflow-hidden"
+              style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}
+            >
+              <div className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
+                {myLeads.slice(0, 10).map((lead, i) => {
+                  const statusColors: Record<string, string> = {
+                    NEW: 'var(--color-status-new)', DECK_SENT: 'var(--color-status-deck-sent)',
+                    REPLIED: 'var(--color-status-replied)', CALLING: 'var(--color-status-calling)',
+                    CALL_DONE: 'var(--color-status-call-done)', INTERESTED: 'var(--color-status-interested)',
+                    NEGOTIATION: 'var(--color-status-negotiation)', CONVERTED: 'var(--color-status-converted)',
+                    DELAYED: 'var(--color-status-delayed)', LOST: 'var(--color-status-lost)',
+                  }
+                  const sc = statusColors[lead.lead_status] || 'var(--color-muted)'
+                  return (
+                    <Link
+                      key={lead.row_number}
+                      href={`/leads/${lead.row_number}`}
+                      className="flex items-center gap-3 px-4 py-2.5 transition-colors duration-150"
+                      style={{ background: i % 2 === 1 ? 'color-mix(in srgb, var(--color-elevated) 30%, transparent)' : 'transparent' }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium truncate" style={{ color: 'var(--color-text)' }}>
+                            {lead.full_name || 'Unknown'}
+                          </span>
+                          <span
+                            className="text-[9px] font-semibold px-2 py-0.5 rounded-full border shrink-0"
+                            style={{
+                              color: sc,
+                              backgroundColor: `color-mix(in srgb, ${sc} 15%, transparent)`,
+                              borderColor: `color-mix(in srgb, ${sc} 30%, transparent)`,
+                            }}
+                          >
+                            {lead.lead_status.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <div className="text-[10px]" style={{ color: 'var(--color-dim)' }}>
+                          {lead.city} · {timeAgo(lead.created_time)}
+                        </div>
+                        {lead.notes && (
+                          <div
+                            className="text-[10px] mt-0.5 truncate flex items-center gap-1"
+                            style={{ color: 'var(--color-muted)' }}
+                            title={lead.notes}
+                          >
+                            <svg className="w-2.5 h-2.5 shrink-0" style={{ color: 'var(--color-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            {lead.notes}
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+              {myLeads.length > 10 && (
+                <Link
+                  href="/leads"
+                  className="block text-center text-[10px] font-semibold py-2 border-t transition-colors"
+                  style={{ color: 'var(--color-accent)', borderColor: 'var(--color-border)' }}
+                >
+                  +{myLeads.length - 10} more leads →
+                </Link>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* All my leads link (when no leads assigned) */}
+        {!loading && myLeads.length === 0 && (
           <Link
             href="/leads"
             className="block text-center text-xs font-semibold py-3 rounded-xl border transition-colors mt-2"
@@ -319,7 +430,7 @@ export default function AgentQueue({ user }: { user: SessionUser }) {
               background: 'var(--color-card)',
             }}
           >
-            View all my leads →
+            Browse all leads →
           </Link>
         )}
 

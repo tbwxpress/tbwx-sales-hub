@@ -1033,6 +1033,8 @@ export default function DashboardPage() {
             {STATUS_OPTIONS.map(s => (
               <option key={s} value={s}>{s.replace('_', ' ')}</option>
             ))}
+            <option value="__UNASSIGNED__">Unassigned</option>
+            <option value="__OVERDUE__">Overdue Follow-ups</option>
           </select>
 
           {/* Assigned Filter */}
@@ -1182,10 +1184,10 @@ export default function DashboardPage() {
                         </td>
 
                         {/* Phone */}
-                        <td className="px-3 py-2.5 text-muted font-mono text-xs">{lead.phone}</td>
+                        <td className="px-3 py-2.5 text-body font-mono text-xs">{lead.phone}</td>
 
                         {/* City */}
-                        <td className="px-3 py-2.5 text-muted text-xs">
+                        <td className="px-3 py-2.5 text-body text-xs">
                           {lead.city}
                           {lead.state ? `, ${lead.state}` : ''}
                         </td>
@@ -1265,7 +1267,7 @@ export default function DashboardPage() {
                         </td>
 
                         {/* Assigned */}
-                        <td className="px-3 py-2.5 text-muted text-xs">
+                        <td className="px-3 py-2.5 text-body text-xs">
                           {lead.assigned_to || (
                             <span className="text-accent/50 italic">Unassigned</span>
                           )}

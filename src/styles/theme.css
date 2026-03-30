@@ -12,8 +12,9 @@
   --color-border: #3d2e1a;
   --color-border-light: #4d3d28;
   --color-text: #faf5eb;
-  --color-muted: #cdb898;
-  --color-dim: #a09078;
+  --color-body: #e8dcc8;
+  --color-muted: #d9c9a8;
+  --color-dim: #b8a088;
   --color-accent: #f5c518;
   --color-accent-hover: #e6b800;
   --color-accent-soft: #f5c51820;
@@ -59,8 +60,9 @@ html.dark {
   --color-border: #3d2e1a;
   --color-border-light: #4d3d28;
   --color-text: #faf5eb;
-  --color-muted: #cdb898;
-  --color-dim: #a09078;
+  --color-body: #e8dcc8;
+  --color-muted: #d9c9a8;
+  --color-dim: #b8a088;
   --color-accent: #f5c518;
   --color-accent-hover: #e6b800;
   --color-accent-soft: #f5c51820;
