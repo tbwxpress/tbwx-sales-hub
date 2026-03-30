@@ -147,6 +147,11 @@ export default function LeadsPage() {
   const [bulkStatus, setBulkStatus] = useState('')
   const [agents, setAgents] = useState<{ id: string; name: string; active: boolean }[]>([])
 
+  // Add Lead
+  const [showAddLead, setShowAddLead] = useState(false)
+  const [addLeadForm, setAddLeadForm] = useState({ full_name: '', phone: '', email: '', city: '', state: '', model_interest: '', lead_priority: 'WARM', notes: '', source: '' })
+  const [addLeadSaving, setAddLeadSaving] = useState(false)
+
   // ─── Data Fetching ───────────────────────────────────────────────────────
 
   const fetchUser = useCallback(async () => {
@@ -315,6 +320,33 @@ export default function LeadsPage() {
     setAssigning(false)
   }
 
+  async function handleAddLead() {
+    if (!addLeadForm.full_name.trim() || !addLeadForm.phone.trim()) {
+      setError('Name and phone are required')
+      return
+    }
+    setAddLeadSaving(true)
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addLeadForm),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setShowAddLead(false)
+        setAddLeadForm({ full_name: '', phone: '', email: '', city: '', state: '', model_interest: '', lead_priority: 'WARM', notes: '', source: '' })
+        setToast('Lead added successfully')
+        fetchLeads()
+      } else {
+        setError(data.error || 'Failed to add lead')
+      }
+    } catch {
+      setError('Failed to add lead')
+    }
+    setAddLeadSaving(false)
+  }
+
   const assignedNames = [...new Set(leads.map(l => l.assigned_to).filter(Boolean))]
   const canBulkAction = user?.role === 'admin' || user?.can_assign
 
@@ -374,13 +406,24 @@ export default function LeadsPage() {
               {statusFilter && ` matching "${statusFilter.replace('_', ' ')}"`}
             </p>
           </div>
-          <Link
-            href="/dashboard"
-            className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-            style={{ color: 'var(--color-muted)', background: 'var(--color-elevated)' }}
-          >
-            &larr; Dashboard
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowAddLead(true)}
+              className="bg-accent/10 hover:bg-accent/20 text-accent text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              Add Lead
+            </button>
+            <Link
+              href="/dashboard"
+              className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+              style={{ color: 'var(--color-muted)', background: 'var(--color-elevated)' }}
+            >
+              &larr; Dashboard
+            </Link>
+          </div>
         </div>
 
         {/* ─── Filter Bar ───────────────────────────────────────────────── */}
@@ -727,6 +770,81 @@ export default function LeadsPage() {
                   Clear
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Lead Modal */}
+      {showAddLead && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddLead(false)}>
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+              <h2 className="text-base font-semibold text-text">Add New Lead</h2>
+              <button onClick={() => setShowAddLead(false)} className="text-dim hover:text-text transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="text-xs text-dim block mb-1">Full Name <span className="text-danger">*</span></label>
+                  <input type="text" value={addLeadForm.full_name} onChange={e => setAddLeadForm(f => ({ ...f, full_name: e.target.value }))} placeholder="John Doe" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" autoFocus />
+                </div>
+                <div>
+                  <label className="text-xs text-dim block mb-1">Phone <span className="text-danger">*</span></label>
+                  <input type="tel" value={addLeadForm.phone} onChange={e => setAddLeadForm(f => ({ ...f, phone: e.target.value }))} placeholder="9876543210" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-dim block mb-1">Email</label>
+                  <input type="email" value={addLeadForm.email} onChange={e => setAddLeadForm(f => ({ ...f, email: e.target.value }))} placeholder="john@example.com" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-dim block mb-1">City</label>
+                  <input type="text" value={addLeadForm.city} onChange={e => setAddLeadForm(f => ({ ...f, city: e.target.value }))} placeholder="Mumbai" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-dim block mb-1">State</label>
+                  <input type="text" value={addLeadForm.state} onChange={e => setAddLeadForm(f => ({ ...f, state: e.target.value }))} placeholder="Maharashtra" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-dim block mb-1">Interest</label>
+                  <input type="text" value={addLeadForm.model_interest} onChange={e => setAddLeadForm(f => ({ ...f, model_interest: e.target.value }))} placeholder="Kiosk / Shop" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-dim block mb-1">Priority</label>
+                  <select value={addLeadForm.lead_priority} onChange={e => setAddLeadForm(f => ({ ...f, lead_priority: e.target.value }))} className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50">
+                    <option value="HOT">HOT</option>
+                    <option value="WARM">WARM</option>
+                    <option value="COLD">COLD</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-dim block mb-1">Source</label>
+                  <input type="text" value={addLeadForm.source} onChange={e => setAddLeadForm(f => ({ ...f, source: e.target.value }))} placeholder="Referral / Walk-in / Phone Call" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-dim block mb-1">Notes</label>
+                  <textarea value={addLeadForm.notes} onChange={e => setAddLeadForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any notes about this lead..." rows={2} className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50 resize-none" />
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-border flex items-center justify-end gap-3">
+              <button onClick={() => setShowAddLead(false)} className="px-4 py-2 text-sm text-muted hover:text-text transition-colors">Cancel</button>
+              <button
+                onClick={handleAddLead}
+                disabled={addLeadSaving || !addLeadForm.full_name.trim() || !addLeadForm.phone.trim()}
+                className="bg-accent hover:bg-accent-hover text-[#1a1209] px-5 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {addLeadSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-[#1a1209] border-t-transparent rounded-full animate-spin" />
+                    Adding...
+                  </>
+                ) : 'Add Lead'}
+              </button>
             </div>
           </div>
         </div>
