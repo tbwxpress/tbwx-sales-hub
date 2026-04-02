@@ -2,7 +2,7 @@ import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, updateLead, clearLeadRow } from '@/lib/sheets'
-import { logAssignment } from '@/lib/db'
+import { logAssignment, recordLeadClose } from '@/lib/db'
 import { LEAD_STATUSES } from '@/config/client'
 import { computeLeadScore } from '@/lib/scoring'
 
@@ -82,6 +82,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       } else if (body.lead_status === 'CONVERTED' || body.lead_status === 'LOST') {
         body.next_followup = ''
       }
+    }
+
+    // Record SLA close on CONVERTED/LOST
+    if (body.lead_status === 'CONVERTED' || body.lead_status === 'LOST') {
+      try {
+        const leads = await getLeads()
+        const lead = leads.find(l => l.row_number === rowNum)
+        if (lead?.phone) {
+          await recordLeadClose(lead.phone, body.lead_status)
+        }
+      } catch { /* SLA tracking is non-critical */ }
     }
 
     // Log assignment changes

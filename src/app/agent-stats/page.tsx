@@ -27,6 +27,18 @@ interface SessionUser {
   role: string
 }
 
+interface SlaAgent {
+  name: string
+  avg_first_response_hours: number
+  avg_close_days: number
+  leads_tracked: number
+}
+
+interface SlaData {
+  overall: { avg_first_response_hours: number; avg_close_days: number; total: number }
+  agents: SlaAgent[]
+}
+
 interface AgentMetrics {
   name: string
   assigned: number
@@ -182,6 +194,7 @@ export default function AgentStatsPage() {
   const [agents, setAgents] = useState<AgentUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [slaData, setSlaData] = useState<SlaData | null>(null)
 
   // ─── Auth Check ──────────────────────────────────────────────────────────
 
@@ -209,19 +222,23 @@ export default function AgentStatsPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [leadsRes, usersRes] = await Promise.all([
+      const [leadsRes, usersRes, slaRes] = await Promise.all([
         fetch('/api/leads'),
         fetch('/api/users'),
+        fetch('/api/reports/sla'),
       ])
-      const [leadsData, usersData] = await Promise.all([
+      const [leadsData, usersData, slaResult] = await Promise.all([
         leadsRes.json(),
         usersRes.json(),
+        slaRes.json(),
       ])
 
       if (leadsData.success) setLeads(leadsData.data)
       else setError('Failed to load leads')
 
       if (usersData.success) setAgents(usersData.data.filter((u: AgentUser) => u.active))
+
+      if (slaResult.success) setSlaData(slaResult.data)
     } catch {
       setError('Failed to load data')
     }
@@ -498,6 +515,93 @@ export default function AgentStatsPage() {
             </table>
           </div>
         </div>
+        {/* ─── SLA Performance ────────────────────────────────────── */}
+        {slaData && (
+          <div className="mt-6">
+            <h2 className="text-base font-bold text-text mb-3">SLA Performance</h2>
+
+            {/* Overall SLA */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+              <div className="bg-card border border-border rounded-lg px-4 py-3">
+                <p className="text-[10px] text-dim uppercase tracking-wider font-medium mb-1.5">Avg First Response</p>
+                <p className={`text-2xl font-bold ${
+                  slaData.overall.avg_first_response_hours <= 4 ? 'text-status-converted' :
+                  slaData.overall.avg_first_response_hours <= 12 ? 'text-status-delayed' :
+                  'text-status-lost'
+                }`}>
+                  {slaData.overall.avg_first_response_hours > 0 ? `${slaData.overall.avg_first_response_hours}h` : '-'}
+                </p>
+                <p className="text-[10px] text-dim mt-0.5">Target: under 4h</p>
+              </div>
+              <div className="bg-card border border-border rounded-lg px-4 py-3">
+                <p className="text-[10px] text-dim uppercase tracking-wider font-medium mb-1.5">Avg Time to Close</p>
+                <p className={`text-2xl font-bold ${
+                  slaData.overall.avg_close_days <= 15 ? 'text-status-converted' :
+                  slaData.overall.avg_close_days <= 30 ? 'text-status-delayed' :
+                  'text-status-lost'
+                }`}>
+                  {slaData.overall.avg_close_days > 0 ? `${slaData.overall.avg_close_days}d` : '-'}
+                </p>
+                <p className="text-[10px] text-dim mt-0.5">Target: under 30 days</p>
+              </div>
+              <div className="bg-card border border-border rounded-lg px-4 py-3">
+                <p className="text-[10px] text-dim uppercase tracking-wider font-medium mb-1.5">Leads Tracked</p>
+                <p className="text-2xl font-bold text-text">{slaData.overall.total}</p>
+              </div>
+            </div>
+
+            {/* Per-Agent SLA Table */}
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-elevated/50">
+                      <th className="px-4 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Agent</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Avg First Response</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Avg Time to Close</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider">Leads Tracked</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {slaData.agents.map(a => (
+                      <tr key={a.name} className="hover:bg-elevated/30 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+                              <span className="text-xs font-bold text-accent">{a.name.charAt(0).toUpperCase()}</span>
+                            </div>
+                            <span className="font-medium text-text">{a.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <span className={`font-semibold ${
+                            a.avg_first_response_hours === 0 ? 'text-dim' :
+                            a.avg_first_response_hours <= 4 ? 'text-status-converted' :
+                            a.avg_first_response_hours <= 12 ? 'text-status-delayed' :
+                            'text-status-lost'
+                          }`}>
+                            {a.avg_first_response_hours > 0 ? `${a.avg_first_response_hours}h` : '-'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <span className={`font-semibold ${
+                            a.avg_close_days === 0 ? 'text-dim' :
+                            a.avg_close_days <= 15 ? 'text-status-converted' :
+                            a.avg_close_days <= 30 ? 'text-status-delayed' :
+                            'text-status-lost'
+                          }`}>
+                            {a.avg_close_days > 0 ? `${a.avg_close_days}d` : '-'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-center text-muted">{a.leads_tracked}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )

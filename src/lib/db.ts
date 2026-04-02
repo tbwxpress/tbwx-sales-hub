@@ -168,6 +168,17 @@ async function ensureInit(): Promise<Client> {
       CREATE INDEX IF NOT EXISTS idx_voice_calls_phone ON voice_agent_calls(phone);
       CREATE INDEX IF NOT EXISTS idx_voice_calls_sid ON voice_agent_calls(call_sid);
 
+      CREATE TABLE IF NOT EXISTS sla_metrics (
+        phone TEXT PRIMARY KEY,
+        lead_created_at TEXT,
+        first_response_at TEXT,
+        first_response_seconds INTEGER,
+        closed_at TEXT,
+        time_to_close_seconds INTEGER,
+        closed_status TEXT DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS idx_sla_phone ON sla_metrics(phone);
+
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL DEFAULT '',
@@ -855,4 +866,98 @@ export async function setSetting(key: string, value: string) {
           ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
     args: [key, value, value],
   })
+}
+
+// --- SLA Metrics operations ---
+
+export async function recordFirstResponse(phone: string, leadCreatedAt: string) {
+  const db = await ensureInit()
+  const norm = normalizePhone(phone)
+  const now = new Date()
+  const created = new Date(leadCreatedAt)
+  const diffSeconds = Math.max(0, Math.round((now.getTime() - created.getTime()) / 1000))
+
+  // Only insert if no first_response_at exists yet
+  const existing = await db.execute({ sql: 'SELECT first_response_at FROM sla_metrics WHERE phone = ?', args: [norm] })
+  if (existing.rows.length > 0 && existing.rows[0].first_response_at) return // Already recorded
+
+  await db.execute({
+    sql: `INSERT INTO sla_metrics (phone, lead_created_at, first_response_at, first_response_seconds)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(phone) DO UPDATE SET
+            first_response_at = CASE WHEN first_response_at IS NULL THEN ? ELSE first_response_at END,
+            first_response_seconds = CASE WHEN first_response_at IS NULL THEN ? ELSE first_response_seconds END`,
+    args: [norm, leadCreatedAt, now.toISOString(), diffSeconds, now.toISOString(), diffSeconds],
+  })
+}
+
+export async function recordLeadClose(phone: string, status: string) {
+  const db = await ensureInit()
+  const norm = normalizePhone(phone)
+  const now = new Date()
+
+  // Get lead_created_at from existing record or skip
+  const existing = await db.execute({ sql: 'SELECT lead_created_at FROM sla_metrics WHERE phone = ?', args: [norm] })
+  const createdAt = existing.rows.length > 0 ? String(existing.rows[0].lead_created_at || '') : ''
+  const diffSeconds = createdAt ? Math.max(0, Math.round((now.getTime() - new Date(createdAt).getTime()) / 1000)) : 0
+
+  await db.execute({
+    sql: `INSERT INTO sla_metrics (phone, closed_at, time_to_close_seconds, closed_status)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(phone) DO UPDATE SET
+            closed_at = ?, time_to_close_seconds = ?, closed_status = ?`,
+    args: [norm, now.toISOString(), diffSeconds, status, now.toISOString(), diffSeconds, status],
+  })
+}
+
+export async function getSlaForAgentPhones(phones: string[]): Promise<Record<string, unknown>[]> {
+  const db = await ensureInit()
+  if (phones.length === 0) return []
+  const placeholders = phones.map(() => '?').join(',')
+  const normalized = phones.map(normalizePhone)
+  const result = await db.execute({
+    sql: `SELECT * FROM sla_metrics WHERE phone IN (${placeholders})`,
+    args: normalized,
+  })
+  return result.rows.map(serializeRow)
+}
+
+export async function getSlaAverages(): Promise<{ avg_first_response_hours: number; avg_close_days: number; total: number }> {
+  const db = await ensureInit()
+  const result = await db.execute(`
+    SELECT
+      AVG(first_response_seconds) as avg_response,
+      AVG(time_to_close_seconds) as avg_close,
+      COUNT(*) as total
+    FROM sla_metrics WHERE first_response_seconds IS NOT NULL
+  `)
+  const row = result.rows[0]
+  return {
+    avg_first_response_hours: row?.avg_response ? Math.round(Number(row.avg_response) / 3600 * 10) / 10 : 0,
+    avg_close_days: row?.avg_close ? Math.round(Number(row.avg_close) / 86400 * 10) / 10 : 0,
+    total: Number(row?.total || 0),
+  }
+}
+
+export async function getCallCountToday(): Promise<number> {
+  const db = await ensureInit()
+  const today = new Date().toISOString().split('T')[0]
+  const result = await db.execute({
+    sql: `SELECT COUNT(*) as cnt FROM call_logs WHERE created_at >= ?`,
+    args: [today],
+  })
+  return Number(result.rows[0]?.cnt || 0)
+}
+
+export async function getAgentActivityToday(agentName: string): Promise<{ messages_sent: number; calls_logged: number }> {
+  const db = await ensureInit()
+  const today = new Date().toISOString().split('T')[0]
+  const [msgs, calls] = await Promise.all([
+    db.execute({ sql: `SELECT COUNT(*) as cnt FROM messages WHERE direction = 'sent' AND sent_by = ? AND timestamp >= ?`, args: [agentName, today] }),
+    db.execute({ sql: `SELECT COUNT(*) as cnt FROM call_logs WHERE logged_by = ? AND created_at >= ?`, args: [agentName, today] }),
+  ])
+  return {
+    messages_sent: Number(msgs.rows[0]?.cnt || 0),
+    calls_logged: Number(calls.rows[0]?.cnt || 0),
+  }
 }

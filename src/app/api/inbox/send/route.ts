@@ -1,7 +1,8 @@
 import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
-import { upsertContact, insertMessage, getMessages } from '@/lib/db'
+import { upsertContact, insertMessage, getMessages, recordFirstResponse } from '@/lib/db'
+import { getLeads } from '@/lib/sheets'
 import { sendTextMessage, sendTemplate, isWithin24Hours } from '@/lib/whatsapp'
 import { logSentMessage } from '@/lib/sheets'
 
@@ -77,6 +78,18 @@ export async function POST(req: NextRequest) {
         template_used: template_name || '',
         read: true,
       })
+
+      // Record SLA: first manual response time
+      if (!template_name) {
+        try {
+          const leads = await getLeads()
+          const phoneClean = phone.replace(/\D/g, '').slice(-10)
+          const lead = leads.find(l => l.phone.replace(/\D/g, '').slice(-10) === phoneClean)
+          if (lead?.created_time) {
+            await recordFirstResponse(phone, lead.created_time)
+          }
+        } catch { /* SLA tracking is non-critical */ }
+      }
 
       // Also log to Google Sheets for backward compatibility
       await logSentMessage({
