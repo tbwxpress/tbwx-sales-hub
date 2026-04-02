@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { sendTemplate } from '@/lib/whatsapp'
 import { sendFranchiseEmail } from '@/lib/email'
-import { logSentMessage, updateLead } from '@/lib/sheets'
+import { logSentMessage, updateLead, getLeads } from '@/lib/sheets'
 import { upsertContact, insertMessage, getMessages } from '@/lib/db'
+import { getUsers } from '@/lib/users'
 
 /**
  * POST /api/cron/auto-send
@@ -129,24 +130,70 @@ function calcPriority(experience: string, timeline: string): string {
   return 'COLD'
 }
 
+// --- Auto-assignment: HOT → Happy, else round-robin by lowest load ---
+const HOT_LEAD_AGENT = process.env.HOT_LEAD_AGENT || 'Happy'
+const MAX_ACTIVE_PER_AGENT = parseInt(process.env.MAX_ACTIVE_PER_AGENT || '15')
+const ACTIVE_STATUSES = ['NEW', 'DECK_SENT', 'REPLIED', 'CALLING', 'CALL_DONE', 'INTERESTED', 'NEGOTIATION']
+
+async function pickAgent(priority: string): Promise<string> {
+  try {
+    const [users, allLeads] = await Promise.all([getUsers(), getLeads()])
+    const activeAgents = users.filter(u => u.active)
+    if (activeAgents.length === 0) return ''
+
+    // HOT leads go to the designated closer
+    if (priority === 'HOT') {
+      const closer = activeAgents.find(u => u.name === HOT_LEAD_AGENT)
+      if (closer) return closer.name
+    }
+
+    // Count active leads per agent
+    const loadMap = new Map<string, number>()
+    for (const agent of activeAgents) loadMap.set(agent.name, 0)
+    for (const lead of allLeads) {
+      if (lead.assigned_to && loadMap.has(lead.assigned_to) && ACTIVE_STATUSES.includes(lead.lead_status)) {
+        loadMap.set(lead.assigned_to, (loadMap.get(lead.assigned_to) || 0) + 1)
+      }
+    }
+
+    // Round-robin: pick agent with fewest active leads (skip if overloaded)
+    const candidates = activeAgents
+      .map(a => ({ name: a.name, load: loadMap.get(a.name) || 0 }))
+      .filter(a => a.load < MAX_ACTIVE_PER_AGENT)
+      .sort((a, b) => a.load - b.load)
+
+    return candidates.length > 0 ? candidates[0].name : activeAgents[0].name
+  } catch {
+    return '' // Don't block auto-send if assignment fails
+  }
+}
+
 // --- Update the correct tab ---
-async function markContacted(lead: RawLead, waMessageId: string) {
+async function markContacted(lead: RawLead, waMessageId: string, assignedTo: string) {
   const sheets = getSheets()
   const tabName = lead.source_tab === 'old'
     ? (process.env.OLD_LEADS_TAB_NAME || 'Previous campaign leads')
     : (process.env.LEADS_TAB_NAME || 'AI Campaign Leads')
 
-  // Update: lead_status (col V), wa_message_id (col Y), lead_priority (col Z)
+  // Follow-up: DECK_SENT gets +1 day
+  const followup = new Date()
+  followup.setDate(followup.getDate() + 1)
+  const followupStr = followup.toISOString().split('T')[0]
+
+  // Update: lead_status (V), wa_message_id (Y), lead_priority (Z), assigned_to (AA), next_followup (AB)
+  const data = [
+    { range: `${tabName}!V${lead.row_number}`, values: [['DECK_SENT']] },
+    { range: `${tabName}!Y${lead.row_number}`, values: [[waMessageId]] },
+    { range: `${tabName}!Z${lead.row_number}`, values: [[lead.lead_priority]] },
+    { range: `${tabName}!AB${lead.row_number}`, values: [[followupStr]] },
+  ]
+  if (assignedTo) {
+    data.push({ range: `${tabName}!AA${lead.row_number}`, values: [[assignedTo]] })
+  }
+
   await sheets.spreadsheets.values.batchUpdate({
     spreadsheetId: process.env.LEADS_SHEET_ID!,
-    requestBody: {
-      valueInputOption: 'RAW',
-      data: [
-        { range: `${tabName}!V${lead.row_number}`, values: [['DECK_SENT']] },
-        { range: `${tabName}!Y${lead.row_number}`, values: [[waMessageId]] },
-        { range: `${tabName}!Z${lead.row_number}`, values: [[lead.lead_priority]] },
-      ],
-    },
+    requestBody: { valueInputOption: 'RAW', data },
   })
 }
 
@@ -177,6 +224,7 @@ export async function POST(request: NextRequest) {
       phone: string
       name: string
       status: string
+      assigned_to?: string
       wa_message_id?: string
       email_sent?: boolean
       email_error?: string
@@ -238,6 +286,7 @@ export async function POST(request: NextRequest) {
     // 6. Process each lead
     for (const lead of batch) {
       lead.lead_priority = calcPriority(lead.experience, lead.timeline)
+      const assignedTo = await pickAgent(lead.lead_priority)
 
       try {
         // Double-check: skip if we already sent to this phone (prevents duplicates
@@ -249,7 +298,7 @@ export async function POST(request: NextRequest) {
         )
         if (alreadySent) {
           // Also mark sheet if it wasn't updated
-          try { await markContacted(lead, 'already-sent') } catch {}
+          try { await markContacted(lead, 'already-sent', assignedTo) } catch {}
           results.push({
             phone: lead.phone_formatted,
             name: lead.full_name,
@@ -294,8 +343,8 @@ export async function POST(request: NextRequest) {
           // Sales notification failure shouldn't stop lead processing
         }
 
-        // Update Google Sheet — mark as contacted in the correct tab
-        await markContacted(lead, waMessageId)
+        // Update Google Sheet — mark as contacted + assigned in the correct tab
+        await markContacted(lead, waMessageId, assignedTo)
 
         // Log to SQLite DB (inbox)
         await upsertContact(lead.phone_formatted, {
@@ -356,6 +405,7 @@ export async function POST(request: NextRequest) {
           phone: lead.phone_formatted,
           name: lead.full_name,
           status: 'sent',
+          assigned_to: assignedTo || undefined,
           wa_message_id: waMessageId,
           email_sent: emailSent,
           email_error: emailError || undefined,
