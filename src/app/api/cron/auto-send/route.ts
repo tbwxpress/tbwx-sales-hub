@@ -4,8 +4,10 @@ import { google } from 'googleapis'
 import { sendTemplate } from '@/lib/whatsapp'
 import { sendFranchiseEmail } from '@/lib/email'
 import { logSentMessage, updateLead, getLeads } from '@/lib/sheets'
-import { upsertContact, insertMessage, getMessages } from '@/lib/db'
+import { upsertContact, insertMessage, getMessages, getSetting } from '@/lib/db'
 import { getUsers } from '@/lib/users'
+
+const VOICE_AGENT_URL = process.env.VOICE_AGENT_URL || 'https://voice.tbwxpress.com'
 
 /**
  * POST /api/cron/auto-send
@@ -401,6 +403,26 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // Auto-call HOT leads via voice agent (if enabled)
+        let voiceCallTriggered = false
+        if (lead.lead_priority === 'HOT') {
+          try {
+            const autoCallEnabled = await getSetting('voice_agent_auto_call')
+            if (autoCallEnabled === 'true') {
+              const phoneForCall = lead.phone_formatted.startsWith('91')
+                ? `+${lead.phone_formatted}`
+                : `+91${lead.phone_formatted.slice(-10)}`
+              const callRes = await fetch(`${VOICE_AGENT_URL}/call`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phoneForCall, name: lead.full_name, lead_id: String(lead.row_number) }),
+              })
+              const callData = await callRes.json()
+              voiceCallTriggered = !!callData.success
+            }
+          } catch { /* Voice call is non-critical — don't block lead processing */ }
+        }
+
         results.push({
           phone: lead.phone_formatted,
           name: lead.full_name,
@@ -409,7 +431,8 @@ export async function POST(request: NextRequest) {
           wa_message_id: waMessageId,
           email_sent: emailSent,
           email_error: emailError || undefined,
-        })
+          voice_call: voiceCallTriggered || undefined,
+        } as typeof results[number])
       } catch (err) {
         results.push({
           phone: lead.phone_formatted,

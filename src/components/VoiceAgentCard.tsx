@@ -32,6 +32,9 @@ const STATUS_STYLES: Record<string, string> = {
   no_answer: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/25',
   failed: 'bg-red-500/15 text-red-400 border-red-500/25',
   busy: 'bg-orange-500/15 text-orange-400 border-orange-500/25',
+  canceled: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/25',
+  ended_abruptly: 'bg-amber-500/15 text-amber-400 border-amber-500/25',
+  no_engagement: 'bg-orange-500/15 text-orange-400 border-orange-500/25',
 }
 
 const INTEREST_STYLES: Record<string, string> = {
@@ -197,8 +200,10 @@ export default function VoiceAgentCard({ phone, leadName, leadId }: VoiceAgentCa
                 {/* Status indicator dot */}
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                   call.status === 'completed' ? 'bg-emerald-400' :
-                  call.status === 'failed' || call.status === 'no_answer' ? 'bg-red-400' :
+                  call.status === 'ended_abruptly' || call.status === 'no_engagement' ? 'bg-amber-400' :
+                  call.status === 'failed' || call.status === 'no_answer' || call.status === 'busy' ? 'bg-red-400' :
                   call.status === 'initiated' || call.status === 'ringing' ? 'bg-blue-400 animate-pulse' :
+                  call.status === 'canceled' ? 'bg-zinc-400' :
                   'bg-zinc-400'
                 }`} />
 
