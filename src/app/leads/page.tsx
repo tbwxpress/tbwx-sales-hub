@@ -408,6 +408,32 @@ export default function LeadsPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => {
+                const headers = ['Name', 'Phone', 'Email', 'City', 'State', 'Status', 'Priority', 'Assigned', 'Score', 'Created', 'Follow-up']
+                const rows = leads.map(l => [
+                  l.full_name, l.phone, l.email, l.city, l.state,
+                  l.lead_status, l.lead_priority, l.assigned_to,
+                  l.lead_score !== undefined ? String(l.lead_score) : '',
+                  l.created_time, l.next_followup
+                ])
+                const csv = [headers, ...rows].map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\n')
+                const blob = new Blob([csv], { type: 'text/csv' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `tbwx-leads-${new Date().toISOString().split('T')[0]}.csv`
+                a.click()
+                URL.revokeObjectURL(url)
+              }}
+              className="bg-elevated hover:bg-border text-muted text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+              title="Download filtered leads as CSV"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              CSV
+            </button>
+            <button
               onClick={() => setShowAddLead(true)}
               className="bg-accent/10 hover:bg-accent/20 text-accent text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
             >
