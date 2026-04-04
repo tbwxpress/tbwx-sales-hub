@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SUGGESTED_REPLIES } from '@/config/suggested-replies'
 
 interface Contact {
   phone: string
@@ -119,6 +120,34 @@ export default function InboxPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollRef = useRef<NodeJS.Timeout | null>(null)
   const prevMsgCountRef = useRef(0)
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return
+      if (e.key === '/' && activePhone) {
+        e.preventDefault()
+        const searchInput = document.querySelector<HTMLInputElement>('input[placeholder*="Search"]')
+        searchInput?.focus()
+      } else if (e.key === 'r' || e.key === 'R') {
+        if (activePhone) {
+          e.preventDefault()
+          const msgInput = document.querySelector<HTMLInputElement>('input[placeholder*="Type a message"], input[placeholder*="Use a template"]')
+          msgInput?.focus()
+        }
+      } else if (e.key === 'Escape') {
+        if (activePhone) {
+          setShowSidebar(true)
+          setActivePhone(null)
+          setActiveContact(null)
+          setMessages([])
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [activePhone])
 
   // Request notification permission on mount
   useEffect(() => {
@@ -1256,6 +1285,27 @@ export default function InboxPage() {
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Suggested Replies */}
+              {activeContact?.is_lead && leadInfo?.lead_status && SUGGESTED_REPLIES[leadInfo.lead_status] && (
+                <div className="border-t border-border bg-card/50 px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto">
+                  <span className="text-[9px] text-dim uppercase tracking-wider flex-shrink-0">Suggest:</span>
+                  {SUGGESTED_REPLIES[leadInfo.lead_status].map((sr, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setInputText(
+                        sr.message
+                          .replace(/\{name\}/g, activeContact?.name || 'there')
+                          .replace(/\{city\}/g, leadInfo?.city || activeContact?.city || 'your city')
+                      )}
+                      className="text-[10px] bg-accent/10 hover:bg-accent/20 text-accent px-2 py-1 rounded-full transition-colors whitespace-nowrap flex-shrink-0"
+                    >
+                      {sr.label}
+                    </button>
+                  ))}
                 </div>
               )}
 

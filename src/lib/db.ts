@@ -137,6 +137,16 @@ async function ensureInit(): Promise<Client> {
       );
       CREATE INDEX IF NOT EXISTS idx_drip_phone ON drip_state(phone);
 
+      CREATE TABLE IF NOT EXISTS drip_sequences (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        priority_band TEXT NOT NULL CHECK(priority_band IN ('HOT','WARM','COLD')),
+        steps TEXT NOT NULL DEFAULT '[]',
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
       CREATE TABLE IF NOT EXISTS assignment_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         lead_row INTEGER NOT NULL,
@@ -185,6 +195,10 @@ async function ensureInit(): Promise<Client> {
         updated_at TEXT DEFAULT (datetime('now'))
       );
     `)
+
+    // Additive migrations (try-catch for existing DBs)
+    try { await db.execute('ALTER TABLE drip_state ADD COLUMN resumed_at TEXT') } catch { /* column may already exist */ }
+
     _initialized = true
   }
   return db
@@ -960,4 +974,29 @@ export async function getAgentActivityToday(agentName: string): Promise<{ messag
     messages_sent: Number(msgs.rows[0]?.cnt || 0),
     calls_logged: Number(calls.rows[0]?.cnt || 0),
   }
+}
+
+// --- Drip Sequences CRUD ---
+
+export async function getDripSequences(): Promise<Record<string, unknown>[]> {
+  const db = await ensureInit()
+  const result = await db.execute('SELECT * FROM drip_sequences ORDER BY priority_band, created_at')
+  return result.rows.map(serializeRow)
+}
+
+export async function upsertDripSequence(data: { id: string; name: string; priority_band: string; steps: string; active?: boolean }) {
+  const db = await ensureInit()
+  await db.execute({
+    sql: `INSERT INTO drip_sequences (id, name, priority_band, steps, active, updated_at)
+          VALUES (?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(id) DO UPDATE SET
+            name = ?, priority_band = ?, steps = ?, active = ?, updated_at = datetime('now')`,
+    args: [data.id, data.name, data.priority_band, data.steps, data.active !== false ? 1 : 0,
+           data.name, data.priority_band, data.steps, data.active !== false ? 1 : 0],
+  })
+}
+
+export async function deleteDripSequence(id: string) {
+  const db = await ensureInit()
+  await db.execute({ sql: 'DELETE FROM drip_sequences WHERE id = ?', args: [id] })
 }

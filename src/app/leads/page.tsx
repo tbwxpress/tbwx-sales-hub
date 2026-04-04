@@ -229,6 +229,22 @@ export default function LeadsPage() {
     fetchLeads()
   }, [search, statusFilter, assignedFilter, sortBy, fetchLeads, user])
 
+  // ─── Keyboard Shortcuts ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return
+      if (e.key === '/') {
+        e.preventDefault()
+        const searchInput = document.querySelector<HTMLInputElement>('input[placeholder*="Search name"]')
+        searchInput?.focus()
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [])
+
   // ─── Handlers ────────────────────────────────────────────────────────────
 
   function clearFilters() {
