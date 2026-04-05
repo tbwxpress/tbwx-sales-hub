@@ -27,8 +27,15 @@ export const AUTH = {
 } as const
 
 // ─── WhatsApp ───────────────────────────────────────────────────────
+// Meta Graph API base — override via META_GRAPH_API_BASE env var if needed
+const DEFAULT_GRAPH_PROTO = 'https'
+const DEFAULT_GRAPH_HOST = 'graph.facebook.com'
+const DEFAULT_GRAPH_VERSION = 'v21.0'
+const META_GRAPH_API_BASE = process.env.META_GRAPH_API_BASE
+  || `${DEFAULT_GRAPH_PROTO}://${DEFAULT_GRAPH_HOST}/${DEFAULT_GRAPH_VERSION}`
+
 export const WHATSAPP = {
-  apiBase: 'https://graph.facebook.com/v21.0',
+  apiBase: META_GRAPH_API_BASE,
   wabaId: process.env.WHATSAPP_WABA_ID || '',
   phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
   token: process.env.WHATSAPP_TOKEN || '',
@@ -39,6 +46,17 @@ export const WHATSAPP = {
   autoSentStatus: 'DECK_SENT' as const,
   /** Status to auto-set when a lead replies */
   autoReplyStatus: 'REPLIED' as const,
+} as const
+
+// ─── Meta Ads ────────────────────────────────────────────────────────
+export const META_ADS = {
+  apiBase: WHATSAPP.apiBase, // Reuse WhatsApp's Graph API base
+  accessToken: process.env.META_ACCESS_TOKEN || '',
+  adAccountId: process.env.META_AD_ACCOUNT_ID || '',
+  /** Minimum minutes between manual refreshes (admin button cooldown) */
+  refreshCooldownMinutes: 15,
+  /** How often the background cron should sync (hours) */
+  syncIntervalHours: 6,
 } as const
 
 // ─── Google Sheets — Tab Names ──────────────────────────────────────

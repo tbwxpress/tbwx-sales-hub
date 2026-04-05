@@ -189,6 +189,12 @@ async function ensureInit(): Promise<Client> {
       );
       CREATE INDEX IF NOT EXISTS idx_sla_phone ON sla_metrics(phone);
 
+      CREATE TABLE IF NOT EXISTS meta_ads_snapshots (
+        snapshot_type TEXT PRIMARY KEY,
+        data TEXT NOT NULL DEFAULT '',
+        fetched_at TEXT DEFAULT (datetime('now'))
+      );
+
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL DEFAULT '',
@@ -999,4 +1005,36 @@ export async function upsertDripSequence(data: { id: string; name: string; prior
 export async function deleteDripSequence(id: string) {
   const db = await ensureInit()
   await db.execute({ sql: 'DELETE FROM drip_sequences WHERE id = ?', args: [id] })
+}
+
+// --- Meta Ads Snapshot Cache ---
+
+export async function getMetaAdsSnapshot(type: string = 'full'): Promise<{ data: unknown; fetched_at: string } | null> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT data, fetched_at FROM meta_ads_snapshots WHERE snapshot_type = ?',
+    args: [type],
+  })
+  if (result.rows.length === 0) return null
+  const row = result.rows[0]
+  try {
+    return {
+      data: JSON.parse(String(row.data || 'null')),
+      fetched_at: String(row.fetched_at || ''),
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function setMetaAdsSnapshot(type: string, data: unknown) {
+  const db = await ensureInit()
+  const json = JSON.stringify(data)
+  const now = new Date().toISOString()
+  await db.execute({
+    sql: `INSERT INTO meta_ads_snapshots (snapshot_type, data, fetched_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(snapshot_type) DO UPDATE SET data = ?, fetched_at = ?`,
+    args: [type, json, now, json, now],
+  })
 }

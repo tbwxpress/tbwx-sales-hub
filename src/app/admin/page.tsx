@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
+import MetaAdsDashboard from '@/components/MetaAdsDashboard'
 
 interface User {
   id: string; name: string; email: string; role: string;
@@ -216,6 +217,13 @@ export default function AdminPage() {
             ))}
           </div>
         )}
+
+        {/* Meta Ads Dashboard */}
+        <div className="mt-8 mb-6">
+          <h2 className="text-lg font-bold text-text mb-1">Meta Ads</h2>
+          <p className="text-sm text-dim mb-4">Campaign performance from your Meta ad account</p>
+          <MetaAdsDashboard />
+        </div>
 
         {/* Voice Agent Settings */}
         <div className="mt-8 mb-6">
