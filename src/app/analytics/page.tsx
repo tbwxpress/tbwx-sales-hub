@@ -3,10 +3,26 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import IndiaHeatmap from '@/components/IndiaHeatmap'
 
 interface FunnelItem { stage: string; count: number; pct: number; dropoff: number }
 interface SourceItem { source: string; count: number; pct: number }
 interface ScoreItem { range: string; count: number }
+
+interface CityAgent { name: string; total: number; converted: number; interested: number; conversionRate: number }
+interface CityData {
+  name: string; state: string; lat: number; lng: number
+  total: number; converted: number; interested: number; lost: number
+  conversionRate: number; agents: CityAgent[]
+}
+interface StateData { name: string; total: number; converted: number; interested: number; conversionRate: number }
+interface RegionsData {
+  cities: CityData[]
+  states: StateData[]
+  unmatched: { name: string; count: number }[]
+  totalLeads: number
+  totalMatched: number
+}
 
 interface AnalyticsData {
   summary: { totalLeads: number; activeLeads: number; converted: number; conversionRate: number }
@@ -33,6 +49,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function AnalyticsPage() {
   const router = useRouter()
   const [data, setData] = useState<AnalyticsData | null>(null)
+  const [regions, setRegions] = useState<RegionsData | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -42,9 +59,16 @@ export default function AnalyticsPage() {
         const authData = await authRes.json()
         if (!authData.success) { router.push('/login'); return }
 
-        const res = await fetch('/api/analytics')
-        const d = await res.json()
-        if (d.success) setData(d.data)
+        const [analyticsRes, regionsRes] = await Promise.all([
+          fetch('/api/analytics'),
+          fetch('/api/analytics/regions'),
+        ])
+        const [analyticsData, regionsResult] = await Promise.all([
+          analyticsRes.json(),
+          regionsRes.json(),
+        ])
+        if (analyticsData.success) setData(analyticsData.data)
+        if (regionsResult.success) setRegions(regionsResult.data)
       } catch { /* ignore */ }
       setLoading(false)
     }
@@ -232,6 +256,112 @@ export default function AnalyticsPage() {
             </div>
           </div>
         </div>
+
+        {/* ─── India Heatmap + Regional Analysis ──────────────────────────── */}
+        {regions && regions.cities.length > 0 && (
+          <div className="mt-6 space-y-4">
+            <IndiaHeatmap cities={regions.cities} />
+
+            {/* Top States Table */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-card border border-border rounded-lg p-5">
+                <h3 className="text-sm font-bold text-text mb-3">Top States by Volume</h3>
+                <div className="bg-elevated/30 border border-border rounded overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border/50">
+                        <th className="text-left px-3 py-2 text-[10px] font-semibold text-dim uppercase tracking-wider">State</th>
+                        <th className="text-right px-3 py-2 text-[10px] font-semibold text-dim uppercase tracking-wider">Leads</th>
+                        <th className="text-right px-3 py-2 text-[10px] font-semibold text-dim uppercase tracking-wider">Interested</th>
+                        <th className="text-right px-3 py-2 text-[10px] font-semibold text-dim uppercase tracking-wider">Converted</th>
+                        <th className="text-right px-3 py-2 text-[10px] font-semibold text-dim uppercase tracking-wider">Conv. %</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/30">
+                      {regions.states.slice(0, 10).map(s => (
+                        <tr key={s.name} className="hover:bg-elevated/50 transition-colors">
+                          <td className="px-3 py-2 text-text font-medium">{s.name}</td>
+                          <td className="px-3 py-2 text-right text-muted">{s.total}</td>
+                          <td className="px-3 py-2 text-right text-muted">{s.interested}</td>
+                          <td className="px-3 py-2 text-right text-muted">{s.converted}</td>
+                          <td className="px-3 py-2 text-right">
+                            <span className={`font-semibold ${
+                              s.conversionRate >= 20 ? 'text-status-converted' :
+                              s.conversionRate >= 10 ? 'text-status-interested' :
+                              s.conversionRate > 0 ? 'text-status-delayed' :
+                              'text-dim'
+                            }`}>
+                              {s.conversionRate}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[10px] text-dim mt-2">
+                  {regions.totalMatched} of {regions.totalLeads} leads mapped to known cities
+                  {regions.unmatched.length > 0 && ` · ${regions.unmatched.length} unknown city names`}
+                </p>
+              </div>
+
+              {/* Top Cities */}
+              <div className="bg-card border border-border rounded-lg p-5">
+                <h3 className="text-sm font-bold text-text mb-3">Top Cities by Volume</h3>
+                <div className="bg-elevated/30 border border-border rounded overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border/50">
+                        <th className="text-left px-3 py-2 text-[10px] font-semibold text-dim uppercase tracking-wider">City</th>
+                        <th className="text-right px-3 py-2 text-[10px] font-semibold text-dim uppercase tracking-wider">Leads</th>
+                        <th className="text-right px-3 py-2 text-[10px] font-semibold text-dim uppercase tracking-wider">Converted</th>
+                        <th className="text-right px-3 py-2 text-[10px] font-semibold text-dim uppercase tracking-wider">Conv. %</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/30">
+                      {regions.cities.slice(0, 10).map(c => (
+                        <tr key={c.name} className="hover:bg-elevated/50 transition-colors">
+                          <td className="px-3 py-2">
+                            <div className="text-text font-medium">{c.name}</div>
+                            <div className="text-[9px] text-dim">{c.state}</div>
+                          </td>
+                          <td className="px-3 py-2 text-right text-muted">{c.total}</td>
+                          <td className="px-3 py-2 text-right text-muted">{c.converted}</td>
+                          <td className="px-3 py-2 text-right">
+                            <span className={`font-semibold ${
+                              c.conversionRate >= 20 ? 'text-status-converted' :
+                              c.conversionRate >= 10 ? 'text-status-interested' :
+                              c.conversionRate > 0 ? 'text-status-delayed' :
+                              'text-dim'
+                            }`}>
+                              {c.conversionRate}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[10px] text-dim mt-2">Click a bubble on the map above to see per-agent performance for that city</p>
+              </div>
+            </div>
+
+            {/* Unmatched cities notice */}
+            {regions.unmatched.length > 0 && (
+              <div className="bg-warning/5 border border-warning/20 rounded-lg p-4">
+                <h4 className="text-xs font-semibold text-warning mb-2">Unmapped cities ({regions.unmatched.length})</h4>
+                <p className="text-[10px] text-dim mb-2">These city names don&apos;t match our known list. Consider adding them to `src/config/india-cities.ts` or fixing the spelling in the sheet.</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {regions.unmatched.slice(0, 15).map(u => (
+                    <span key={u.name} className="text-[10px] bg-elevated text-muted px-2 py-0.5 rounded">
+                      {u.name} ({u.count})
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   )
