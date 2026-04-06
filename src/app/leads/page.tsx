@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
@@ -41,16 +41,16 @@ function makeStatusVars(cssVar: string): { bg: string; text: string; border: str
 }
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  NEW:         makeStatusVars('var(--color-status-new)'),
-  DECK_SENT:   makeStatusVars('var(--color-status-deck-sent)'),
-  REPLIED:     makeStatusVars('var(--color-status-replied)'),
-  CALLING:     makeStatusVars('var(--color-status-calling)'),
-  CALL_DONE:   makeStatusVars('var(--color-status-call-done)'),
-  INTERESTED:  makeStatusVars('var(--color-status-interested)'),
-  NEGOTIATION: makeStatusVars('var(--color-status-negotiation)'),
-  CONVERTED:   makeStatusVars('var(--color-status-converted)'),
-  DELAYED:     makeStatusVars('var(--color-status-delayed)'),
-  LOST:        makeStatusVars('var(--color-status-lost)'),
+  NEW:                    makeStatusVars('var(--color-status-new)'),
+  DECK_SENT:              makeStatusVars('var(--color-status-deck-sent)'),
+  REPLIED:                makeStatusVars('var(--color-status-replied)'),
+  NO_RESPONSE:            makeStatusVars('var(--color-status-no-response)'),
+  CALL_DONE_INTERESTED:   makeStatusVars('var(--color-status-call-done-interested)'),
+  HOT:                    makeStatusVars('var(--color-status-hot)'),
+  FINAL_NEGOTIATION:      makeStatusVars('var(--color-status-final-negotiation)'),
+  CONVERTED:              makeStatusVars('var(--color-status-converted)'),
+  DELAYED:                makeStatusVars('var(--color-status-delayed)'),
+  LOST:                   makeStatusVars('var(--color-status-lost)'),
 }
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -139,6 +139,30 @@ export default function LeadsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
+
+  // Quick notes
+  const [quickNotePhone, setQuickNotePhone] = useState<string | null>(null)
+  const [quickNoteText, setQuickNoteText] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
+
+  async function handleQuickNote(phone: string) {
+    if (!quickNoteText.trim()) return
+    setSavingNote(true)
+    try {
+      const res = await fetch(`/api/inbox/${encodeURIComponent(phone)}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: quickNoteText.trim() }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setToast('Note added')
+        setQuickNotePhone(null)
+        setQuickNoteText('')
+      }
+    } catch { /* silent */ }
+    setSavingNote(false)
+  }
 
   // Filters — initialize from URL params to preserve state on back navigation
   const [search, setSearch] = useState(() => getInitialParam('q'))
@@ -619,7 +643,8 @@ export default function LeadsPage() {
                     const priorityColor = PRIORITY_COLORS[lead.lead_priority] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
                     const followup = followupLabel(lead.next_followup)
                     return (
-                      <tr key={lead.row_number} className="lead-row table-row-hover">
+                      <React.Fragment key={lead.row_number}>
+                      <tr className="lead-row table-row-hover">
                         {canBulkAction && (
                           <td className="px-3 py-2.5">
                             <input
@@ -735,6 +760,28 @@ export default function LeadsPage() {
                         {/* Actions */}
                         <td className="px-3 py-2.5">
                           <div className="flex items-center justify-center gap-1">
+                            {/* Quick note button */}
+                            <button
+                              onClick={() => {
+                                if (quickNotePhone === lead.phone) {
+                                  setQuickNotePhone(null)
+                                  setQuickNoteText('')
+                                } else {
+                                  setQuickNotePhone(lead.phone)
+                                  setQuickNoteText('')
+                                }
+                              }}
+                              className={`inline-flex items-center text-xs px-1.5 py-1 rounded transition-colors ${
+                                quickNotePhone === lead.phone
+                                  ? 'text-accent bg-accent/10'
+                                  : 'text-dim hover:text-accent hover:bg-accent/10'
+                              }`}
+                              title="Quick note"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                              </svg>
+                            </button>
                             <Link
                               href={`/leads/${lead.row_number}`}
                               className="inline-flex items-center gap-1 text-xs text-dim hover:text-accent transition-colors px-1.5 py-1 rounded hover:bg-accent/10"
@@ -758,6 +805,39 @@ export default function LeadsPage() {
                           </div>
                         </td>
                       </tr>
+                      {/* Inline quick note input */}
+                      {quickNotePhone === lead.phone && (
+                        <tr className="bg-accent/5">
+                          <td colSpan={canBulkAction ? 12 : 11} className="px-3 py-2">
+                            <div className="flex items-center gap-2 max-w-2xl">
+                              <span className="text-xs text-muted flex-shrink-0">Note for {lead.full_name}:</span>
+                              <input
+                                type="text"
+                                value={quickNoteText}
+                                onChange={e => setQuickNoteText(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') handleQuickNote(lead.phone); if (e.key === 'Escape') { setQuickNotePhone(null); setQuickNoteText('') } }}
+                                placeholder="Type a note and press Enter..."
+                                autoFocus
+                                className="flex-1 bg-elevated border border-border rounded-md px-3 py-1.5 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50"
+                              />
+                              <button
+                                onClick={() => handleQuickNote(lead.phone)}
+                                disabled={savingNote || !quickNoteText.trim()}
+                                className="text-xs bg-accent/20 hover:bg-accent/30 text-accent px-3 py-1.5 rounded-md transition-colors font-medium disabled:opacity-50"
+                              >
+                                {savingNote ? '...' : 'Save'}
+                              </button>
+                              <button
+                                onClick={() => { setQuickNotePhone(null); setQuickNoteText('') }}
+                                className="text-xs text-dim hover:text-text px-2 py-1.5 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     )
                   })
                 )}

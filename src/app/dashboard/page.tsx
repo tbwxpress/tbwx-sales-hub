@@ -85,16 +85,16 @@ interface Task {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  NEW:         makeStatusVars('var(--color-status-new)'),
-  DECK_SENT:   makeStatusVars('var(--color-status-deck-sent)'),
-  REPLIED:     makeStatusVars('var(--color-status-replied)'),
-  CALLING:     makeStatusVars('var(--color-status-calling)'),
-  CALL_DONE:   makeStatusVars('var(--color-status-call-done)'),
-  INTERESTED:  makeStatusVars('var(--color-status-interested)'),
-  NEGOTIATION: makeStatusVars('var(--color-status-negotiation)'),
-  CONVERTED:   makeStatusVars('var(--color-status-converted)'),
-  DELAYED:     makeStatusVars('var(--color-status-delayed)'),
-  LOST:        makeStatusVars('var(--color-status-lost)'),
+  NEW:                    makeStatusVars('var(--color-status-new)'),
+  DECK_SENT:              makeStatusVars('var(--color-status-deck-sent)'),
+  REPLIED:                makeStatusVars('var(--color-status-replied)'),
+  NO_RESPONSE:            makeStatusVars('var(--color-status-no-response)'),
+  CALL_DONE_INTERESTED:   makeStatusVars('var(--color-status-call-done-interested)'),
+  HOT:                    makeStatusVars('var(--color-status-hot)'),
+  FINAL_NEGOTIATION:      makeStatusVars('var(--color-status-final-negotiation)'),
+  CONVERTED:              makeStatusVars('var(--color-status-converted)'),
+  DELAYED:                makeStatusVars('var(--color-status-delayed)'),
+  LOST:                   makeStatusVars('var(--color-status-lost)'),
 }
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
