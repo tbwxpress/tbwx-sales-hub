@@ -2,8 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { insertVoiceAgentCall, updateVoiceAgentCall, getVoiceAgentCallBySid, normalizePhone } from '@/lib/db'
 
 // POST /api/voice-agent/log — Called by voice agent server when a call completes
-// This is a PUBLIC endpoint (no auth required) — called from voice agent container
+// Protected by VOICE_AGENT_SECRET — voice agent server must include this in the request
+const VOICE_SECRET = process.env.VOICE_AGENT_SECRET || process.env.CRON_SECRET
+
 export async function POST(req: NextRequest) {
+  // Verify caller is the voice agent server
+  if (VOICE_SECRET) {
+    const auth = req.headers.get('authorization')
+    if (auth !== `Bearer ${VOICE_SECRET}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+  }
+
   try {
     const body = await req.json()
     const { phone, lead_id, call_sid, status, duration_seconds, interest_level, preferred_city, callback_time, questions, summary, transcript } = body

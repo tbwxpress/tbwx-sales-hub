@@ -48,6 +48,13 @@ export const WHATSAPP = {
   autoReplyStatus: 'REPLIED' as const,
 } as const
 
+// ─── Google Ads ──────────────────────────────────────────────────────
+export const GOOGLE_ADS = {
+  webhookSecret: process.env.GOOGLE_ADS_WEBHOOK_SECRET || '',
+  platform: 'Google Ads',
+  defaultPriority: 'WARM' as const,
+} as const
+
 // ─── Meta Ads ────────────────────────────────────────────────────────
 export const META_ADS = {
   apiBase: WHATSAPP.apiBase, // Reuse WhatsApp's Graph API base

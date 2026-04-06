@@ -1,11 +1,20 @@
 import { apiError } from '@/lib/api-error'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getLeads } from '@/lib/sheets'
 import { getMessages } from '@/lib/db'
 import { sendTemplate } from '@/lib/whatsapp'
 
+const CRON_SECRET = process.env.CRON_SECRET
+
 // POST /api/followups/auto — automated follow-up check (called by n8n cron)
-export async function POST() {
+export async function POST(req: NextRequest) {
+  // Verify cron secret
+  if (CRON_SECRET) {
+    const auth = req.headers.get('authorization')
+    if (auth !== `Bearer ${CRON_SECRET}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+  }
   try {
     const leads = await getLeads()
     const now = Date.now()

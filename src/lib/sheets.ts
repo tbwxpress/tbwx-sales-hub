@@ -61,7 +61,20 @@ export async function getLeadByRow(rowNumber: number): Promise<Lead | null> {
   }
 }
 
+// In-memory cache for leads — avoids hammering Google Sheets API
+// TTL: 60 seconds. Invalidated on write operations (updateLead, bulkUpdateField)
+let _leadsCache: { data: Lead[]; ts: number } | null = null
+const LEADS_CACHE_TTL_MS = 60_000
+
+export function invalidateLeadsCache() {
+  _leadsCache = null
+}
+
 export async function getLeads(): Promise<Lead[]> {
+  if (_leadsCache && Date.now() - _leadsCache.ts < LEADS_CACHE_TTL_MS) {
+    return _leadsCache.data
+  }
+
   const sheets = getSheets()
   const tab = process.env.LEADS_TAB_NAME || T.leads
   const res = await sheets.spreadsheets.values.get({
@@ -70,7 +83,7 @@ export async function getLeads(): Promise<Lead[]> {
   })
   const rows = res.data.values || []
   const C = LEAD_COLUMN_MAP
-  return rows.map((row, i) => ({
+  const leads = rows.map((row, i) => ({
     row_number: i + 2,
     id: row[C.id] || '',
     created_time: row[C.created_time] || '',
@@ -93,9 +106,13 @@ export async function getLeads(): Promise<Lead[]> {
     next_followup: row[C.next_followup] || '',
     notes: row[C.notes] || '',
   }))
+
+  _leadsCache = { data: leads, ts: Date.now() }
+  return leads
 }
 
 export async function updateLeadField(rowNumber: number, column: string, value: string): Promise<void> {
+  invalidateLeadsCache()
   const sheets = getSheets()
   const tab = process.env.LEADS_TAB_NAME || T.leads
   await sheets.spreadsheets.values.update({
@@ -110,6 +127,7 @@ export async function updateLeadField(rowNumber: number, column: string, value: 
 export const LEAD_COLUMNS = LEAD_WRITE_COLUMNS
 
 export async function updateLead(rowNumber: number, fields: Partial<Record<string, string>>): Promise<void> {
+  invalidateLeadsCache()
   const entries = Object.entries(fields).filter(([field, value]) => LEAD_COLUMNS[field] && value !== undefined)
   if (entries.length === 0) return
 
@@ -139,6 +157,7 @@ export async function updateLead(rowNumber: number, fields: Partial<Record<strin
  * Uses batchUpdate to stay within Google Sheets rate limits.
  */
 export async function bulkUpdateField(rowNumbers: number[], field: string, value: string): Promise<void> {
+  invalidateLeadsCache()
   const col = LEAD_COLUMNS[field]
   if (!col) throw new Error(`Unknown field: ${field}`)
 

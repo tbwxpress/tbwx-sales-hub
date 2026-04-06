@@ -68,8 +68,6 @@ export async function sendTemplate(
         ...(components.length ? { components } : {}),
       },
     }
-    console.log('[WA Template] Sending:', JSON.stringify(payload, null, 2))
-
     const res = await fetch(
       `${WHATSAPP_API}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
@@ -83,7 +81,6 @@ export async function sendTemplate(
     )
 
     const data = await res.json()
-    console.log('[WA Template] Response:', JSON.stringify(data, null, 2))
 
     if (data.messages?.[0]?.id) {
       return { success: true, message_id: data.messages[0].id }

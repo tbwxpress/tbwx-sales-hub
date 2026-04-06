@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { insertVoiceAgentCall, normalizePhone } from '@/lib/db'
+import { getLeads, updateLead } from '@/lib/sheets'
 
 const VOICE_AGENT_URL = process.env.VOICE_AGENT_URL || 'https://voice.tbwxpress.com'
 
@@ -41,12 +42,22 @@ export async function POST(req: NextRequest) {
     }
 
     // Record the initiated call in our DB
+    const normalized = normalizePhone(phone)
     const id = await insertVoiceAgentCall({
-      phone: normalizePhone(phone),
+      phone: normalized,
       lead_id: lead_id || '',
       call_sid: result.call_sid || '',
       status: 'initiated',
     })
+
+    // Update lead status to CALLING in Google Sheets
+    try {
+      const leads = await getLeads()
+      const lead = leads.find(l => normalizePhone(l.phone) === normalized)
+      if (lead && !['INTERESTED', 'NEGOTIATION', 'CONVERTED', 'LOST'].includes(lead.lead_status)) {
+        await updateLead(lead.row_number, { lead_status: 'CALLING' })
+      }
+    } catch { /* Non-critical — don't block the call */ }
 
     return NextResponse.json({
       success: true,
