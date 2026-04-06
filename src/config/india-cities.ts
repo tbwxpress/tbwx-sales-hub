@@ -150,20 +150,100 @@ export const INDIA_CITIES: CityCoord[] = [
 ]
 
 /**
+ * Common aliases and misspellings that map to canonical city names.
+ * Handles: shorthand, old names, regional spellings, area names within cities.
+ */
+const CITY_ALIASES: Record<string, string> = {
+  // Delhi NCR variants
+  'ncr': 'Delhi', 'new delhi': 'Delhi', 'south delhi': 'Delhi', 'north delhi': 'Delhi',
+  'east delhi': 'Delhi', 'west delhi': 'Delhi', 'delhi ncr': 'Delhi', 'dwarka': 'Delhi',
+  'rohini': 'Delhi', 'laxmi nagar': 'Delhi', 'karol bagh': 'Delhi',
+  'navi mumbai': 'Mumbai', 'andheri': 'Mumbai', 'bandra': 'Mumbai', 'borivali': 'Mumbai',
+  'thane west': 'Thane', 'kalyan': 'Thane', 'dombivli': 'Thane',
+  // Bangalore variants
+  'banglore': 'Bangalore', 'bengalore': 'Bangalore', 'blr': 'Bangalore',
+  'whitefield': 'Bangalore', 'electronic city': 'Bangalore', 'koramangala': 'Bangalore',
+  // Hyderabad variants
+  'hyd': 'Hyderabad', 'secunderabad': 'Hyderabad', 'hydrabad': 'Hyderabad',
+  'hitec city': 'Hyderabad', 'gachibowli': 'Hyderabad',
+  // Chennai variants
+  'madras': 'Chennai',
+  // Kolkata variants
+  'calcutta': 'Kolkata',
+  // Pune variants
+  'pimpri': 'Pune', 'chinchwad': 'Pune', 'pimpri-chinchwad': 'Pune', 'pcmc': 'Pune',
+  'hinjewadi': 'Pune', 'wakad': 'Pune', 'kothrud': 'Pune',
+  // Gurugram variants
+  'gurgoan': 'Gurgaon', 'ggn': 'Gurgaon',
+  // UP cities
+  'prayag': 'Prayagraj', 'allahbad': 'Allahabad',
+  // Haryana
+  'kharar': 'Mohali', 'dhakoli': 'Panchkula', 'zirakpur': 'Chandigarh', 'derabassi': 'Mohali',
+  // Punjab
+  'ldh': 'Ludhiana', 'asr': 'Amritsar',
+  // Rajasthan
+  'jpr': 'Jaipur',
+  // Gujarat
+  'amd': 'Ahmedabad', 'baroda': 'Vadodara',
+  // MP
+  'mp bhopal': 'Bhopal',
+  // South
+  'vizag': 'Visakhapatnam', 'trichy': 'Tiruchirappalli', 'mysuru': 'Mysore',
+  'mangaluru': 'Mangalore', 'belagavi': 'Belgaum', 'hubballi': 'Hubli',
+  'calicut': 'Kozhikode', 'trivandrum': 'Thiruvananthapuram',
+  'tvm': 'Thiruvananthapuram', 'ernakulam': 'Kochi', 'cochin': 'Kochi',
+  // Bihar
+  'muzaffarpur': 'Muzaffarpur', 'bhagalpur': 'Bhagalpur',
+  // Northeast
+  'dimapur': 'Kohima', 'silchar': 'Guwahati',
+  // Others
+  'pondicherry': 'Chennai', 'puducherry': 'Chennai',
+  'nellore': 'Guntur', 'kakinada': 'Vijayawada',
+}
+
+/**
  * Fuzzy match a city name to known coordinates.
- * Returns null if no match found.
+ * Tries: exact → alias → substring → word overlap.
  */
 export function findCity(name: string): CityCoord | null {
   if (!name) return null
-  const clean = name.trim().toLowerCase()
-  // Exact match first
+  const clean = name.trim().toLowerCase().replace(/[^a-z\s]/g, '').trim()
+  if (!clean) return null
+
+  // 1. Exact match
   const exact = INDIA_CITIES.find(c => c.name.toLowerCase() === clean)
   if (exact) return exact
-  // Substring match (e.g., "New Delhi" matches "Delhi")
+
+  // 2. Alias lookup
+  const aliasTarget = CITY_ALIASES[clean]
+  if (aliasTarget) {
+    const aliased = INDIA_CITIES.find(c => c.name === aliasTarget)
+    if (aliased) return aliased
+  }
+
+  // 3. Alias partial (check if input contains an alias key)
+  for (const [alias, target] of Object.entries(CITY_ALIASES)) {
+    if (clean.includes(alias) || alias.includes(clean)) {
+      const found = INDIA_CITIES.find(c => c.name === target)
+      if (found) return found
+    }
+  }
+
+  // 4. Substring match (e.g., "Greater Noida" contains "Noida")
   const partial = INDIA_CITIES.find(c =>
     clean.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(clean)
   )
-  return partial || null
+  if (partial) return partial
+
+  // 5. Word overlap (e.g., "Pune Maharashtra" → matches "Pune")
+  const words = clean.split(/\s+/)
+  for (const word of words) {
+    if (word.length < 3) continue
+    const wordMatch = INDIA_CITIES.find(c => c.name.toLowerCase() === word)
+    if (wordMatch) return wordMatch
+  }
+
+  return null
 }
 
 // ─── India map projection (equirectangular) ──────────────────────────────
