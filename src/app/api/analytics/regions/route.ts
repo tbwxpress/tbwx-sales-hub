@@ -62,7 +62,7 @@ export async function GET() {
       const c = cityMap.get(key)!
       c.total++
       if (lead.lead_status === 'CONVERTED') c.converted++
-      if (lead.lead_status === 'INTERESTED' || lead.lead_status === 'NEGOTIATION') c.interested++
+      if (lead.lead_status === 'HOT' || lead.lead_status === 'FINAL_NEGOTIATION') c.interested++
       if (lead.lead_status === 'LOST') c.lost++
 
       // Agent tracking
@@ -73,7 +73,7 @@ export async function GET() {
         const a = c.agents.get(lead.assigned_to)!
         a.total++
         if (lead.lead_status === 'CONVERTED') a.converted++
-        if (lead.lead_status === 'INTERESTED' || lead.lead_status === 'NEGOTIATION') a.interested++
+        if (lead.lead_status === 'HOT' || lead.lead_status === 'FINAL_NEGOTIATION') a.interested++
       }
 
       // State rollup
@@ -83,7 +83,7 @@ export async function GET() {
       const s = stateMap.get(coord.state)!
       s.total++
       if (lead.lead_status === 'CONVERTED') s.converted++
-      if (lead.lead_status === 'INTERESTED' || lead.lead_status === 'NEGOTIATION') s.interested++
+      if (lead.lead_status === 'HOT' || lead.lead_status === 'FINAL_NEGOTIATION') s.interested++
     }
 
     // Convert to arrays

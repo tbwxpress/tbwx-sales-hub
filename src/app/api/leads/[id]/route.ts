@@ -71,8 +71,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Status-specific follow-up intervals
     if (body.lead_status && !body.next_followup) {
       const FOLLOWUP_DAYS: Record<string, number> = {
-        NEW: 1, DECK_SENT: 1, REPLIED: 0, CALLING: 1,
-        CALL_DONE: 2, INTERESTED: 2, NEGOTIATION: 2, DELAYED: 7,
+        NEW: 1, DECK_SENT: 1, REPLIED: 0, NO_RESPONSE: 1,
+        CALL_DONE_INTERESTED: 2, HOT: 2, FINAL_NEGOTIATION: 2, DELAYED: 7,
       }
       const days = FOLLOWUP_DAYS[body.lead_status]
       if (days !== undefined) {

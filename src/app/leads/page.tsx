@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
+import { STATUS_LABELS, STATUS_MIGRATION } from '@/config/client'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -58,7 +59,7 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string
   COLD: makeStatusVars('var(--color-priority-cold)'),
 }
 
-const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'REPLIED', 'CALLING', 'CALL_DONE', 'INTERESTED', 'NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST']
+const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST']
 const PRIORITY_OPTIONS = ['HOT', 'WARM', 'COLD']
 
 function timeAgo(dateStr: string): string {
@@ -125,6 +126,11 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 
 // ─── Page Component ──────────────────────────────────────────────────────────
 
+function getInitialParam(key: string, fallback: string = ''): string {
+  if (typeof window === 'undefined') return fallback
+  return new URLSearchParams(window.location.search).get(key) || fallback
+}
+
 export default function LeadsPage() {
   const router = useRouter()
 
@@ -134,11 +140,23 @@ export default function LeadsPage() {
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
 
-  // Filters
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [assignedFilter, setAssignedFilter] = useState('')
-  const [sortBy, setSortBy] = useState('score')
+  // Filters — initialize from URL params to preserve state on back navigation
+  const [search, setSearch] = useState(() => getInitialParam('q'))
+  const [statusFilter, setStatusFilter] = useState(() => getInitialParam('status'))
+  const [assignedFilter, setAssignedFilter] = useState(() => getInitialParam('assigned'))
+  const [sortBy, setSortBy] = useState(() => getInitialParam('sort', 'score'))
+
+  // Sync filters to URL (without full page reload)
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (search) params.set('q', search)
+    if (statusFilter) params.set('status', statusFilter)
+    if (assignedFilter) params.set('assigned', assignedFilter)
+    if (sortBy && sortBy !== 'score') params.set('sort', sortBy)
+    const qs = params.toString()
+    const newUrl = qs ? `/leads?${qs}` : '/leads'
+    window.history.replaceState(null, '', newUrl)
+  }, [search, statusFilter, assignedFilter, sortBy])
 
   // Selection (admin/can_assign only)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -495,7 +513,7 @@ export default function LeadsPage() {
           >
             <option value="">All Statuses</option>
             {STATUS_OPTIONS.map(s => (
-              <option key={s} value={s}>{s.replace('_', ' ')}</option>
+              <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
             ))}
             <option value="__UNASSIGNED__">Unassigned</option>
             <option value="__OVERDUE__">Overdue Follow-ups</option>
@@ -666,7 +684,7 @@ export default function LeadsPage() {
                           >
                             {STATUS_OPTIONS.map(s => (
                               <option key={s} value={s} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>
-                                {s.replace('_', ' ')}
+                                {STATUS_LABELS[s] || s}
                               </option>
                             ))}
                           </select>
@@ -792,7 +810,7 @@ export default function LeadsPage() {
                 >
                   <option value="">Change status...</option>
                   {STATUS_OPTIONS.map(s => (
-                    <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                    <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
                   ))}
                 </select>
                 <button

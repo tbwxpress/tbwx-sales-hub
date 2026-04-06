@@ -58,13 +58,13 @@ function scoreCityTier(city: string | undefined | null): number {
 
 function scoreEngagement(leadStatus: string | undefined | null): number {
   switch (leadStatus) {
-    case 'INTERESTED':
-    case 'NEGOTIATION':
+    case 'HOT':
+    case 'FINAL_NEGOTIATION':
       return 20
-    case 'CALL_DONE':
+    case 'CALL_DONE_INTERESTED':
       return 16
     case 'REPLIED':
-    case 'CALLING':
+    case 'NO_RESPONSE':
       return 12
     case 'DECK_SENT':
       return 8
@@ -95,7 +95,7 @@ function computeDecay(lead: Lead): number {
     return Math.min(daysSinceCreated - 7, 15)
   }
 
-  if (status === 'CALLING' && daysSinceCreated > 14) {
+  if (status === 'NO_RESPONSE' && daysSinceCreated > 14) {
     return Math.min(daysSinceCreated - 14, 10)
   }
 
@@ -139,13 +139,14 @@ export function getScoreLabel(score: number): 'excellent' | 'good' | 'average' |
   return 'cold'
 }
 
+const SCORE_COLOR_MAP: Record<ReturnType<typeof getScoreLabel>, string> = {
+  excellent: '#22c55e',
+  good: '#3b82f6',
+  average: '#f59e0b',
+  low: '#f97316',
+  cold: '#ef4444',
+}
+
 export function getScoreColor(score: number): string {
-  const label = getScoreLabel(score)
-  switch (label) {
-    case 'excellent': return '#22c55e'
-    case 'good': return '#3b82f6'
-    case 'average': return '#f59e0b'
-    case 'low': return '#f97316'
-    case 'cold': return '#ef4444'
-  }
+  return SCORE_COLOR_MAP[getScoreLabel(score)]
 }

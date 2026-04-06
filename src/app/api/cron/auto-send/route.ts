@@ -135,7 +135,7 @@ function calcPriority(experience: string, timeline: string): string {
 // --- Auto-assignment: HOT → Happy, else round-robin by lowest load ---
 const HOT_LEAD_AGENT = process.env.HOT_LEAD_AGENT || 'Happy'
 const MAX_ACTIVE_PER_AGENT = parseInt(process.env.MAX_ACTIVE_PER_AGENT || '15')
-const ACTIVE_STATUSES = ['NEW', 'DECK_SENT', 'REPLIED', 'CALLING', 'CALL_DONE', 'INTERESTED', 'NEGOTIATION']
+const ACTIVE_STATUSES = ['NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION']
 
 async function pickAgent(priority: string): Promise<string> {
   try {

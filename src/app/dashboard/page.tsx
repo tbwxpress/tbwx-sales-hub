@@ -103,7 +103,7 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string
   COLD: makeStatusVars('var(--color-priority-cold)'),
 }
 
-const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'REPLIED', 'CALLING', 'CALL_DONE', 'INTERESTED', 'NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST']
+const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST']
 const PRIORITY_OPTIONS = ['HOT', 'WARM', 'COLD']
 
 
@@ -155,7 +155,7 @@ function responseTimeBadge(lead: Lead): { label: string; colorClass: string } | 
     return { label: `${days}d`, colorClass: 'bg-red-500/15 text-red-400 border-red-500/30' }
   }
   // For leads beyond NEW status, show how long since creation (proxy for response time)
-  if (['DECK_SENT', 'REPLIED', 'CALLING', 'CALL_DONE', 'INTERESTED', 'NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST'].includes(lead.lead_status)) {
+  if (['DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST'].includes(lead.lead_status)) {
     if (hours < 1) return { label: '<1h', colorClass: 'bg-green-500/15 text-green-400 border-green-500/30' }
     if (hours < 4) return { label: `${Math.floor(hours)}h`, colorClass: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' }
     if (hours < 24) return { label: `${Math.floor(hours)}h`, colorClass: 'bg-orange-500/15 text-orange-400 border-orange-500/30' }
@@ -757,8 +757,8 @@ export default function DashboardPage() {
     'New': 'NEW',
     'Deck Sent': 'DECK_SENT',
     'Replied': 'REPLIED',
-    'Calling': 'CALLING',
-    'Interested': 'INTERESTED',
+    'No Response': 'NO_RESPONSE',
+    'HOT': 'HOT',
     'Converted': 'CONVERTED',
     'Delayed': 'DELAYED',
     'Lost': 'LOST',

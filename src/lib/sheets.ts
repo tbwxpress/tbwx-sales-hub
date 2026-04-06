@@ -502,9 +502,9 @@ export async function getLeadStats(filterAgent?: string): Promise<{
   new: number
   deck_sent: number
   replied: number
-  calling: number
-  call_done: number
-  interested: number
+  no_response: number
+  call_done_interested: number
+  hot: number
   converted: number
   delayed: number
   lost: number
@@ -521,9 +521,9 @@ export async function getLeadStats(filterAgent?: string): Promise<{
     new: leads.filter(l => l.lead_status === 'NEW').length,
     deck_sent: leads.filter(l => l.lead_status === 'DECK_SENT').length,
     replied: leads.filter(l => l.lead_status === 'REPLIED').length,
-    calling: leads.filter(l => l.lead_status === 'CALLING').length,
-    call_done: leads.filter(l => l.lead_status === 'CALL_DONE').length,
-    interested: leads.filter(l => l.lead_status === 'INTERESTED').length,
+    no_response: leads.filter(l => l.lead_status === 'NO_RESPONSE').length,
+    call_done_interested: leads.filter(l => l.lead_status === 'CALL_DONE_INTERESTED').length,
+    hot: leads.filter(l => l.lead_status === 'HOT').length,
     converted: leads.filter(l => l.lead_status === 'CONVERTED').length,
     delayed: leads.filter(l => l.lead_status === 'DELAYED').length,
     lost: leads.filter(l => l.lead_status === 'LOST').length,

@@ -144,8 +144,8 @@ function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics
       m.replied++
     }
 
-    // Interested = status INTERESTED (previously HOT)
-    if (status === 'INTERESTED') {
+    // Interested = status HOT
+    if (status === 'HOT') {
       m.interested++
     }
 

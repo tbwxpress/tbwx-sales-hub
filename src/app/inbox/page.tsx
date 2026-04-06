@@ -1033,7 +1033,7 @@ export default function InboxPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
-                            {['NEW','DECK_SENT','REPLIED','CALLING','CALL_DONE','INTERESTED','NEGOTIATION','CONVERTED','DELAYED','LOST'].map(s => (
+                            {['NEW','DECK_SENT','REPLIED','NO_RESPONSE','CALL_DONE_INTERESTED','HOT','FINAL_NEGOTIATION','CONVERTED','DELAYED','LOST'].map(s => (
                               <SelectItem key={s} value={s} className="text-[11px]">{s.replace('_', ' ')}</SelectItem>
                             ))}
                           </SelectContent>

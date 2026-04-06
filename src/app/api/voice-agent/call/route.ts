@@ -54,8 +54,8 @@ export async function POST(req: NextRequest) {
     try {
       const leads = await getLeads()
       const lead = leads.find(l => normalizePhone(l.phone) === normalized)
-      if (lead && !['INTERESTED', 'NEGOTIATION', 'CONVERTED', 'LOST'].includes(lead.lead_status)) {
-        await updateLead(lead.row_number, { lead_status: 'CALLING' })
+      if (lead && !['HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'LOST'].includes(lead.lead_status)) {
+        await updateLead(lead.row_number, { lead_status: 'NO_RESPONSE' })
       }
     } catch { /* Non-critical — don't block the call */ }
 

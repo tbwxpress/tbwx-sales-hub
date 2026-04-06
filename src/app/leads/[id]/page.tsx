@@ -4,9 +4,10 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import type { Lead, Message, QuickReply, ApiResponse } from '@/lib/types'
 import VoiceAgentCard from '@/components/VoiceAgentCard'
+import { LEAD_STATUSES, STATUS_LABELS } from '@/config/client'
 
 // Status and priority options
-const STATUSES = ['NEW', 'DECK_SENT', 'CONTACTED', 'REPLIED', 'INTERESTED', 'HOT', 'CONVERTED', 'LOST'] as const
+const STATUSES = LEAD_STATUSES
 const PRIORITIES = ['HOT', 'WARM', 'COLD'] as const
 
 // Available WhatsApp templates
@@ -19,11 +20,13 @@ const TEMPLATES = [
 const STATUS_COLORS: Record<string, string> = {
   NEW: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   DECK_SENT: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  CONTACTED: 'bg-accent/20 text-accent border-accent/30',
   REPLIED: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
-  INTERESTED: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  NO_RESPONSE: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  CALL_DONE_INTERESTED: 'bg-teal-500/20 text-teal-300 border-teal-500/30',
   HOT: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  FINAL_NEGOTIATION: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
   CONVERTED: 'bg-green-500/20 text-green-400 border-green-500/30',
+  DELAYED: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
   LOST: 'bg-red-500/20 text-red-400 border-red-500/30',
 }
 
@@ -47,6 +50,79 @@ function formatTime(ts: string): string {
   if (isToday) return time
   if (isYesterday) return `Yesterday ${time}`
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' ' + time
+}
+
+// ─── Lead Notes Component (DB-backed with timestamps) ────────────────────────
+
+interface LeadNote { id: number; phone: string; note: string; created_by: string; created_at: string }
+
+function LeadNotes({ phone }: { phone: string }) {
+  const [notes, setNotes] = useState<LeadNote[]>([])
+  const [newNote, setNewNote] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const fetchNotes = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/inbox/${encodeURIComponent(phone)}/notes`)
+      const data = await res.json()
+      if (data.success) setNotes(data.data || [])
+    } catch { /* silent */ }
+  }, [phone])
+
+  useEffect(() => { fetchNotes() }, [fetchNotes])
+
+  async function handleSave() {
+    if (!newNote.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/inbox/${encodeURIComponent(phone)}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: newNote.trim() }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setNewNote('')
+        fetchNotes()
+      }
+    } catch { /* silent */ }
+    setSaving(false)
+  }
+
+  return (
+    <div>
+      <label className="text-xs text-dim block mb-2">Notes</label>
+      <div className="flex gap-2 mb-3">
+        <input
+          value={newNote}
+          onChange={e => setNewNote(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
+          placeholder="Add a note (e.g. wants Meerut, budget 5L)..."
+          className="flex-1 bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder:text-dim focus:outline-none focus:border-accent/50"
+        />
+        <button
+          onClick={handleSave}
+          disabled={saving || !newNote.trim()}
+          className="text-xs bg-accent/20 hover:bg-accent/30 text-accent px-3 py-2 rounded-md transition-colors font-medium disabled:opacity-50"
+        >
+          {saving ? '...' : 'Add'}
+        </button>
+      </div>
+      {notes.length > 0 ? (
+        <div className="space-y-2 max-h-48 overflow-y-auto border-l-2 border-accent/20 pl-3">
+          {notes.map(n => (
+            <div key={n.id} className="text-xs flex items-start gap-2">
+              <span className="text-dim flex-shrink-0 w-24">{formatTime(n.created_at)}</span>
+              <span className="text-muted flex-shrink-0 font-medium">{n.created_by}</span>
+              <span className="text-text">{n.note}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[10px] text-dim">No notes yet</p>
+      )}
+    </div>
+  )
 }
 
 function scoreColor(score: number): string {
@@ -715,7 +791,7 @@ export default function LeadDetailPage() {
                   className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50 disabled:opacity-50"
                 >
                   {STATUSES.map(s => (
-                    <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                    <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
                   ))}
                 </select>
               </div>
@@ -788,25 +864,8 @@ export default function LeadDetailPage() {
                 )}
               </div>
 
-              {/* Notes */}
-              <div>
-                <label className="text-xs text-dim block mb-1">Notes</label>
-                <textarea
-                  value={notesValue}
-                  onChange={(e) => setNotesValue(e.target.value)}
-                  onBlur={() => {
-                    if (notesValue !== lead.notes) {
-                      updateField('notes', notesValue)
-                    }
-                  }}
-                  placeholder="Add notes about this lead..."
-                  rows={4}
-                  className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder:text-dim focus:outline-none focus:border-accent/50 resize-none"
-                />
-                {savingField === 'notes' && (
-                  <p className="text-xs text-dim mt-1">Saving...</p>
-                )}
-              </div>
+              {/* Notes — timestamped, from DB */}
+              <LeadNotes phone={lead.phone} />
             </div>
 
             {/* Action Buttons */}
@@ -846,10 +905,10 @@ export default function LeadDetailPage() {
             )}
 
             <button
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.back()}
               className="w-full bg-elevated hover:bg-border border border-border text-muted rounded-md px-4 py-2.5 text-sm transition-colors"
             >
-              Back to Dashboard
+              &larr; Back to Leads
             </button>
 
             {/* Admin: Delete Lead */}

@@ -1,5 +1,5 @@
 export type UserRole = 'admin' | 'agent'
-export type LeadStatus = 'NEW' | 'DECK_SENT' | 'REPLIED' | 'CALLING' | 'CALL_DONE' | 'INTERESTED' | 'NEGOTIATION' | 'CONVERTED' | 'DELAYED' | 'LOST'
+export type LeadStatus = 'NEW' | 'DECK_SENT' | 'REPLIED' | 'NO_RESPONSE' | 'CALL_DONE_INTERESTED' | 'HOT' | 'FINAL_NEGOTIATION' | 'CONVERTED' | 'DELAYED' | 'LOST'
 
 export interface User {
   id: string
@@ -79,4 +79,23 @@ export interface ApiResponse<T = unknown> {
   success: boolean
   data?: T
   error?: string
+}
+
+export interface GoogleAdsLead {
+  campaign_name?: string
+  campaign_id?: string
+  form_name?: string
+  first_name?: string
+  last_name?: string
+  full_name?: string
+  phone_number: string
+  email?: string
+  city?: string
+  state?: string
+  model_interest?: string
+  experience?: string
+  timeline?: string
+  investment_budget?: string
+  gclid?: string
+  created_time?: string
 }

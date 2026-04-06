@@ -357,9 +357,9 @@ export default function AgentQueue({ user }: { user: SessionUser }) {
                 {myLeads.slice(0, 10).map((lead, i) => {
                   const statusColors: Record<string, string> = {
                     NEW: 'var(--color-status-new)', DECK_SENT: 'var(--color-status-deck-sent)',
-                    REPLIED: 'var(--color-status-replied)', CALLING: 'var(--color-status-calling)',
-                    CALL_DONE: 'var(--color-status-call-done)', INTERESTED: 'var(--color-status-interested)',
-                    NEGOTIATION: 'var(--color-status-negotiation)', CONVERTED: 'var(--color-status-converted)',
+                    REPLIED: 'var(--color-status-replied)', NO_RESPONSE: 'var(--color-status-no-response)',
+                    CALL_DONE_INTERESTED: 'var(--color-status-call-done-interested)', HOT: 'var(--color-status-hot)',
+                    FINAL_NEGOTIATION: 'var(--color-status-final-negotiation)', CONVERTED: 'var(--color-status-converted)',
                     DELAYED: 'var(--color-status-delayed)', LOST: 'var(--color-status-lost)',
                   }
                   const sc = statusColors[lead.lead_status] || 'var(--color-muted)'

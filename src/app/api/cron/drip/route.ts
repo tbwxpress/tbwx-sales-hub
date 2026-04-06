@@ -30,7 +30,7 @@ const DEFAULT_SEQUENCES: Record<string, { steps: { day: number; template: string
 }
 
 // Statuses eligible for drip (lead has been contacted but not yet engaged deeply)
-const DRIP_ELIGIBLE_STATUSES = ['DECK_SENT', 'CALL_DONE']
+const DRIP_ELIGIBLE_STATUSES = ['DECK_SENT', 'CALL_DONE_INTERESTED']
 
 // Auto-resume: days since last manual message before resuming drip
 const RESUME_DAYS: Record<string, number> = { HOT: 3, WARM: 5, COLD: 7 }

@@ -80,8 +80,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Pipeline counts
-    const interested = leads.filter(l => l.lead_status === 'INTERESTED').length
-    const negotiation = leads.filter(l => l.lead_status === 'NEGOTIATION').length
+    const interested = leads.filter(l => l.lead_status === 'HOT').length
+    const negotiation = leads.filter(l => l.lead_status === 'FINAL_NEGOTIATION').length
 
     // Conversions today
     const conversionsToday = leads.filter(l =>

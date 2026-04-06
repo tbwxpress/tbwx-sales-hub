@@ -21,33 +21,11 @@ interface Lead {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const PIPELINE_STAGES = [
-  'NEW',
-  'DECK_SENT',
-  'REPLIED',
-  'CALLING',
-  'CALL_DONE',
-  'INTERESTED',
-  'NEGOTIATION',
-  'CONVERTED',
-  'DELAYED',
-  'LOST',
-] as const
+import { LEAD_STATUSES, STATUS_LABELS, STATUS_MIGRATION } from '@/config/client'
 
-type Stage = typeof PIPELINE_STAGES[number]
+const PIPELINE_STAGES = LEAD_STATUSES
 
-const STAGE_LABELS: Record<Stage, string> = {
-  NEW: 'New',
-  DECK_SENT: 'Deck Sent',
-  REPLIED: 'Replied',
-  CALLING: 'Calling',
-  CALL_DONE: 'Call Done',
-  INTERESTED: 'Interested',
-  NEGOTIATION: 'Negotiation',
-  CONVERTED: 'Converted',
-  DELAYED: 'Delayed',
-  LOST: 'Lost',
-}
+const STAGE_LABELS = STATUS_LABELS
 
 const PRIORITY_BORDER: Record<string, string> = {
   HOT: '#fb923c',
@@ -189,6 +167,7 @@ export default function PipelinePage() {
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ name: string; role: string; can_assign: boolean } | null>(null)
 
   // ─── Auth + Data ─────────────────────────────────────────────────────────
 
@@ -201,12 +180,18 @@ export default function PipelinePage() {
         router.push('/login')
         return
       }
+      setCurrentUser(authData.data)
 
-      // Fetch leads
+      // Fetch leads (API already handles agent scoping)
       const leadsRes = await fetch('/api/leads')
       const leadsData = await leadsRes.json()
       if (leadsData.success) {
-        setLeads(leadsData.data)
+        // Migrate any old status values to new names
+        const migrated = (leadsData.data as Lead[]).map(l => ({
+          ...l,
+          lead_status: STATUS_MIGRATION[l.lead_status] || l.lead_status,
+        }))
+        setLeads(migrated)
       } else {
         setError(leadsData.error || 'Failed to load leads')
       }
@@ -234,7 +219,7 @@ export default function PipelinePage() {
         setLeads(prev =>
           prev.map(l => (l.row_number === rowNum ? { ...l, lead_status: newStatus } : l))
         )
-        setToast(`Moved to ${STAGE_LABELS[newStatus as Stage] || newStatus}`)
+        setToast(`Moved to ${STAGE_LABELS[newStatus] || newStatus}`)
       } else {
         setError(data.error || 'Move failed')
       }

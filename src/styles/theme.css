@@ -32,6 +32,11 @@
   --color-status-new: #60a5fa;
   --color-status-deck-sent: #a78bfa;
   --color-status-replied: #4ade80;
+  --color-status-no-response: #facc15;
+  --color-status-call-done-interested: #2dd4bf;
+  --color-status-hot: #fb923c;
+  --color-status-final-negotiation: #f472b6;
+  /* Legacy aliases */
   --color-status-calling: #facc15;
   --color-status-call-done: #2dd4bf;
   --color-status-interested: #22d3ee;
@@ -79,6 +84,11 @@ html.dark {
   --color-status-new: #60a5fa;
   --color-status-deck-sent: #a78bfa;
   --color-status-replied: #4ade80;
+  --color-status-no-response: #facc15;
+  --color-status-call-done-interested: #2dd4bf;
+  --color-status-hot: #fb923c;
+  --color-status-final-negotiation: #f472b6;
+  /* Legacy aliases */
   --color-status-calling: #facc15;
   --color-status-call-done: #2dd4bf;
   --color-status-interested: #22d3ee;

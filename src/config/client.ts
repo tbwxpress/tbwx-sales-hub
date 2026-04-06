@@ -138,14 +138,36 @@ export const LEAD_STATUSES = [
   'NEW',
   'DECK_SENT',
   'REPLIED',
-  'CALLING',
-  'CALL_DONE',
-  'INTERESTED',
-  'NEGOTIATION',
+  'NO_RESPONSE',
+  'CALL_DONE_INTERESTED',
+  'HOT',
+  'FINAL_NEGOTIATION',
   'CONVERTED',
   'DELAYED',
   'LOST',
 ] as const
+
+// Human-readable labels for each status
+export const STATUS_LABELS: Record<string, string> = {
+  NEW: 'New',
+  DECK_SENT: 'Deck Sent',
+  REPLIED: 'Replied',
+  NO_RESPONSE: 'No Response',
+  CALL_DONE_INTERESTED: 'Call Done - Interested',
+  HOT: 'HOT',
+  FINAL_NEGOTIATION: 'Final Negotiation',
+  CONVERTED: 'Converted',
+  DELAYED: 'Delayed',
+  LOST: 'Lost',
+}
+
+// Migration map: old status → new status (used to auto-update existing leads)
+export const STATUS_MIGRATION: Record<string, string> = {
+  CALLING: 'NO_RESPONSE',
+  CALL_DONE: 'CALL_DONE_INTERESTED',
+  INTERESTED: 'HOT',
+  NEGOTIATION: 'FINAL_NEGOTIATION',
+}
 
 export const LEAD_PRIORITIES = ['HOT', 'WARM', 'COLD'] as const
 
@@ -154,10 +176,10 @@ export const STATUS_COLORS: Record<string, string> = {
   NEW: 'text-blue-400',
   DECK_SENT: 'text-purple-400',
   REPLIED: 'text-emerald-400',
-  CALLING: 'text-yellow-400',
-  CALL_DONE: 'text-teal-400',
-  INTERESTED: 'text-cyan-400',
-  NEGOTIATION: 'text-pink-400',
+  NO_RESPONSE: 'text-yellow-400',
+  CALL_DONE_INTERESTED: 'text-teal-400',
+  HOT: 'text-orange-400',
+  FINAL_NEGOTIATION: 'text-pink-400',
   CONVERTED: 'text-green-400',
   DELAYED: 'text-amber-400',
   LOST: 'text-red-400',
@@ -167,10 +189,10 @@ export const FOLLOWUP_DAYS: Record<string, number> = {
   NEW: 1,
   DECK_SENT: 1,
   REPLIED: 0,
-  CALLING: 1,
-  CALL_DONE: 2,
-  INTERESTED: 2,
-  NEGOTIATION: 2,
+  NO_RESPONSE: 1,
+  CALL_DONE_INTERESTED: 2,
+  HOT: 2,
+  FINAL_NEGOTIATION: 2,
   DELAYED: 7,
 }
 
@@ -192,7 +214,7 @@ export const DRIP_SEQUENCES: Record<string, { steps: { day: number; template: st
       { day: 5, template: 'drip_deck_followup_3', description: 'Shall we schedule a call?' },
     ],
   },
-  CALL_DONE: {
+  CALL_DONE_INTERESTED: {
     steps: [
       { day: 2, template: 'drip_postcall_followup_1', description: 'Post-call follow-up' },
       { day: 4, template: 'drip_postcall_followup_2', description: 'Limited slots in your city' },
@@ -201,6 +223,6 @@ export const DRIP_SEQUENCES: Record<string, { steps: { day: number; template: st
 }
 
 // Statuses that should pause/stop drip sequences
-export const DRIP_PAUSE_STATUSES: string[] = ['INTERESTED', 'NEGOTIATION', 'CONVERTED', 'LOST']
+export const DRIP_PAUSE_STATUSES: string[] = ['HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'LOST']
 // Statuses that should delay drip (temporary pause)
 export const DRIP_DELAY_STATUSES: string[] = ['DELAYED']
