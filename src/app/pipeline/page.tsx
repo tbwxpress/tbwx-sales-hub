@@ -168,6 +168,8 @@ export default function PipelinePage() {
   const [toast, setToast] = useState('')
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<{ name: string; role: string; can_assign: boolean } | null>(null)
+  const [agents, setAgents] = useState<{ name: string }[]>([])
+  const [agentFilter, setAgentFilter] = useState('')
 
   // ─── Auth + Data ─────────────────────────────────────────────────────────
 
@@ -181,6 +183,17 @@ export default function PipelinePage() {
         return
       }
       setCurrentUser(authData.data)
+
+      // Fetch agents for admin filter
+      if (authData.data.role === 'admin') {
+        try {
+          const usersRes = await fetch('/api/users')
+          const usersData = await usersRes.json()
+          if (usersData.success) {
+            setAgents(usersData.data.filter((u: { active: boolean }) => u.active))
+          }
+        } catch { /* non-critical */ }
+      }
 
       // Fetch leads (API already handles agent scoping)
       const leadsRes = await fetch('/api/leads')
@@ -230,23 +243,27 @@ export default function PipelinePage() {
 
   // ─── Group leads by stage ────────────────────────────────────────────────
 
+  // Apply agent filter (admin only)
+  const filteredLeads = agentFilter
+    ? leads.filter(l => l.assigned_to === agentFilter)
+    : leads
+
   const leadsByStage: Record<string, Lead[]> = {}
   for (const stage of PIPELINE_STAGES) {
     leadsByStage[stage] = []
   }
-  for (const lead of leads) {
+  for (const lead of filteredLeads) {
     const stage = lead.lead_status
     if (leadsByStage[stage]) {
       leadsByStage[stage].push(lead)
     } else {
-      // If status doesn't match any pipeline stage, put in NEW
       leadsByStage['NEW'].push(lead)
     }
   }
 
   // ─── Stats ───────────────────────────────────────────────────────────────
 
-  const totalLeads = leads.length
+  const totalLeads = filteredLeads.length
   const convertedCount = leadsByStage['CONVERTED'].length
   const conversionRate = totalLeads > 0 ? ((convertedCount / totalLeads) * 100).toFixed(1) : '0.0'
 
@@ -287,9 +304,24 @@ export default function PipelinePage() {
         <div className="max-w-7xl mx-auto mb-5">
           <div className="flex items-baseline justify-between mb-4">
             <div>
-              <h1 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>Sales Pipeline</h1>
+              <h1 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>
+                Sales Pipeline
+                {agentFilter && <span className="text-accent ml-2 text-base font-medium">— {agentFilter}</span>}
+              </h1>
               <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted)' }}>Drag cards between columns or click to move</p>
             </div>
+            {currentUser?.role === 'admin' && agents.length > 0 && (
+              <select
+                value={agentFilter}
+                onChange={e => setAgentFilter(e.target.value)}
+                className="bg-elevated border border-border rounded-md px-3 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50"
+              >
+                <option value="">All Agents</option>
+                {agents.map(a => (
+                  <option key={a.name} value={a.name}>{a.name}</option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-xl p-4 border" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
