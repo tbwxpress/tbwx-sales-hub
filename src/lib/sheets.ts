@@ -511,7 +511,11 @@ export async function getLeadStats(filterAgent?: string): Promise<{
   unassigned: number
   overdue_followups: number
 }> {
-  let leads = await getLeads()
+  const { STATUS_MIGRATION } = await import('@/config/client')
+  let leads = (await getLeads()).map(l => ({
+    ...l,
+    lead_status: (STATUS_MIGRATION[l.lead_status] || l.lead_status) as typeof l.lead_status,
+  }))
   if (filterAgent) {
     leads = leads.filter(l => l.assigned_to === filterAgent)
   }

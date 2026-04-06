@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, getLeadStats, createLead } from '@/lib/sheets'
 import { computeLeadScore } from '@/lib/scoring'
+import { STATUS_MIGRATION } from '@/config/client'
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,7 +19,10 @@ export async function GET(req: NextRequest) {
     if (statsOnly === 'true') {
       // Agents see own stats (+ unassigned if can_assign); admins see everything
       if (session!.role === 'agent') {
-        let statsLeads = await getLeads()
+        let statsLeads = (await getLeads()).map(l => ({
+          ...l,
+          lead_status: (STATUS_MIGRATION[l.lead_status] || l.lead_status) as typeof l.lead_status,
+        }))
         statsLeads = statsLeads.filter(l => l.assigned_to === session!.name || (session!.can_assign && !l.assigned_to))
         const now = new Date()
         const stats = {
@@ -42,6 +46,12 @@ export async function GET(req: NextRequest) {
     }
 
     let leads = await getLeads()
+
+    // Migrate old status values to new names (CALLING→NO_RESPONSE, etc.)
+    leads = leads.map(l => ({
+      ...l,
+      lead_status: (STATUS_MIGRATION[l.lead_status] || l.lead_status) as typeof l.lead_status,
+    }))
 
     // Agents see assigned leads + unassigned (if can_assign)
     if (session!.role === 'agent') {
