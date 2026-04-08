@@ -811,16 +811,36 @@ export default function LeadDetailPage() {
                           'bg-elevated text-dim'
                         }`}>{a.status}</span>
                       </div>
-                      {a.status === 'GENERATED' && (
+                      <div className="flex items-center gap-2">
+                        {/* Preview — works for any status */}
                         <button
-                          onClick={() => {
-                            window.open(`/api/agreements/${a.id}/generate`, '_blank')
-                          }}
+                          onClick={() => window.open(`/api/agreements/${a.id}/generate`, '_blank')}
                           className="text-accent hover:text-accent-hover text-[10px] font-medium"
                         >
-                          View / Print
+                          Preview
                         </button>
-                      )}
+                        {/* Generate PDF — admin only, for drafts */}
+                        {a.status === 'DRAFT' && sessionUser?.role === 'admin' && (
+                          <button
+                            onClick={async () => {
+                              const res = await fetch(`/api/agreements/${a.id}/generate`, { method: 'POST' })
+                              if (res.ok) {
+                                const html = await res.text()
+                                const win = window.open('', '_blank')
+                                if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500) }
+                                // Refresh agreements list
+                                fetch(`/api/agreements?phone=${encodeURIComponent(lead!.phone)}`)
+                                  .then(r => r.json())
+                                  .then(d => { if (d.success) setAgreements(d.data || []) })
+                                  .catch(() => {})
+                              }
+                            }}
+                            className="text-success hover:text-green-300 text-[10px] font-medium"
+                          >
+                            Generate PDF
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
