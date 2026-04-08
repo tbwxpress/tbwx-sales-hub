@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: A4; margin: 25mm 20mm 20mm 20mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Times New Roman', Times, serif; font-size: 11.5pt; line-height: 1.6; color: #000; }
+
+  .header { text-align: center; margin-bottom: 10px; border-bottom: 3px solid #1a3a5c; padding-bottom: 12px; }
+  .header-top { display: flex; justify-content: space-between; align-items: center; }
+  .header-logo { font-size: 16pt; font-weight: bold; color: #1a3a5c; }
+  .header-contact { text-align: right; font-size: 9pt; color: #333; line-height: 1.4; }
+
+  p { margin-bottom: 10px; text-align: justify; }
+  .bold { font-weight: bold; }
+  .italic { font-style: italic; }
+  .center { text-align: center; }
+
+  .section-title { font-size: 13pt; font-weight: bold; margin: 20px 0 10px; }
+  .subsection { font-weight: bold; margin: 12px 0 6px; }
+
+  ol { margin-left: 20px; margin-bottom: 12px; }
+  ol li { margin-bottom: 8px; text-align: justify; }
+  ul { margin-left: 20px; margin-bottom: 12px; list-style-type: disc; }
+  ul li { margin-bottom: 6px; text-align: justify; }
+
+  .signature-block { margin-top: 80px; display: flex; justify-content: space-between; }
+  .signature-line { width: 40%; }
+  .signature-line .label { font-weight: bold; font-size: 11pt; margin-top: 5px; }
+
+  .page-break { page-break-before: always; }
+  .footer { text-align: right; font-size: 8pt; color: #666; margin-top: 30px; font-style: italic; }
+  .page-num { text-align: center; font-size: 9pt; color: #666; }
+
+  .watermark { position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 55pt; color: rgba(0,0,0,0.03); font-weight: bold; z-index: -1; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div class="watermark">G SQUARE & COMPANY</div>
+
+<!-- PAGE 1: e-Stamp placeholder -->
+<p class="center" style="margin-top:40px; font-size:10pt; color:#666;">[e-Stamp Certificate / Payment Receipt page — to be attached separately]</p>
+
+<!-- PAGE 2: FRANCHISE AGREEMENT START -->
+<div class="page-break"></div>
+
+<div class="header">
+  <div class="header-top">
+    <div class="header-logo">G SQUARE<br>&amp; COMPANY</div>
+    <div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div>
+  </div>
+</div>
+
+<div class="center" style="margin:25px 0;">
+  <h1 style="font-size:16pt; font-weight:bold;">FRANCHISE AGREEMENT</h1>
+</div>
+
+<p>This Franchise Agreement ("Agreement") is made effective this <span class="bold">{{agreement_date}}</span> and is Valid for a period/term of <span class="bold">{{agreement_term}}</span> from this date.</p>
+
+<p class="bold">This Agreement shall be governed by the laws applicable in the Union Territory of Chandigarh, and the Courts at Chandigarh (under the jurisdiction of Punjab &amp; Haryana High Court) shall have exclusive jurisdiction over all disputes, claims, and recovery proceedings.</p>
+
+<p><span class="bold">BETWEEN:</span></p>
+
+<p><span class="bold">G Square and Company</span>, a partnership organized and existing under the laws of the Partnership Act 1932 with its office located at <span class="bold">Shop G10, Ground Floor, Centra Mall, Chandigarh</span> having PAN <span class="bold">AAXFG3059Q</span> ("Franchisor" / we / our / us).</p>
+
+<p><span class="bold">AND:</span></p>
+
+<p><span class="bold">{{franchisee_name}} {{franchisee_relation}}</span>.resident of <span class="bold">{{franchisee_address}}</span>.bearing PAN <span class="bold">{{franchisee_pan}}</span> and UID <span class="bold">{{franchisee_uid}}</span></p>
+
+<p>("Franchisee" / you / your).</p>
+
+<p>WHEREAS, The Franchisor has developed and owns proprietary business systems, operational methods, and trade secrets (hereinafter referred to as "The Systems") for the establishment, operation, and management of restaurants specializing in waffle based food products and more. "The Systems" include, but are not limited to:</p>
+
+<ul>
+  <li>Proprietary recipes, cooking techniques, and food preparation methods.</li>
+  <li>Operational manuals, training programs, and staff management protocols.</li>
+  <li>Marketing strategies, promotional campaigns, and customer service guidelines.</li>
+  <li>Supply chain management, quality control procedures, and inventory management systems.</li>
+  <li>Technology platforms, software, and data analytics tools used in the business.</li>
+</ul>
+
+<!-- PAGE 3: Territory + Fees -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<p>WHEREAS, the Franchisor grants to Franchisee, and Franchisee accepts, the rights to operate a <span class="bold">{{outlet_type}}</span> outlet at <span class="bold">{{outlet_address}}</span> under the terms and conditions of this Agreement, utilizing the Franchisor's "Systems."</p>
+
+<p>WHEREAS, the Franchisor's current trade name is "The Belgian Waffle Xpress (TBWX)" and the Franchisor may, at its sole discretion, modify or change the trade name at any time.</p>
+
+<p>NOW THEREFORE, based on the above premises and in consideration of the covenants and agreements contained herein, and intending to be legally bound, the parties agree hereto as follows:</p>
+
+<div class="section-title">1. TERRITORY</div>
+
+<p>The location for purposes of this Agreement concerning the selling of food products at <span class="bold">{{outlet_address}}</span> with an exclusive <span class="bold">{{territory_radius}}</span> area around this.</p>
+
+<div class="section-title">2. FEES, PAYMENTS AND REPORTING OF SALES</div>
+
+<p class="subsection">(i) Initial Franchise Fee</p>
+
+<p>The amount and timing of payment of the Initial Franchise Fee is <span class="bold">{{franchise_fee}}</span>, which must occur before commencing the Restaurant.</p>
+
+<p>After that, royalty will be as mentioned in point (ii) below.</p>
+
+<p class="subsection">(ii) Continuing Franchise Fees:</p>
+
+<p>You agree to pay us a Continuing Franchise Fee(Royalty), every month, on or before the 7th of the following month after a cooling period of <span class="bold">{{royalty_cooling_period}}</span>.</p>
+
+<p>The amount due should be calculated by multiplying (a) the Gross Sales (List Price+Packaging Charges - Any discounts) of the Restaurant for that month by (b) the Continuing Franchise Fee percentage which shall be <span class="bold">{{royalty_pct}}% + taxes</span>. This fee would be subject to a minimum of <span class="bold">{{min_royalty}}</span> per month</p>
+
+<p class="subsection">(iii) Taxes on Fees:</p>
+<p>You agree to pay all the taxes applicable on the Royalty paid to us.</p>
+
+<p class="subsection">(iv) Late Fees, Interest, and Costs</p>
+<p>If you are late in paying all or part of a fee due to us. then you must also pay interest on the unpaid amount calculated from the date due until paid at the rate of two percent (2%) per month. You must also pay all collection charges, including reasonable attorneys' fees, incurred by us to collect fees that are due.</p>
+
+<!-- PAGE 4: Renewal -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<div class="section-title">3. CONDITIONAL RENEWAL OF LICENSE</div>
+
+<p>This Agreement shall not automatically renew upon the expiration of the Term. Franchisee shall have the option to renew the Franchise upon the expiration of the Term of 3 years if the following conditions are satisfied:</p>
+
+<p class="subsection">(i) Renewal Notice and Fee:</p>
+<ul>
+  <li>You give us written notice of your desire to renew the Franchise at least three months, but not more than six months prior to the end of the Term.</li>
+  <li>You also agree to pay us Rs 25,000 (Twenty-five thousand only) as the renewal fee for another 3-year term when the term of this agreement ends.</li>
+</ul>
+
+<p class="subsection">(ii) Compliance and Performance:</p>
+<ul>
+  <li>You have substantially maintained the Standards and otherwise sustained compliance with the terms and conditions of your Franchise Agreement.</li>
+</ul>
+
+<p class="subsection">(iii) Franchisor's Discretion:</p>
+<ul>
+  <li>Notwithstanding the fulfillment of the conditions outlined in this Section, we reserve the right to deny renewal of this Agreement if we determine, in our reasonable business judgment, that renewal is not in the best interests of the System or the Brand.</li>
+  <li>Factors we may consider in exercising this discretion include, but are not limited to, your adherence to the spirit of the Agreement, your overall contribution to the System, and our long-term business strategies.</li>
+</ul>
+
+<!-- PAGE 5: Operations -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<div class="section-title">4. OPERATIONS</div>
+
+<p class="subsection">4.1 Recipes &amp; Its Secret Ingredients</p>
+<p>We shall provide you the list of food products along with their recipes to be listed in the food menu. We shall further provide the secret ingredients to be incorporated into the food recipes to you. You shall have no right to add, modify, or remove, any item in the food menu and also have no right to make any variations in the Recipes or ingredients without our prior communication over the electronic media. You are bound to comply with the specifications declared by us in terms of all the offers and discounts or any other promotional means, etc to maintain uniformity of all the outlets from time to time and is also bound not to disclose the secret information directly or indirectly about the recipes or ingredients to any third party without our prior permission. Along with it, you are strictly not allowed to serve any other products in the outlet to maintain the standards of the outlets and failure will result in a penalty of an additional 2% of gross sales which will be added to the royalty amount to be paid in the following month.</p>
+
+<p class="subsection">4.2</p>
+<p>All critical supplies/raw materials / machines to be sent by us on pre-payment basis only. Some of the non-critical items may be procured locally by the franchisee, on our advice.</p>
+
+<p class="subsection">4.3 Franchise Standards</p>
+<p>All recipes, business processes, vendor information, training manuals, customer lists, marketing data, and systems developed or shared by the Franchisor are and shall remain the sole intellectual property of the Franchisor.</p>
+<p>The Franchisee agrees not to disclose, reproduce, or use any of the Franchisor's confidential information or proprietary materials except as expressly authorized. This obligation survives the termination or expiration of this Agreement.</p>
+
+<p class="subsection">4.4 Right of Inspection</p>
+<p>You agree that our employees and agents have the right to enter the Restaurant and Premises at any time, with or without prior notice, during business hours to determine your compliance with Standards and this Agreement. During any such inspection, we may photograph or video any part of the Restaurant. We may select ingredients products, supplies equipment and other items from the Restaurant to evaluate whether they comply with our Standards. We may require you to immediately remove non-conforming items at your expense, and we may remove them at your expense if you do not remove them upon request.</p>
+
+<p class="subsection">4.5 Packing Material</p>
+<p>You will be provided the packing material from us, on payment basis, to maintain uniformity. Accordingly, you are bound to place a prepaid order for packing material at least two weeks prior so that there is a healthy relationship between franchisee and the franchisor.</p>
+
+<!-- PAGE 6: General Terms + Aggregator -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<p class="subsection">4.6 General Terms &amp; Conditions</p>
+<ul>
+  <li>Keep the Restaurant open and in continuous operation for the hours we prescribe.</li>
+  <li>You agree to comply with all civil and criminal laws, ordinances, rules, regulations, and orders of public authorities about the occupancy, operation, and maintenance of the Restaurant and Premises.</li>
+  <li>The parties will continuously strive to treat each other with courtesy and respect in all aspects of the franchise relationship.</li>
+  <li>You are bound to do all the communications whether relating to the menu, products, payments, employees, etc over the electronic media to maintain track of all the communications and accordingly, no verbal commitments will be counted in the record.</li>
+</ul>
+
+<div class="section-title">5. ONLINE AGGREGATOR MANAGEMENT</div>
+<p class="subsection">5.1 Aggregator Agreements</p>
+<ul>
+  <li>The Franchisor shall have the sole right to negotiate, execute, and manage agreements with all third-party online food aggregators (including, but not limited to, Zomato, Swiggy, and any similar platforms) (hereinafter referred to as "Aggregators") for the Restaurant.</li>
+  <li>The Franchisee acknowledges that the Franchisor's management of Aggregator Agreements is essential for maintaining brand consistency, optimizing pricing strategies, and ensuring efficient order processing across all franchised outlets.</li>
+</ul>
+
+<!-- PAGE 7: Brand Name -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<div class="section-title">6. BRAND NAME</div>
+
+<p>(i) You agree to use only the brand name we designate and in the manner that we approve. You may use and display such brand name only in connection with the operation of the Restaurant and in compliance with our Standards.</p>
+
+<p>(ii) You may not use the Brand-Name to advertise or sell products or services through the mail or by any electronic or other medium, including the Internet, without our prior written approval. Our right of approval of any Internet usage of our Proprietary Marks includes approval of the domain names and Internet addresses, website materials and content, and all links to other sites.</p>
+
+<p>We have the sole right to establish an Internet "home page" using any of the Brand-Name, and to regulate the establishment and use of linked home pages by our franchisees.</p>
+
+<p>iii) You agree not to use the Brand-Name or anything confusingly similar as part of your corporate or other legal name, or as part of any e-mail address, domain name, or other identification of you or your business, in any medium.</p>
+
+<p>In all approved uses of the Brand-Name on your business forms such as your letterhead, invoices, order forms, receipts, and contracts, you must identify yourself as our franchisee and your business as independently owned and operated.</p>
+
+<p>(iv) You have no rights in the brand name or our Systems other than those explicitly granted in this Agreement, and you may not sublicense the Brand Name.</p>
+
+<p>(v) You agree to notify us promptly of any litigation relating to the brand name. In the event we undertake the defense or prosecution of any such litigation, you agree to execute any documents and do such acts and things as may be necessary, in the opinion of our counsel, to carry out such defense or prosecution.</p>
+
+<p>(vi) We will save, defend, indemnify, and hold you and your successors and assigns harmless, from and against (i) any claims based upon, arising out of, or in any way related to the validity of your approved use of the Brand-Name and (ii) any expenses and costs (including reasonable attorney's fees) incurred by or on behalf of you in the defense against any such claims.</p>
+
+<p>(vii) You agree not to use our brand name or logo on any form of media without our prior consent over the electronic media.</p>
+
+<p>(viii) In the event that the current tradename "The Belgian Waffle Xpress" is denied registration, opposed, or is legally challenged during or after the trademark registration process, the Franchisor reserves the unconditional right to rebrand or change the brand name, trade dress, or associated IP at its sole discretion.</p>
+
+<!-- PAGE 8: Social Media -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<p class="subsection">(viii) Social Media and Online Presence:</p>
+<p>All social media accounts, online listings, food aggregator listings (Zomato, Swiggy, ONDC, etc.), and digital properties created or used in connection with the franchise business will be solely owned by the Franchisor.</p>
+<ul>
+  <li>The Franchisee shall not create, manage, or control any social media accounts or online listings without the Franchisor's prior written approval.</li>
+  <li>All communications, posts, and content published on social media or online platforms using the Brand Name shall be subject to the Franchisor's review and approval.</li>
+  <li>The Franchisor reserves the right to monitor and manage the Franchisee's online presence, including but not limited to social media accounts, website content, and online reviews.</li>
+  <li>The Franchisee shall comply with the Franchisor's guidelines and policies regarding social media and online communications.</li>
+  <li>Any disputes or issues arising from the Franchisee's online presence shall be resolved in accordance with the terms of this Agreement and applicable law.</li>
+  <li>Violation of this clause may result in termination of the Franchise Agreement.</li>
+</ul>
+
+<!-- PAGE 9: Default and Remedies -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<div class="section-title">7. DEFAULT AND REMEDIES</div>
+
+<p>You will be in default under this Agreement under the following conditions:</p>
+
+<p class="subsection">(i) You breach an obligation</p>
+<p>under this Agreement or an obligation under another agreement, which agreement is necessary to the operation of the Restaurant.</p>
+
+<p class="subsection">(ii) Insolvency and/or Bankruptcy</p>
+<p>You file a petition in bankruptcy, are adjudicated a bankrupt, or a petition is filed against you and is either consented to by you or not dismissed within thirty days, or you become insolvent or make an assignment for the benefit of creditors or a bill in equity or other proceedings for the appointment of a receive or other custodian for your business assets is filed and is either consented to by you or not dismissed within thirty days;</p>
+<p>or a receiver or other custodian is appointed for your business or business assets, or proceedings for composition with creditors is filed by or against you.</p>
+
+<p class="subsection">(iii) Material Breach</p>
+<p>You or your owners are convicted of or plead guilty to or a crime involving moral turpitude, or any other crime or offense that is injurious to our Systems or the goodwill enjoyed by our Proprietary Marks.</p>
+
+<p class="subsection">(iv)</p>
+<p>You commit fraud upon us or a third party relating to a business franchised or licensed by us.</p>
+
+<p class="subsection">(v)</p>
+<p>You use or permit the use of any business franchised or licensed by us, including the Restaurant or Premises, for an unauthorized purpose.</p>
+
+<p class="subsection">(vi) Failure to Make Payment</p>
+<p>A failure by either party to make payment of any monies payable under this Agreement, as or when payment is due.</p>
+
+<p>Except as otherwise provided herein, no termination of this Agreement for any reason shall relieve or discharge any party hereto from any duty, obligation, or liability hereunder which was accrued as of the date of such termination.</p>
+
+<p>You will have the following opportunities to cure a default under this Agreement.</p>
+
+<p class="subsection">(a) Thirty-Day Cure Period</p>
+<p>Except as otherwise provided, you must cure any default under this Agreement within thirty days after delivery of notice of default to you in our then-standard form or forms of communication.</p>
+
+<p class="subsection">(b) Seven-Day Cure Period</p>
+<p>If you do not pay the money owed to us, you must cure that default within seven days after delivery of notice of default to you in our then-standard form or forms of communication.</p>
+
+<p class="subsection">(c) Twenty-Four-Hour Cure Period</p>
+<p>If you violate any law, regulation, order, or Standard relating to health, sanitation, or safety, or if you cease to operate the restaurant for forty-eight hours without our prior written consent, you must cure that default within twenty-four hours after delivery of notice of default to you in our then-standard form or forms of communication.</p>
+
+<p class="subsection">vii) Post-Term Competition</p>
+<p>The Franchisee shall not engage, within eighteen (18) months following the termination or expiration of this Agreement, in the direct or indirect operation, consultation, ownership, or management of any waffle-based or similar food business within a 10 km radius of any outlet operated under the Franchisor's brand.</p>
+
+<!-- PAGE 10: Termination -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<p>Such violation shall be considered a material breach and shall subject the Franchisee to legal and financial remedies, including injunctive relief and liquidated damages as determined appropriate by the Franchisor.</p>
+
+<div class="section-title">8. TERMINATION AND EXPIRATION</div>
+
+<p>If you commit a default referenced in the No Cure Period or if you fail to timely cure any default that may be cured, we may terminate this Agreement.</p>
+
+<p>Termination will be effective immediately upon receipt of a written notice of termination unless a notice period is required by law, in which case that notice period will apply.</p>
+
+<p>Upon termination or expiration of this Agreement, you no longer have any rights granted by this Agreement.</p>
+
+<p>If we suffer your continued operation of the Restaurant while we seek judicial enforcement of our election to terminate, conducting business as if the Agreement had not been terminated to preserve the reputation of our Systems and goodwill associated with the trade name, our adherence to the judicial process is neither a waiver of our election to terminate nor an extension of the termination date.</p>
+
+<p>In the event of termination or expiration of this Agreement:</p>
+
+<p>8.1 You must pay all money owed under this Agreement, including any fees and interest, within ten days.</p>
+<p>8.2 You must immediately cease operation of the Restaurant and no longer represent yourself to the public as our franchisee.</p>
+<p>8.3 You must immediately cease all use of our trade name, trade secrets, and confidential information and cease to participate directly or indirectly in the use or benefits of our Systems.</p>
+<p>8.4 You must, within ten days, return all originals and copies of our operating manuals, plans, specifications, and all other materials of ours in your possession relating to the operation of the Restaurant, all of which you acknowledge to be our property. The remaining materials are your property.</p>
+<p>8.5 Upon our request within thirty days from the date of termination due to default, you agree to sell to us any or all of the furniture, fixtures, and equipment at its then-current fair market value, less any indebtedness on the equipment and indebtedness to us.</p>
+<p>8.6 Upon our request within thirty days from the date of termination or expiration, you must assign to us any leasehold interest you have in the Restaurant and Premises or any other agreement related to the Premises.</p>
+
+<!-- PAGE 11: Termination continued -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<p>8.7 Upon our request within thirty days from the date of termination due to default or expiration, you must remove from the Restaurant and Premises and return to us all indicia of our trade name. Further, you must make such modifications or alterations to the Restaurant and Premises as we require by our Standards to distinguish the Restaurant and Premises from the premises of other restaurants in the Systems. You must also disconnect any telephone listings that contain our name, and withdraw any fictitious name registration containing any part of our trade name. You hereby appoint us as your attorney-in-fact, and in your name, to do any act necessary to accomplish the intent of this section. In the event you fail or refuse to comply with the requirements of this section, we have the right to enter upon the Premises, without being guilty of trespass or any other tort, to make such changes as may be required, at your expense, which you agree to pay upon demand.</p>
+
+<p>8.8 You agree that the existence of any claims against us, whether or not arising from this Agreement, shall not constitute a defense to the enforcement by us of any provision of this Agreement.</p>
+
+<p>8.9 <span class="bold">Indemnification:</span> You will indemnify and hold us, our parent, subsidiaries, and affiliates, including our and their respective members, officers, directors, employees, agents, successors, and assigns, harmless from all claims related in any way to your operation, possession, or ownership of the Restaurant or the Premises, or any debt or obligation of yours. This indemnification covers all fees (including reasonable attorneys' fees), costs, and other expenses incurred by us or on our behalf in the defense of any claims, and shall not be limited by the amount of insurance required under this Agreement. Our right to indemnity shall be valid notwithstanding that joint or concurrent liability may be imposed on us by statute, ordinance, regulation, or other law. We will notify you of any claims covered by this paragraph, and you shall have the opportunity to assume the defense of the matter. We shall have the right to participate in any defense that is assumed by you, at our own cost and expense. No settlement of any claim against us shall be made without our prior written consent if we would be subjected to any liability not covered by you or your insurer.</p>
+
+<p>8.10 <span class="bold">Mediation Clause:</span> Before initiating termination procedures, both parties agree to engage in mediation to resolve the dispute. Mediation shall be conducted in Chandigarh through a mutually agreed professional mediator, and both parties shall equally share the mediation costs. If mediation fails within 15 business days of initiation, the Franchisor may proceed with termination.</p>
+
+<p>8.11 Termination will be effective immediately upon receipt of a written notice of termination unless a notice period is required by law, in which case that notice period will apply.</p>
+
+<!-- PAGE 12: Additional Clause + Advertising -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<div class="section-title">9. Additional Clause (Regarding Premises):</div>
+
+<p class="subsection">9.1 Additional Business at the Restaurant Premises</p>
+
+<p class="bold">(a) The Franchisee shall not, without the Franchisor's prior written consent, operate any business at the Restaurant Premises other than the {{outlet_type}} outlet for 'The Belgian Waffle Xpress' (or any successor brand name designated by the Franchisor) as authorized by this Agreement, and in strict adherence to the Systems.</p>
+
+<p class="bold">(b) The Franchisor reserves the sole and absolute right to grant or withhold such consent. In exercising this right, the Franchisor may consider, but shall not be limited to, the following factors:</p>
+
+<p>(i) The potential impact of the additional business on 'The Belgian Waffle Xpress' Brand (or any successor brand name) and the integrity of the Systems;</p>
+<p>(ii) Any conflicts or inconsistencies between the operations of the additional business and the Franchisor's Standards and Systems;</p>
+<p>(iii) The potential for competition between the additional business and 'The Belgian Waffle Xpress' (or any successor brand name) or other franchisees operating under the Systems;</p>
+<p>(iv) The availability of resources and space at the Restaurant Premises to accommodate the additional business without detriment to the Franchisee's obligations under this Agreement to operate 'The Belgian Waffle Xpress' in accordance with the Systems.</p>
+
+<p class="bold">(c) If the Franchisor grants consent under subsection (b), the Franchisee and the Franchisor shall execute a written addendum to this Agreement, which shall specify the terms and conditions governing the operation of the additional business.</p>
+
+<div class="section-title">10. ADVERTISING</div>
+
+<p>We have the sole right to incur expenditure in connection with the promotion or marketing of outlets under the System. Any expenditure incurred by us <span class="bold">after discussing with you</span>, with regards to your portion of the Advertising Fee, will be recovered from you along with Franchisee Fees.</p>
+
+<p>The Franchisee shall refrain from making any negative public statements, reviews, or online content regarding the Franchisor, its management, the brand, or other franchisees.</p>
+
+<!-- PAGE 13: Miscellaneous -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<div class="section-title">11. MISCELLANEOUS</div>
+
+<p>(i) This Agreement shall not constitute any partnership, joint venture, or agency relationship between the parties hereto. The parties shall be considered independent contractors.</p>
+
+<p>(ii) This Agreement, together with the attached (EXHIBITS IF INCLUDED) embodies the entire understanding of the parties concerning the subject matter hereof and may not be altered, amended, or otherwise modified except by an instrument in writing executed by both parties</p>
+
+<p>(iii) The headings in this Agreement are for convenience of reference only and shall not have any substantive effect.</p>
+
+<p>(iv) All rights and remedies granted to the parties hereunder are cumulative and are in addition to any other rights or remedies that the parties may have at law or in equity.</p>
+
+<p>(v) Should any non-material provision of this Agreement be held to be void/ invalid or inoperative, as a matter of law the remaining provisions hereof shall not be affected and shall continue in effect as though such unenforceable provision(s) have been deleted herefrom.</p>
+
+<p>(vi) No waiver of any right under or breach of this Agreement shall be effective unless it is in writing and signed by the party to be charged.</p>
+
+<p>(vii) All notices shall be in writing on the email as well as Whatsapp.</p>
+
+<p>(viii) Your success in this business is speculative and depends, to an important extent, upon your ability as an independent business owner. We do not represent or warrant that the Restaurant will achieve a certain level of sales or be profitable, notwithstanding our approval of the location. By your signature below, you acknowledge that you have entered into this Agreement after making an independent investigation of G Square &amp; Company, The Belgian Waffle Xpress and Systems.</p>
+
+<!-- PAGE 14: Signatures -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<p>Intending to be legally bound hereby, the parties have duly executed and delivered this agreement in duplicate, as of the date and year first written above. You hereby acknowledge receipt of this Franchise Agreement. You further acknowledge having carefully read this agreement in its entirety, including all addenda identified above</p>
+
+<p><span class="bold">IN WITNESS WHEREOF</span>, the parties hereto have executed this Agreement as of the day and year first above written</p>
+
+<div class="signature-block">
+  <div class="signature-line">
+    <div style="height: 80px;"></div>
+    <div class="label">FRANCHISOR</div>
+  </div>
+  <div class="signature-line" style="text-align: right;">
+    <div style="height: 80px;"></div>
+    <div class="label">FRANCHISEE</div>
+  </div>
+</div>
+
+<!-- PAGE 15: Attested By -->
+<div class="page-break"></div>
+<div class="header"><div class="header-top"><div class="header-logo">G SQUARE<br>&amp; COMPANY</div><div class="header-contact">+91-7973934342<br>tbwxpress@gmail.com<br>SCO 6-9, First Floor, Panchkula<br>Shopping Complex, Dhakoli, Zirakpur,<br>Punjab, 140603</div></div></div>
+
+<p class="bold" style="margin-top: 30px;">Attested BY:</p>
+
+<div style="margin-top: 40px; padding: 20px; border: 1px dashed #ccc; min-height: 400px;">
+  <p style="color: #999; text-align: center; margin-top: 150px;">[Attach PAN Card and Aadhar Card copies here]</p>
+</div>
+
+<div class="footer">Confidential | Do Not Distribute</div>
+
+</body>
+</html>

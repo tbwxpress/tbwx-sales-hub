@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: A4; margin: 25mm 20mm 20mm 20mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.6; color: #000; }
+
+  .header { text-align: center; margin-bottom: 10px; border-bottom: 3px solid #1a3a5c; padding-bottom: 15px; }
+  .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .header-logo { font-size: 18pt; font-weight: bold; color: #1a3a5c; }
+  .header-contact { text-align: right; font-size: 9pt; color: #333; line-height: 1.4; }
+
+  .doc-title { text-align: center; margin: 25px 0; }
+  .doc-title h1 { font-size: 16pt; font-weight: bold; margin-bottom: 5px; }
+  .doc-title h2 { font-size: 14pt; font-weight: bold; }
+
+  p { margin-bottom: 10px; text-align: justify; }
+  .bold { font-weight: bold; }
+  .italic { font-style: italic; }
+  .underline { text-decoration: underline; }
+
+  .section-title { font-size: 14pt; font-weight: bold; margin: 20px 0 10px; }
+
+  ol { margin-left: 25px; margin-bottom: 15px; }
+  ol li { margin-bottom: 8px; text-align: justify; }
+  ul { margin-left: 25px; margin-bottom: 15px; list-style-type: disc; }
+  ul li { margin-bottom: 8px; text-align: justify; }
+
+  .signature-block { margin-top: 60px; display: flex; justify-content: space-between; }
+  .signature-line { width: 40%; }
+  .signature-line .dots { border-bottom: 1px solid #000; height: 40px; }
+  .signature-line .label { font-weight: bold; font-size: 11pt; margin-top: 5px; }
+
+  .page-number { text-align: center; font-size: 9pt; color: #666; margin-top: 30px; }
+  .page-break { page-break-before: always; }
+
+  .watermark { position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 60pt; color: rgba(0,0,0,0.03); font-weight: bold; z-index: -1; white-space: nowrap; }
+
+  .variable { color: #000; } /* Filled variables look identical to static text */
+</style>
+</head>
+<body>
+
+<div class="watermark">G SQUARE & COMPANY</div>
+
+<!-- PAGE 1 -->
+<div class="header">
+  <div class="header-top">
+    <div class="header-logo">G SQUARE<br>&amp; COMPANY</div>
+    <div class="header-contact">
+      +91-7973934342<br>
+      tbwxpress@gmail.com<br>
+      SCO 6-9, First Floor, Panchkula<br>
+      Shopping Complex, Dhakoli, Zirakpur,<br>
+      Punjab, 140603
+    </div>
+  </div>
+</div>
+
+<div class="doc-title">
+  <h1>Franchise Booking Agreement (FBA)</h1>
+  <h2>The Belgian Waffle Xpress(TBWX)</h2>
+</div>
+
+<p><span class="bold">THIS Agreement</span>, hereinafter called the Franchise Booking Agreement (referred to as 'FBA' in short), is made and executed at Chandigarh, on this Date: <span class="bold variable">{{agreement_date}}</span>.</p>
+
+<p><span class="bold">BETWEEN:</span></p>
+
+<p><span class="bold">G SQUARE AND COMPANY</span> having the trade name as <span class="bold">The Belgian Waffle Xpress (TBWX)</span> (the "FRANCHISOR/FIRST PARTY"), a partnership organized and existing under the laws of the Partnership Act 1932 with its head office located at G10, Ground Floor, Centra Mall, Chandigarh bearing PAN <span class="bold">AAXFG3059Q</span></p>
+
+<p class="italic">(Which expression shall, whenever the context so requires or admits mean and include its successors and assigns of the ONE PART)</p>
+
+<p><span class="bold">AND:</span></p>
+
+<p><span class="bold variable">{{franchisee_name}}</span> <span class="variable">{{franchisee_relation}}</span> resident of <span class="variable">{{franchisee_address}}</span>. bearing PAN <span class="bold variable">{{franchisee_pan}}</span> and UID <span class="bold variable">{{franchisee_uid}}</span></p>
+
+<p>(hereinafter referred to as the "FRANCHISEE/SECOND PARTY").</p>
+
+<p class="italic">(Which expression shall, unless the context so requires or admits mean and include its heirs, legal representatives, executors and permitted assigns) of the 'FRANCHISEE/SECOND PARTY'.</p>
+
+<!-- PAGE 2 -->
+<div class="page-break"></div>
+
+<div class="header">
+  <div class="header-top">
+    <div class="header-logo">G SQUARE<br>&amp; COMPANY</div>
+    <div class="header-contact">
+      +91-7973934342<br>
+      tbwxpress@gmail.com<br>
+      SCO 6-9, First Floor, Panchkula<br>
+      Shopping Complex, Dhakoli, Zirakpur,<br>
+      Punjab, 140603
+    </div>
+  </div>
+</div>
+
+<p><span class="bold">WHEREAS:</span></p>
+
+<ul>
+  <li>The <span class="bold">FRANCHISOR/FIRST PARTY</span> is engaged in the business of specialized waffle and dessert outlets and is the <span class="bold">proprietor of all proprietary rights</span> and the exclusive <span class="bold">Trade Name 'The Belgian Waffle Xpress (TBWX)'</span> ('the Systems'/we/our/us), <span class="bold">(TM applied)</span> having asserted full claim and taken necessary steps toward securing legal protections thereto</li>
+
+  <li>The <span class="bold">FRANCHISEE/SECOND PARTY</span> confirms having conducted a complete and independent investigation of The Belgian Waffle Xpress(TBWX) and its Systems, and is fully interested in owning a franchise outlet and utilizing the <span class="bold underline">FRANCHISOR/FIRST PARTY's consultancy services</span>.</li>
+
+  <li>The <span class="bold">FRANCHISOR/FIRST PARTY</span> is desirous of extending its services under its brand name by setting up a chain of retail outlets (Franchisee Model) all over the country.</li>
+
+  <li>The <span class="bold">FRANCHISEE/SECOND PARTY</span> is interested in owning <span class="bold variable">{{num_outlets}}</span> franchise outlet(s) of TBWX at<br>
+  <span class="variable">{{outlet_locations}}</span></li>
+
+  <li>This Agreement has been entered into by the FRANCHISOR and the FRANCHISEE with mutual consent.</li>
+</ul>
+
+<div class="section-title">Terms And Conditions</div>
+
+<ol>
+  <li>That the <span class="bold">FRANCHISEE/SECOND PARTY</span> understands and agrees on depositing the Total Estimated Initial Franchise Fee of <span class="bold variable">{{total_franchise_fee}}</span> plus GST. (The final amount will be detailed in the subsequent Franchise Agreement).</li>
+
+  <li>That for the purpose of blocking a slot and initiating the process for the franchise outlet, the <span class="bold">FRANCHISEE/SECOND PARTY</span> is paying a booking amount for each franchise outlet of <span class="bold variable">{{booking_amount_per_outlet}}</span> <span class="bold">and applicable GST will be paid with Franchise Fee</span>, which is <span class="bold">non-refundable</span> under any circumstances.</li>
+
+  <li>The booking amount is non-refundable as the Franchisor will commence sharing proprietary knowledge, site selection criteria, and initial design specifications required for the outlet's development immediately upon receipt.</li>
+
+  <li>That the present FBA is valid for a maximum period of <span class="bold">180 days</span> within which time both parties will further enter into a comprehensive <span class="bold">Franchise Agreement</span>, detailing the full scope of work, investment structure, terms, and the tentative store opening date.</li>
+
+  <li>That the <span class="bold">FRANCHISOR/FIRST PARTY</span> retains the right to withdraw the finalized location from the <span class="bold">FRANCHISEE/SECOND PARTY</span> and allot the same to any new party if the full Franchise Agreement is not executed within the 180-day validity period mentioned above.</li>
+
+  <li>The <span class="bold">FRANCHISOR/FIRST PARTY</span> will list the <span class="bold">FRANCHISEE/SECOND PARTY</span> with online aggregators (Swiggy, Zomato, etc.), and the <span class="bold">FRANCHISOR/FIRST PARTY</span> will own and control these digital properties.</li>
+
+  <li>The <span class="bold">FRANCHISEE/SECOND PARTY</span> will be required to get the interior and civil work done as per the designs specified and approved by the <span class="bold">FRANCHISOR/FIRST PARTY</span> on the given premises.</li>
+
+  <li>That both the <span class="bold">FRANCHISOR/FIRST PARTY</span> and the <span class="bold">FRANCHISEE/SECOND PARTY</span> undertake to honor the terms and conditions mentioned in this Agreement and indemnify each other against any breach of the terms of this Agreement.</li>
+
+  <li>If a specific site is not finalized at the time of this booking, the <span class="bold">FRANCHISEE/SECOND PARTY</span> agrees that the location proposed by them may be rejected by the <span class="bold">FRANCHISOR/FIRST PARTY</span> if it does not meet system standards, or if an existing TBWX outlet is operational within 3 sq km of the proposed site.</li>
+</ol>
+
+<!-- PAGE 3 -->
+<div class="page-break"></div>
+
+<div class="header">
+  <div class="header-top">
+    <div class="header-logo">G SQUARE<br>&amp; COMPANY</div>
+    <div class="header-contact">
+      +91-7973934342<br>
+      tbwxpress@gmail.com<br>
+      SCO 6-9, First Floor, Panchkula<br>
+      Shopping Complex, Dhakoli, Zirakpur,<br>
+      Punjab, 140603
+    </div>
+  </div>
+</div>
+
+<p><span class="bold">IN WITNESS WHEREOF</span>, both the FRANCHISOR and the FRANCHISEE have put their respective signatures on this agreement on the day, month and year first mentioned above as a token of their acceptance of the terms and conditions mentioned in this present deed in the presence of the following witnesses.</p>
+
+<div class="signature-block">
+  <div class="signature-line">
+    <div class="dots"></div>
+    <div class="label">FRANCHISOR</div>
+  </div>
+  <div class="signature-line" style="text-align: right;">
+    <div style="font-weight: bold; font-size: 12pt;">{{franchisee_name}}</div>
+    <div class="label">FRANCHISEE</div>
+  </div>
+</div>
+
+<div class="page-number">3</div>
+
+</body>
+</html>

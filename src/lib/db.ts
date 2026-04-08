@@ -195,6 +195,22 @@ async function ensureInit(): Promise<Client> {
         fetched_at TEXT DEFAULT (datetime('now'))
       );
 
+      CREATE TABLE IF NOT EXISTS agreements (
+        id TEXT PRIMARY KEY,
+        lead_phone TEXT,
+        lead_row INTEGER,
+        doc_type TEXT NOT NULL CHECK(doc_type IN ('FBA', 'FRANCHISE_AGREEMENT')),
+        status TEXT DEFAULT 'DRAFT',
+        fields TEXT NOT NULL DEFAULT '{}',
+        pdf_data TEXT,
+        generated_by TEXT,
+        generated_at TEXT,
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_agreements_phone ON agreements(lead_phone);
+
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL DEFAULT '',
@@ -1038,4 +1054,60 @@ export async function setMetaAdsSnapshot(type: string, data: unknown) {
           ON CONFLICT(snapshot_type) DO UPDATE SET data = ?, fetched_at = ?`,
     args: [type, json, now, json, now],
   })
+}
+
+// --- Agreements CRUD ---
+
+export async function insertAgreement(data: {
+  id: string
+  lead_phone: string
+  lead_row?: number
+  doc_type: 'FBA' | 'FRANCHISE_AGREEMENT'
+  fields: Record<string, string>
+  generated_by?: string
+}) {
+  const db = await ensureInit()
+  await db.execute({
+    sql: `INSERT INTO agreements (id, lead_phone, lead_row, doc_type, status, fields, generated_by, created_at)
+          VALUES (?, ?, ?, ?, 'DRAFT', ?, ?, datetime('now'))`,
+    args: [data.id, normalizePhone(data.lead_phone), data.lead_row || null, data.doc_type, JSON.stringify(data.fields), data.generated_by || ''],
+  })
+}
+
+export async function getAgreementsForLead(phone: string): Promise<Record<string, unknown>[]> {
+  const db = await ensureInit()
+  const norm = normalizePhone(phone)
+  const result = await db.execute({
+    sql: 'SELECT * FROM agreements WHERE lead_phone = ? ORDER BY created_at DESC',
+    args: [norm],
+  })
+  return result.rows.map(serializeRow)
+}
+
+export async function getAgreementById(id: string): Promise<Record<string, unknown> | null> {
+  const db = await ensureInit()
+  const result = await db.execute({ sql: 'SELECT * FROM agreements WHERE id = ?', args: [id] })
+  return result.rows.length > 0 ? serializeRow(result.rows[0]) : null
+}
+
+export async function updateAgreement(id: string, updates: Record<string, unknown>) {
+  const db = await ensureInit()
+  const fields: string[] = []
+  const values: (string | number | null)[] = []
+  for (const [k, v] of Object.entries(updates)) {
+    if (['status', 'fields', 'pdf_data', 'generated_by', 'generated_at', 'reviewed_by', 'reviewed_at'].includes(k)) {
+      fields.push(`${k} = ?`)
+      const val = k === 'fields' && typeof v === 'object' ? JSON.stringify(v) : v
+      values.push(val == null ? null : String(val))
+    }
+  }
+  if (fields.length === 0) return
+  values.push(id)
+  await db.execute({ sql: `UPDATE agreements SET ${fields.join(', ')} WHERE id = ?`, args: values })
+}
+
+export async function getAllAgreements(): Promise<Record<string, unknown>[]> {
+  const db = await ensureInit()
+  const result = await db.execute('SELECT * FROM agreements ORDER BY created_at DESC')
+  return result.rows.map(serializeRow)
 }
