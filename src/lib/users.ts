@@ -3,6 +3,8 @@
  * Replaces the old sheets-based user storage for security.
  */
 
+import fs from 'fs'
+import path from 'path'
 import { createClient, type Client } from '@libsql/client'
 import type { User } from './types'
 
@@ -16,8 +18,6 @@ let _tableReady = false
 function getClient(): Client {
   if (!_db) {
     if (dbUrl.startsWith('file:')) {
-      const fs = require('fs')
-      const path = require('path')
       const filePath = dbUrl.replace('file:', '')
       const dir = path.dirname(path.resolve(process.cwd(), filePath))
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })

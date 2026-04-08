@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import { STATUS_LABELS, STATUS_MIGRATION } from '@/config/client'
+import Toast from '@/components/Toast'
+import { timeAgo, followupLabel } from '@/lib/format'
+import { scoreColor, scoreBg, scoreBorder } from '@/lib/score-colors'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -62,67 +65,6 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string
 const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST']
 const PRIORITY_OPTIONS = ['HOT', 'WARM', 'COLD']
 
-function timeAgo(dateStr: string): string {
-  if (!dateStr) return '-'
-  const d = new Date(dateStr)
-  if (isNaN(d.getTime())) return dateStr
-  const now = new Date()
-  const diffMs = now.getTime() - d.getTime()
-  const mins = Math.floor(diffMs / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  if (days < 7) return `${days}d ago`
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-}
-
-function followupLabel(dateStr: string): { text: string; urgent: boolean } {
-  if (!dateStr) return { text: '-', urgent: false }
-  const d = new Date(dateStr)
-  if (isNaN(d.getTime())) return { text: dateStr, urgent: false }
-  const now = new Date()
-  const diffDays = Math.floor((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-  if (diffDays < 0) return { text: `${Math.abs(diffDays)}d overdue`, urgent: true }
-  if (diffDays === 0) return { text: 'Today', urgent: true }
-  if (diffDays === 1) return { text: 'Tomorrow', urgent: false }
-  return { text: `${diffDays}d`, urgent: false }
-}
-
-function scoreColor(score: number): string {
-  if (score >= 80) return 'var(--color-score-great)'
-  if (score >= 60) return 'var(--color-score-good)'
-  if (score >= 40) return 'var(--color-score-fair)'
-  if (score >= 20) return 'var(--color-score-low)'
-  return 'var(--color-score-poor)'
-}
-function scoreBg(score: number): string {
-  return `color-mix(in srgb, ${scoreColor(score)} 15%, transparent)`
-}
-function scoreBorder(score: number): string {
-  return `color-mix(in srgb, ${scoreColor(score)} 30%, transparent)`
-}
-
-// ─── Toast Component ─────────────────────────────────────────────────────────
-
-function Toast({ message, onClose }: { message: string; onClose: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 2500)
-    return () => clearTimeout(t)
-  }, [onClose])
-
-  return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] toast-enter">
-      <div className="bg-accent text-[#1a1209] px-5 py-2.5 rounded-lg shadow-xl shadow-black/30 text-sm font-medium flex items-center gap-2">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-        </svg>
-        {message}
-      </div>
-    </div>
-  )
-}
 
 // ─── Page Component ──────────────────────────────────────────────────────────
 

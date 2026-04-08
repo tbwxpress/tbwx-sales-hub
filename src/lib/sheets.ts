@@ -16,6 +16,26 @@ function getSheets() {
   return google.sheets({ version: 'v4', auth: getAuth() })
 }
 
+// --- Retry wrapper for Sheets API calls (3 attempts, exponential backoff) ---
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (err: unknown) {
+      const isRetryable = err instanceof Error && (
+        err.message.includes('429') ||
+        err.message.includes('500') ||
+        err.message.includes('503') ||
+        err.message.includes('ECONNRESET') ||
+        err.message.includes('ETIMEDOUT')
+      )
+      if (!isRetryable || i === attempts - 1) throw err
+      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i))) // 1s, 2s, 4s
+    }
+  }
+  throw new Error('Retry exhausted')
+}
+
 // Shorthand for tab names
 const T = SHEETS.tabs
 
@@ -28,10 +48,10 @@ const T = SHEETS.tabs
 export async function getLeadByRow(rowNumber: number): Promise<Lead | null> {
   const sheets = getSheets()
   const tab = process.env.LEADS_TAB_NAME || T.leads
-  const res = await sheets.spreadsheets.values.get({
+  const res = await withRetry(() => sheets.spreadsheets.values.get({
     spreadsheetId: process.env.LEADS_SHEET_ID,
     range: `${tab}!A${rowNumber}:${SHEETS.ranges.leadsEnd}${rowNumber}`,
-  })
+  }))
   const rows = res.data.values || []
   if (rows.length === 0) return null
   const row = rows[0]
@@ -77,10 +97,10 @@ export async function getLeads(): Promise<Lead[]> {
 
   const sheets = getSheets()
   const tab = process.env.LEADS_TAB_NAME || T.leads
-  const res = await sheets.spreadsheets.values.get({
+  const res = await withRetry(() => sheets.spreadsheets.values.get({
     spreadsheetId: process.env.LEADS_SHEET_ID,
     range: `${tab}!A2:${SHEETS.ranges.leadsEnd}`,
-  })
+  }))
   const rows = res.data.values || []
   const C = LEAD_COLUMN_MAP
   const leads = rows.map((row, i) => ({

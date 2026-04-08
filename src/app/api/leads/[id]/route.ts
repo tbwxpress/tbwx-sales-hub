@@ -1,7 +1,7 @@
 import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
-import { getLeads, updateLead, clearLeadRow } from '@/lib/sheets'
+import { getLeads, getLeadByRow, updateLead, clearLeadRow } from '@/lib/sheets'
 import { logAssignment, recordLeadClose } from '@/lib/db'
 import { LEAD_STATUSES } from '@/config/client'
 import { computeLeadScore } from '@/lib/scoring'
@@ -12,8 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     requireAuth(session)
     const { id } = await params
     const rowNum = parseInt(id)
-    const leads = await getLeads()
-    const lead = leads.find(l => l.row_number === rowNum)
+    const lead = await getLeadByRow(rowNum)
     if (!lead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 })
     }

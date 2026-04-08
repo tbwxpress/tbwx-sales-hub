@@ -6,6 +6,8 @@ import type { Lead, Message, QuickReply, ApiResponse } from '@/lib/types'
 import VoiceAgentCard from '@/components/VoiceAgentCard'
 import AgreementForm from '@/components/AgreementForm'
 import { LEAD_STATUSES, STATUS_LABELS } from '@/config/client'
+import Toast from '@/components/Toast'
+import { formatTime } from '@/lib/format'
 
 // Status and priority options
 const STATUSES = LEAD_STATUSES
@@ -43,22 +45,6 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string
   HOT:  makeStatusVars('var(--color-priority-hot)'),
   WARM: makeStatusVars('var(--color-priority-warm)'),
   COLD: makeStatusVars('var(--color-priority-cold)'),
-}
-
-function formatTime(ts: string): string {
-  if (!ts) return ''
-  const d = new Date(ts)
-  if (isNaN(d.getTime())) return ts
-  const now = new Date()
-  const isToday = d.toDateString() === now.toDateString()
-  const yesterday = new Date(now)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const isYesterday = d.toDateString() === yesterday.toDateString()
-
-  const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-  if (isToday) return time
-  if (isYesterday) return `Yesterday ${time}`
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' ' + time
 }
 
 // ─── Lead Notes Component (DB-backed with timestamps) ────────────────────────
@@ -163,25 +149,6 @@ function getDeliveryIcon(status: string) {
     case 'failed': return '\u2717'
     default: return ''
   }
-}
-
-// Toast component
-function Toast({ message, onClose }: { message: string; onClose: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 2500)
-    return () => clearTimeout(t)
-  }, [onClose])
-
-  return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] toast-enter">
-      <div className="bg-accent text-[#1a1209] px-5 py-2.5 rounded-lg shadow-xl shadow-black/30 text-sm font-medium flex items-center gap-2">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-        </svg>
-        {message}
-      </div>
-    </div>
-  )
 }
 
 export default function LeadDetailPage() {

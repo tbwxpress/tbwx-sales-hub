@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
+import { timeAgo } from '@/lib/format'
 
 interface Lead {
   row_number: number
@@ -36,17 +37,6 @@ function isToday(dateStr: string): boolean {
 function isPast(dateStr: string): boolean {
   if (!dateStr) return false
   return new Date(dateStr) < new Date()
-}
-
-function timeAgo(dateStr: string): string {
-  if (!dateStr) return '-'
-  const d = new Date(dateStr)
-  if (isNaN(d.getTime())) return '-'
-  const mins = Math.floor((Date.now() - d.getTime()) / 60000)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
 }
 
 export default function AgentQueue({ user }: { user: SessionUser }) {

@@ -1,10 +1,10 @@
+import fs from 'fs'
+import path from 'path'
 import { createClient, type Client, type Row } from '@libsql/client'
 
 // Convert BigInt values to Number so JSON.stringify works
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function serializeRow(row: Row): Record<string, any> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const out: Record<string, any> = {}
+function serializeRow(row: Row): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
   for (const [key, val] of Object.entries(row)) {
     out[key] = typeof val === 'bigint' ? Number(val) : val
   }
@@ -27,8 +27,6 @@ function getClient(): Client {
   if (!_db) {
     // Ensure data directory exists for local file mode
     if (dbUrl.startsWith('file:')) {
-      const fs = require('fs')
-      const path = require('path')
       const filePath = dbUrl.replace('file:', '')
       const dir = path.dirname(path.resolve(process.cwd(), filePath))
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
@@ -741,13 +739,13 @@ export async function upsertDripState(phone: string, data: {
   }
 }
 
-export async function getDripLeads(includesPaused: boolean = false): Promise<any[]> {
+export async function getDripLeads(includesPaused: boolean = false): Promise<Record<string, unknown>[]> {
   const db = await ensureInit()
   const sql = includesPaused
     ? 'SELECT * FROM drip_state WHERE enabled = 1'
     : 'SELECT * FROM drip_state WHERE enabled = 1 AND paused_at IS NULL'
   const result = await db.execute(sql)
-  return serializeRows(result.rows) as any[]
+  return serializeRows(result.rows) as Record<string, unknown>[]
 }
 
 export async function toggleDrip(phone: string, enabled: boolean) {
@@ -766,7 +764,7 @@ export async function toggleDrip(phone: string, enabled: boolean) {
 export async function getBulkDripState(): Promise<Record<string, { enabled: boolean; sequence: string; current_step: number; paused_at: string | null }>> {
   const db = await ensureInit()
   const result = await db.execute('SELECT * FROM drip_state')
-  const map: Record<string, any> = {}
+  const map: Record<string, { enabled: boolean; sequence: string; current_step: number; paused_at: string | null }> = {}
   for (const row of result.rows) {
     const phone = String(row.phone || '')
     const key = phone.slice(-10)

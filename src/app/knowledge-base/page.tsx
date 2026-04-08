@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
+import Toast from '@/components/Toast'
 
 interface KBEntry {
   id: string; category: string; title: string; content: string;
@@ -42,27 +43,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Objection Handling': 'bg-orange-500/15 text-orange-400 border-orange-500/20',
   'Pricing': 'bg-cyan-500/15 text-cyan-400 border-cyan-500/20',
   'Process': 'bg-pink-500/15 text-pink-400 border-pink-500/20',
-}
-
-function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 3000)
-    return () => clearTimeout(t)
-  }, [onClose])
-
-  return (
-    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg border transition-all animate-in slide-in-from-bottom-4 ${
-      type === 'success' ? 'bg-green-500/15 border-green-500/30 text-green-400' : 'bg-red-500/15 border-red-500/30 text-red-400'
-    }`}>
-      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-        {type === 'success'
-          ? <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          : <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        }
-      </svg>
-      <span className="text-sm font-medium">{message}</span>
-    </div>
-  )
 }
 
 export default function KnowledgeBasePage() {

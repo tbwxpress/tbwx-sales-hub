@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
 import ThemeToggle from './ThemeToggle'
@@ -10,7 +11,6 @@ interface User {
   role: string
 }
 
-const brandName = process.env.NEXT_PUBLIC_BRAND_NAME || 'TBWX Sales Hub'
 const brandShort = process.env.NEXT_PUBLIC_BRAND_SHORT || 'TBWX'
 const brandLogo = process.env.NEXT_PUBLIC_BRAND_LOGO || '/logo-tbwx.png'
 
@@ -66,24 +66,24 @@ export default function Navbar() {
 
   // Close More dropdown on outside click
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
+    function handleMoreClick(e: MouseEvent) {
       if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
         setMoreOpen(false)
       }
     }
-    if (moreOpen) document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    if (moreOpen) document.addEventListener('mousedown', handleMoreClick)
+    return () => document.removeEventListener('mousedown', handleMoreClick)
   }, [moreOpen])
 
   // Close avatar dropdown on outside click
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
+    function handleAvatarClick(e: MouseEvent) {
       if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
         setAvatarOpen(false)
       }
     }
-    if (avatarOpen) document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    if (avatarOpen) document.addEventListener('mousedown', handleAvatarClick)
+    return () => document.removeEventListener('mousedown', handleAvatarClick)
   }, [avatarOpen])
 
   async function logout() {
@@ -133,7 +133,7 @@ export default function Navbar() {
           {/* LEFT: Logo */}
           <div className="flex items-center">
             <Link href="/dashboard" className="flex items-center gap-2.5 group shrink-0">
-              <img
+              <Image
                 src={brandLogo}
                 alt={brandShort}
                 width={30}
@@ -293,7 +293,7 @@ export default function Navbar() {
         {/* ── Mobile: logo + hamburger ── */}
         <div className="flex md:hidden items-center justify-between h-full">
           <Link href="/dashboard" className="flex items-center gap-2 group">
-            <img src={brandLogo} alt={brandShort} width={28} height={28} className="rounded-md" />
+            <Image src={brandLogo} alt={brandShort} width={28} height={28} className="rounded-md" />
             <span className="text-sm font-bold" style={{ color: 'var(--color-accent)' }}>Sales Hub</span>
           </Link>
           <div className="flex items-center gap-2">

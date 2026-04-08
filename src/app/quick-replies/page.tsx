@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
+import Toast from '@/components/Toast'
 
 interface QuickReply {
   id: string; category: string; title: string; message: string;
@@ -63,28 +64,6 @@ const DEFAULT_QUICK_REPLIES: Omit<QuickReply, 'id' | 'created_by' | 'created_at'
   { category: 'Closing', title: 'Next Steps', message: 'Great to hear you\'re interested! Here are the next steps:\n1. We\'ll share the franchise agreement for review\n2. Schedule a visit to our outlet\n3. Finalize location and timeline\n\nShall we proceed?' },
   { category: 'Closing', title: 'Send Deck', message: 'I\'m sharing our franchise deck with all the details \u2014 investment breakdown, support provided, outlet photos, and ROI projections. Take your time to review and let me know your questions!' },
 ]
-
-// Toast component
-function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 3000)
-    return () => clearTimeout(t)
-  }, [onClose])
-
-  return (
-    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg border transition-all animate-in slide-in-from-bottom-4 ${
-      type === 'success' ? 'bg-green-500/15 border-green-500/30 text-green-400' : 'bg-red-500/15 border-red-500/30 text-red-400'
-    }`}>
-      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-        {type === 'success'
-          ? <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          : <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        }
-      </svg>
-      <span className="text-sm font-medium">{message}</span>
-    </div>
-  )
-}
 
 export default function QuickRepliesPage() {
   const [replies, setReplies] = useState<QuickReply[]>([])
