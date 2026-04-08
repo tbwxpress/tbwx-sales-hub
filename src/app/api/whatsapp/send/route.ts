@@ -57,14 +57,19 @@ export async function POST(req: NextRequest) {
         template_used: template_name || '',
       })
 
-      // Update lead's followup date
+      // Update lead's followup date (never regress advanced statuses)
       if (lead_row) {
+        const lead = await getLeadByRow(lead_row)
         const nextDate = new Date()
         nextDate.setDate(nextDate.getDate() + WHATSAPP.autoFollowupDays)
-        await updateLead(lead_row, {
+        const updateFields: Record<string, string> = {
           next_followup: nextDate.toISOString().split('T')[0],
-          lead_status: WHATSAPP.autoSentStatus,
-        })
+        }
+        // Only set DECK_SENT if lead is still NEW
+        if (!lead || lead.lead_status === 'NEW') {
+          updateFields.lead_status = WHATSAPP.autoSentStatus
+        }
+        await updateLead(lead_row, updateFields)
       }
     }
 

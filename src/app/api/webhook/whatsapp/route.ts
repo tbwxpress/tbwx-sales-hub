@@ -127,16 +127,25 @@ export async function POST(req: NextRequest) {
           }
 
           // Auto-update lead status to REPLIED + schedule follow-up
+          // ONLY if lead is in an early stage — never regress advanced statuses
           try {
-            const { updateLead } = await import('@/lib/sheets')
+            const { updateLead, getLeads } = await import('@/lib/sheets')
             const contact = await getContact(phone)
             if (contact && contact.is_lead && contact.lead_row) {
+              const leads = await getLeads()
+              const lead = leads.find(l => l.row_number === Number(contact.lead_row))
+              const earlyStatuses = ['NEW', 'DECK_SENT', 'NO_RESPONSE']
+              const shouldUpdateStatus = !lead || earlyStatuses.includes(lead.lead_status)
+
               const followup = new Date()
-              followup.setDate(followup.getDate() + 1) // Follow up within 24h of reply
-              await updateLead(Number(contact.lead_row), {
-                lead_status: 'REPLIED',
+              followup.setDate(followup.getDate() + 1)
+              const updateFields: Record<string, string> = {
                 next_followup: followup.toISOString().split('T')[0],
-              })
+              }
+              if (shouldUpdateStatus) {
+                updateFields.lead_status = 'REPLIED'
+              }
+              await updateLead(Number(contact.lead_row), updateFields)
             }
           } catch {
             // Non-critical — don't break webhook if sheet update fails

@@ -6,7 +6,8 @@ import { sendTemplate } from '@/lib/whatsapp'
 
 const CRON_SECRET = process.env.CRON_SECRET
 
-// POST /api/followups/auto — automated follow-up check (called by n8n cron)
+// POST /api/followups/auto — DEPRECATED: superseded by /api/cron/drip
+// Kept for backward compatibility but returns early to prevent double-sends
 export async function POST(req: NextRequest) {
   // Verify cron secret
   if (CRON_SECRET) {
@@ -15,6 +16,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
   }
+
+  // DEPRECATED — drip cron handles all follow-ups now. Return early to prevent double-sends.
+  return NextResponse.json({
+    success: true,
+    deprecated: true,
+    message: 'This endpoint is deprecated. Follow-ups are handled by /api/cron/drip.',
+  })
+
+  // Legacy code below — kept for reference but unreachable
   try {
     const leads = await getLeads()
     const now = Date.now()

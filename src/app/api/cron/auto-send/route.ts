@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { sendTemplate } from '@/lib/whatsapp'
 import { sendFranchiseEmail } from '@/lib/email'
-import { logSentMessage, updateLead, getLeads } from '@/lib/sheets'
+import { logSentMessage, updateLead, getLeads, invalidateLeadsCache } from '@/lib/sheets'
 import { upsertContact, insertMessage, getMessages, getSetting } from '@/lib/db'
 import { getUsers } from '@/lib/users'
 
@@ -232,6 +232,9 @@ export async function POST(request: NextRequest) {
       email_error?: string
       error?: string
     }> = []
+
+    // Force fresh read — don't use stale cache from a previous request
+    invalidateLeadsCache()
 
     // 1. Read both tabs
     const newTabName = process.env.LEADS_TAB_NAME || 'AI Campaign Leads'
