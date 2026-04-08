@@ -813,17 +813,12 @@ export default function LeadDetailPage() {
                       </div>
                       {a.status === 'GENERATED' && (
                         <button
-                          onClick={async () => {
-                            const res = await fetch(`/api/agreements/${a.id}/generate`, { method: 'POST' })
-                            if (res.ok) {
-                              const html = await res.text()
-                              const win = window.open('', '_blank')
-                              if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500) }
-                            }
+                          onClick={() => {
+                            window.open(`/api/agreements/${a.id}/generate`, '_blank')
                           }}
                           className="text-accent hover:text-accent-hover text-[10px] font-medium"
                         >
-                          Download
+                          View / Print
                         </button>
                       )}
                     </div>

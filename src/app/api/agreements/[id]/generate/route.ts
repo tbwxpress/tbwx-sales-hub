@@ -5,6 +5,49 @@ import { getAgreementById, updateAgreement } from '@/lib/db'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
+function loadAndFillTemplate(docType: string, fields: Record<string, string>): string {
+  const templateFile = docType === 'FBA' ? 'fba.html' : 'franchise-agreement.html'
+  let html = readFileSync(join(process.cwd(), 'src', 'templates', templateFile), 'utf-8')
+  for (const [key, value] of Object.entries(fields)) {
+    html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), escapeHtml(value))
+  }
+  html = html.replace(/\{\{[a-z_]+\}\}/g, '')
+  return html
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+/**
+ * GET /api/agreements/[id]/generate — View the filled agreement (any auth user)
+ */
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await getSession()
+    requireAuth(session)
+    const { id } = await params
+
+    const agreement = await getAgreementById(id)
+    if (!agreement) {
+      return NextResponse.json({ success: false, error: 'Agreement not found' }, { status: 404 })
+    }
+
+    let fields: Record<string, string> = {}
+    try { fields = JSON.parse(String(agreement.fields || '{}')) } catch { fields = {} }
+
+    const html = loadAndFillTemplate(String(agreement.doc_type), fields)
+
+    return new NextResponse(html, {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+      },
+    })
+  } catch (err) {
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
+  }
+}
+
 /**
  * POST /api/agreements/[id]/generate — Generate PDF from agreement template
  *
@@ -86,10 +129,3 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
