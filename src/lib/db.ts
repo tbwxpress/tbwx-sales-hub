@@ -976,29 +976,6 @@ export async function getSlaAverages(): Promise<{ avg_first_response_hours: numb
   }
 }
 
-export async function getCallCountToday(): Promise<number> {
-  const db = await ensureInit()
-  const today = new Date().toISOString().split('T')[0]
-  const result = await db.execute({
-    sql: `SELECT COUNT(*) as cnt FROM call_logs WHERE created_at >= ?`,
-    args: [today],
-  })
-  return Number(result.rows[0]?.cnt || 0)
-}
-
-export async function getAgentActivityToday(agentName: string): Promise<{ messages_sent: number; calls_logged: number }> {
-  const db = await ensureInit()
-  const today = new Date().toISOString().split('T')[0]
-  const [msgs, calls] = await Promise.all([
-    db.execute({ sql: `SELECT COUNT(*) as cnt FROM messages WHERE direction = 'sent' AND sent_by = ? AND timestamp >= ?`, args: [agentName, today] }),
-    db.execute({ sql: `SELECT COUNT(*) as cnt FROM call_logs WHERE logged_by = ? AND created_at >= ?`, args: [agentName, today] }),
-  ])
-  return {
-    messages_sent: Number(msgs.rows[0]?.cnt || 0),
-    calls_logged: Number(calls.rows[0]?.cnt || 0),
-  }
-}
-
 // --- Drip Sequences CRUD ---
 
 export async function getDripSequences(): Promise<Record<string, unknown>[]> {

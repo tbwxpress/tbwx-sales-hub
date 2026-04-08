@@ -1,5 +1,5 @@
 import { google } from 'googleapis'
-import type { Lead, LeadStatus, User, QuickReply, Message, KnowledgeBaseEntry } from './types'
+import type { Lead, LeadStatus, QuickReply, Message, KnowledgeBaseEntry } from './types'
 import { LEAD_COLUMN_MAP, LEAD_WRITE_COLUMNS, SHEETS } from '@/config/client'
 
 // --- Auth setup ---
@@ -123,18 +123,15 @@ export async function updateLeadField(rowNumber: number, column: string, value: 
   })
 }
 
-// Re-export for backward compatibility — now sourced from config
-export const LEAD_COLUMNS = LEAD_WRITE_COLUMNS
-
 export async function updateLead(rowNumber: number, fields: Partial<Record<string, string>>): Promise<void> {
   invalidateLeadsCache()
-  const entries = Object.entries(fields).filter(([field, value]) => LEAD_COLUMNS[field] && value !== undefined)
+  const entries = Object.entries(fields).filter(([field, value]) => LEAD_WRITE_COLUMNS[field] && value !== undefined)
   if (entries.length === 0) return
 
   // Single field — use simple update (1 API call)
   if (entries.length === 1) {
     const [field, value] = entries[0]
-    await updateLeadField(rowNumber, LEAD_COLUMNS[field], value!)
+    await updateLeadField(rowNumber, LEAD_WRITE_COLUMNS[field], value!)
     return
   }
 
@@ -142,7 +139,7 @@ export async function updateLead(rowNumber: number, fields: Partial<Record<strin
   const sheets = getSheets()
   const tab = process.env.LEADS_TAB_NAME || T.leads
   const data = entries.map(([field, value]) => ({
-    range: `${tab}!${LEAD_COLUMNS[field]}${rowNumber}`,
+    range: `${tab}!${LEAD_WRITE_COLUMNS[field]}${rowNumber}`,
     values: [[value]],
   }))
 
@@ -158,7 +155,7 @@ export async function updateLead(rowNumber: number, fields: Partial<Record<strin
  */
 export async function bulkUpdateField(rowNumbers: number[], field: string, value: string): Promise<void> {
   invalidateLeadsCache()
-  const col = LEAD_COLUMNS[field]
+  const col = LEAD_WRITE_COLUMNS[field]
   if (!col) throw new Error(`Unknown field: ${field}`)
 
   const sheets = getSheets()
@@ -329,81 +326,6 @@ export async function logSentMessage(data: {
         data.wa_message_id,
         data.status,
         data.template_used || '',
-      ]],
-    },
-  })
-}
-
-// --- Users ---
-// DEPRECATED — users now in DB, see src/lib/users.ts
-// These functions remain for backward compatibility only.
-
-export async function getUsers(): Promise<User[]> {
-  const sheets = getSheets()
-  const usersTab = process.env.USERS_TAB_NAME || T.users
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.HUB_SHEET_ID,
-    range: `${usersTab}!${SHEETS.ranges.usersRange}`,
-  })
-  const rows = res.data.values || []
-  return rows.map(row => ({
-    id: row[0] || '',
-    name: row[1] || '',
-    email: row[2] || '',
-    password_hash: row[3] || '',
-    role: (row[4] || 'agent') as User['role'],
-    can_assign: row[5] === 'TRUE',
-    active: row[6] !== 'FALSE',
-  }))
-}
-
-export async function getUserByEmail(email: string): Promise<User | null> {
-  const users = await getUsers()
-  return users.find(u => u.email.toLowerCase() === email.toLowerCase()) || null
-}
-
-export async function createUser(user: Omit<User, 'id'>): Promise<string> {
-  const sheets = getSheets()
-  const usersTab = process.env.USERS_TAB_NAME || T.users
-  const id = `u_${Date.now()}`
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: process.env.HUB_SHEET_ID,
-    range: `${usersTab}!A:G`,
-    valueInputOption: 'RAW',
-    requestBody: {
-      values: [[
-        id,
-        user.name,
-        user.email,
-        user.password_hash,
-        user.role,
-        user.can_assign ? 'TRUE' : 'FALSE',
-        user.active ? 'TRUE' : 'FALSE',
-      ]],
-    },
-  })
-  return id
-}
-
-export async function updateUser(userId: string, fields: Partial<User>): Promise<void> {
-  const sheets = getSheets()
-  const usersTab = process.env.USERS_TAB_NAME || T.users
-  const users = await getUsers()
-  const userIndex = users.findIndex(u => u.id === userId)
-  if (userIndex === -1) throw new Error('User not found')
-
-  const rowNum = userIndex + 2
-  const user = { ...users[userIndex], ...fields }
-
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: process.env.HUB_SHEET_ID,
-    range: `${usersTab}!A${rowNum}:G${rowNum}`,
-    valueInputOption: 'RAW',
-    requestBody: {
-      values: [[
-        user.id, user.name, user.email, user.password_hash, user.role,
-        user.can_assign ? 'TRUE' : 'FALSE',
-        user.active ? 'TRUE' : 'FALSE',
       ]],
     },
   })
