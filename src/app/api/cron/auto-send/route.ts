@@ -246,8 +246,13 @@ export async function POST(request: NextRequest) {
     const allLeads = [...newLeads, ...oldLeads]
 
     // 3. Filter: only NEW leads (anything beyond NEW has already been handled)
-    const SKIP_STATUSES = ['deck_sent', 'replied', 'calling', 'call_done', 'interested',
-      'negotiation', 'converted', 'delayed', 'lost', 'contacted']
+    const SKIP_STATUSES = [
+      'deck_sent', 'replied', 'converted', 'delayed', 'lost', 'contacted',
+      // New status names
+      'no_response', 'call_done_interested', 'hot', 'final_negotiation',
+      // Old status names (leads in Sheet may still have these)
+      'calling', 'call_done', 'interested', 'negotiation',
+    ]
     const uncontacted = allLeads.filter(lead => {
       const status = lead.lead_status.toLowerCase()
       if (SKIP_STATUSES.includes(status)) return false
