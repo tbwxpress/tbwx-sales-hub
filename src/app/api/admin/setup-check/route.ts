@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { apiError } from '@/lib/api-error'
+import { WHATSAPP } from '@/config/client'
 
 interface CheckResult {
   label: string
@@ -8,162 +9,139 @@ interface CheckResult {
   message: string
 }
 
+type CheckFn = () => Promise<CheckResult>
+
+async function runCheck(label: string, fn: CheckFn): Promise<CheckResult> {
+  try {
+    return await fn()
+  } catch (err) {
+    return { label, status: 'error', message: apiError(err, `${label} check failed`) }
+  }
+}
+
 async function checkWhatsApp(): Promise<CheckResult[]> {
-  const results: CheckResult[] = []
+  const static_results: CheckResult[] = [
+    {
+      label: 'WA Phone Number ID',
+      status: process.env.WHATSAPP_PHONE_NUMBER_ID ? 'ok' : 'error',
+      message: process.env.WHATSAPP_PHONE_NUMBER_ID ? 'Configured' : 'WHATSAPP_PHONE_NUMBER_ID not set',
+    },
+    {
+      label: 'WA Token',
+      status: process.env.WHATSAPP_TOKEN ? 'ok' : 'error',
+      message: process.env.WHATSAPP_TOKEN ? 'Configured' : 'WHATSAPP_TOKEN not set',
+    },
+    {
+      label: 'WA WABA ID',
+      status: process.env.WHATSAPP_WABA_ID ? 'ok' : 'error',
+      message: process.env.WHATSAPP_WABA_ID ? 'Configured' : 'WHATSAPP_WABA_ID not set',
+    },
+    {
+      label: 'Meta App Secret',
+      status: process.env.META_APP_SECRET ? 'ok' : 'error',
+      message: process.env.META_APP_SECRET ? 'Configured (webhook signature enabled)' : 'META_APP_SECRET not set — webhooks unprotected!',
+    },
+    {
+      label: 'Webhook Verify Token',
+      status: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ? 'ok' : 'warn',
+      message: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        ? `Set: ${process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN}`
+        : 'Using default "saleshub-webhook-verify" (change this!)',
+    },
+  ]
 
-  results.push({
-    label: 'WA Phone Number ID',
-    status: process.env.WHATSAPP_PHONE_NUMBER_ID ? 'ok' : 'error',
-    message: process.env.WHATSAPP_PHONE_NUMBER_ID ? 'Configured' : 'WHATSAPP_PHONE_NUMBER_ID not set',
-  })
-  results.push({
-    label: 'WA Token',
-    status: process.env.WHATSAPP_TOKEN ? 'ok' : 'error',
-    message: process.env.WHATSAPP_TOKEN ? `Set (${process.env.WHATSAPP_TOKEN.slice(0, 6)}…)` : 'WHATSAPP_TOKEN not set',
-  })
-  results.push({
-    label: 'WA WABA ID',
-    status: process.env.WHATSAPP_WABA_ID ? 'ok' : 'error',
-    message: process.env.WHATSAPP_WABA_ID ? 'Configured' : 'WHATSAPP_WABA_ID not set',
-  })
-  results.push({
-    label: 'Meta App Secret',
-    status: process.env.META_APP_SECRET ? 'ok' : 'error',
-    message: process.env.META_APP_SECRET ? 'Configured (webhook signature enabled)' : 'META_APP_SECRET not set — webhooks unprotected!',
-  })
-  results.push({
-    label: 'Webhook Verify Token',
-    status: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ? 'ok' : 'warn',
-    message: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN
-      ? `Set: ${process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN}`
-      : 'Using default "saleshub-webhook-verify" (change this!)',
-  })
+  const results = [...static_results]
 
-  // Live WA API connection test
   if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
-    try {
+    const connectionResult = await runCheck('WA API Connection', async () => {
       const res = await fetch(
-        `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}?fields=display_phone_number,verified_name&access_token=${process.env.WHATSAPP_TOKEN}`,
+        `${WHATSAPP.apiBase}/${process.env.WHATSAPP_PHONE_NUMBER_ID}?fields=display_phone_number,verified_name&access_token=${process.env.WHATSAPP_TOKEN}`,
         { signal: AbortSignal.timeout(5000) }
       )
       const data = await res.json()
       if (data.error) {
-        results.push({
-          label: 'WA API Connection',
-          status: 'error',
-          message: `API error: ${data.error.message}`,
-        })
-      } else {
-        results.push({
-          label: 'WA API Connection',
-          status: 'ok',
-          message: `Connected — ${data.verified_name || ''} (${data.display_phone_number || 'N/A'})`,
-        })
+        return { label: 'WA API Connection', status: 'error', message: `API error: ${data.error.message}` }
       }
-    } catch (err) {
-      results.push({
-        label: 'WA API Connection',
-        status: 'error',
-        message: `Connection failed: ${apiError(err, 'timeout or network error')}`,
-      })
-    }
+      return { label: 'WA API Connection', status: 'ok', message: `Connected — ${data.verified_name || ''} (${data.display_phone_number || 'N/A'})` }
+    })
+    results.push(connectionResult)
   }
 
   return results
 }
 
 async function checkGoogleSheets(): Promise<CheckResult[]> {
-  const results: CheckResult[] = []
+  const results: CheckResult[] = [
+    { label: 'Google Client ID', status: process.env.GOOGLE_CLIENT_ID ? 'ok' : 'error', message: process.env.GOOGLE_CLIENT_ID ? 'Configured' : 'GOOGLE_CLIENT_ID not set' },
+    { label: 'Google Client Secret', status: process.env.GOOGLE_CLIENT_SECRET ? 'ok' : 'error', message: process.env.GOOGLE_CLIENT_SECRET ? 'Configured' : 'GOOGLE_CLIENT_SECRET not set' },
+    { label: 'Google Refresh Token', status: process.env.GOOGLE_REFRESH_TOKEN ? 'ok' : 'error', message: process.env.GOOGLE_REFRESH_TOKEN ? 'Configured' : 'GOOGLE_REFRESH_TOKEN not set' },
+    { label: 'Leads Sheet ID', status: process.env.LEADS_SHEET_ID ? 'ok' : 'error', message: process.env.LEADS_SHEET_ID ? 'Configured' : 'LEADS_SHEET_ID not set' },
+    { label: 'Hub Sheet ID', status: process.env.HUB_SHEET_ID ? 'ok' : 'warn', message: process.env.HUB_SHEET_ID ? 'Configured' : 'HUB_SHEET_ID not set (users/quick-replies may not work)' },
+  ]
 
-  results.push({ label: 'Google Client ID', status: process.env.GOOGLE_CLIENT_ID ? 'ok' : 'error', message: process.env.GOOGLE_CLIENT_ID ? 'Configured' : 'GOOGLE_CLIENT_ID not set' })
-  results.push({ label: 'Google Client Secret', status: process.env.GOOGLE_CLIENT_SECRET ? 'ok' : 'error', message: process.env.GOOGLE_CLIENT_SECRET ? 'Configured' : 'GOOGLE_CLIENT_SECRET not set' })
-  results.push({ label: 'Google Refresh Token', status: process.env.GOOGLE_REFRESH_TOKEN ? 'ok' : 'error', message: process.env.GOOGLE_REFRESH_TOKEN ? `Set (${process.env.GOOGLE_REFRESH_TOKEN.slice(0, 8)}…)` : 'GOOGLE_REFRESH_TOKEN not set' })
-  results.push({ label: 'Leads Sheet ID', status: process.env.LEADS_SHEET_ID ? 'ok' : 'error', message: process.env.LEADS_SHEET_ID ? `${process.env.LEADS_SHEET_ID.slice(0, 10)}…` : 'LEADS_SHEET_ID not set' })
-  results.push({ label: 'Hub Sheet ID', status: process.env.HUB_SHEET_ID ? 'ok' : 'warn', message: process.env.HUB_SHEET_ID ? `${process.env.HUB_SHEET_ID.slice(0, 10)}…` : 'HUB_SHEET_ID not set (users/quick-replies may not work)' })
-
-  // Live Sheets connection test
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN && process.env.LEADS_SHEET_ID) {
-    try {
+    const connectionResult = await runCheck('Sheets Connection', async () => {
       const { getLeads } = await import('@/lib/sheets')
       const leads = await getLeads()
-      results.push({
-        label: 'Sheets Connection',
-        status: 'ok',
-        message: `Connected — ${leads.length} leads found in sheet`,
-      })
-    } catch (err) {
-      results.push({
-        label: 'Sheets Connection',
-        status: 'error',
-        message: `Failed: ${apiError(err, 'Could not read sheet')}`,
-      })
-    }
+      return { label: 'Sheets Connection', status: 'ok', message: `Connected — ${leads.length} leads found in sheet` }
+    })
+    results.push(connectionResult)
   }
 
   return results
 }
 
 async function checkAuth(): Promise<CheckResult[]> {
-  const results: CheckResult[] = []
-
   const jwtSecret = process.env.JWT_SECRET || ''
-  if (!jwtSecret) {
-    results.push({ label: 'JWT Secret', status: 'error', message: 'JWT_SECRET not set — login will not work!' })
-  } else if (jwtSecret.length < 32) {
-    results.push({ label: 'JWT Secret', status: 'warn', message: 'JWT_SECRET is set but short — use at least 32 chars' })
-  } else {
-    results.push({ label: 'JWT Secret', status: 'ok', message: `Set (${jwtSecret.length} chars)` })
-  }
+  const jwtResult: CheckResult = !jwtSecret
+    ? { label: 'JWT Secret', status: 'error', message: 'JWT_SECRET not set — login will not work!' }
+    : jwtSecret.length < 32
+      ? { label: 'JWT Secret', status: 'warn', message: 'JWT_SECRET is set but short — use at least 32 chars' }
+      : { label: 'JWT Secret', status: 'ok', message: 'Configured' }
 
-  results.push({
-    label: 'CRON Secret',
-    status: process.env.CRON_SECRET ? 'ok' : 'warn',
-    message: process.env.CRON_SECRET ? 'Configured' : 'CRON_SECRET not set — auto-send cron is unprotected',
-  })
-
-  return results
+  return [
+    jwtResult,
+    {
+      label: 'CRON Secret',
+      status: process.env.CRON_SECRET ? 'ok' : 'warn',
+      message: process.env.CRON_SECRET ? 'Configured' : 'CRON_SECRET not set — auto-send cron is unprotected',
+    },
+  ]
 }
 
 async function checkDatabase(): Promise<CheckResult[]> {
-  const results: CheckResult[] = []
-  try {
-    const { getContacts } = await import('@/lib/db')
-    const contacts = await getContacts()
-    results.push({ label: 'Database', status: 'ok', message: `Connected — ${contacts.length} contacts` })
-  } catch (err) {
-    results.push({ label: 'Database', status: 'error', message: `Failed: ${apiError(err, 'DB connection error')}` })
-  }
-
-  // User count
-  try {
-    const { getUsers } = await import('@/lib/users')
-    const users = await getUsers()
-    results.push({
+  const checks: Array<{ label: string; run: CheckFn }> = [
+    {
+      label: 'Database',
+      run: async () => {
+        const { getContacts } = await import('@/lib/db')
+        const contacts = await getContacts()
+        return { label: 'Database', status: 'ok', message: `Connected — ${contacts.length} contacts` }
+      },
+    },
+    {
       label: 'Users',
-      status: users.length > 0 ? 'ok' : 'warn',
-      message: users.length > 0
-        ? `${users.length} user${users.length !== 1 ? 's' : ''} (${users.filter(u => u.role === 'admin').length} admin)`
-        : 'No users — run: npm run seed-admin',
-    })
-  } catch (err) {
-    results.push({ label: 'Users', status: 'error', message: apiError(err, 'Could not read users') })
-  }
+      run: async () => {
+        const { getUsers } = await import('@/lib/users')
+        const users = await getUsers()
+        return {
+          label: 'Users',
+          status: users.length > 0 ? 'ok' : 'warn',
+          message: users.length > 0
+            ? `${users.length} user${users.length !== 1 ? 's' : ''} (${users.filter(u => u.role === 'admin').length} admin)`
+            : 'No users — run: npm run seed-admin',
+        } as CheckResult
+      },
+    },
+  ]
 
-  return results
+  return Promise.all(checks.map(c => runCheck(c.label, c.run)))
 }
 
 function checkBrand(): CheckResult[] {
   return [
-    {
-      label: 'Brand Name',
-      status: 'ok',
-      message: process.env.NEXT_PUBLIC_BRAND_NAME || 'TBWX Sales Hub (default)',
-    },
-    {
-      label: 'Brand Short',
-      status: 'ok',
-      message: process.env.NEXT_PUBLIC_BRAND_SHORT || 'TBWX (default)',
-    },
+    { label: 'Brand Name', status: 'ok', message: process.env.NEXT_PUBLIC_BRAND_NAME || 'TBWX Sales Hub (default)' },
+    { label: 'Brand Short', status: 'ok', message: process.env.NEXT_PUBLIC_BRAND_SHORT || 'TBWX (default)' },
     {
       label: 'Brand Logo',
       status: process.env.NEXT_PUBLIC_BRAND_LOGO ? 'ok' : 'warn',
@@ -183,11 +161,12 @@ function checkBrand(): CheckResult[] {
 }
 
 export async function GET() {
-  try {
+  return runCheck('setup-check', async () => {
     const session = await getSession()
     const user = requireAuth(session)
     if (user.role !== 'admin') {
-      return NextResponse.json({ error: 'Admin only' }, { status: 403 })
+      // Return as a thrown error so runCheck catches it — but we need a proper 403, so throw with a marker
+      throw Object.assign(new Error('Admin only'), { status: 403 })
     }
 
     const [wa, sheets, auth, db] = await Promise.all([
@@ -208,16 +187,14 @@ export async function GET() {
         overall: errorCount === 0 ? (warnCount === 0 ? 'healthy' : 'warnings') : 'errors',
         error_count: errorCount,
         warn_count: warnCount,
-        sections: {
-          auth,
-          whatsapp: wa,
-          sheets,
-          database: db,
-          brand,
-        },
+        sections: { auth, whatsapp: wa, sheets, database: db, brand },
       },
-    })
-  } catch (err) {
-    return NextResponse.json({ success: false, error: apiError(err, 'Check failed') }, { status: 500 })
-  }
+    }) as unknown as CheckResult
+  }).then(result => {
+    // runCheck returns a CheckResult on error — detect that and return proper HTTP responses
+    if (result && 'status' in result && result.status === 'error') {
+      return NextResponse.json({ success: false, error: result.message }, { status: 500 })
+    }
+    return result as unknown as NextResponse
+  })
 }

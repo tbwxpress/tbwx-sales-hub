@@ -274,7 +274,7 @@ function AdminHeader({
             className="rounded-xl p-4 border"
             style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}
           >
-            <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-muted)' }}>
+            <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-muted)' }}>
               {stat.label}
             </div>
             <div className="text-3xl font-extrabold leading-none mb-1.5" style={{ color: stat.color }}>
@@ -298,7 +298,7 @@ function AdminHeader({
           <div className="rounded-xl border mb-3 overflow-hidden" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
             <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
               <span className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-muted)' }}>Recent Leads</span>
-              <Link href="/dashboard" className="text-[10px] font-medium transition-colors" style={{ color: 'var(--color-accent)' }}>View all →</Link>
+              <Link href="/leads" className="text-[10px] font-medium transition-colors" style={{ color: 'var(--color-accent)' }}>View all →</Link>
             </div>
             <div className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
               {recent.map((lead, i) => {

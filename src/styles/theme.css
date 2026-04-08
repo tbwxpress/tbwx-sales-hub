@@ -142,6 +142,10 @@ html.light {
   --color-status-converted: #065f46;
   --color-status-delayed: #92400e;
   --color-status-lost: #991b1b;
+  --color-status-no-response: #92400e;
+  --color-status-call-done-interested: #0f766e;
+  --color-status-hot: #c2410c;
+  --color-status-final-negotiation: #be185d;
   --color-priority-hot: #c2410c;
   --color-priority-warm: #b45309;
   --color-priority-cold: #1d4ed8;

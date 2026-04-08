@@ -438,7 +438,7 @@ export default function PipelinePage() {
                   </div>
 
                   {/* Cards */}
-                  <div className={`flex-1 overflow-y-auto p-2 space-y-2 ${isLost || isDelayed ? 'opacity-60' : ''}`}>
+                  <div className={`flex-1 overflow-y-auto max-h-[calc(100vh-280px)] p-2 space-y-2 ${isLost || isDelayed ? 'opacity-60' : ''}`}>
                     {stageleads.length === 0 ? (
                       <div className="text-center py-8 border border-dashed border-border/50 rounded-lg mx-1 my-1">
                         <svg className="w-5 h-5 mx-auto text-dim/50 mb-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>

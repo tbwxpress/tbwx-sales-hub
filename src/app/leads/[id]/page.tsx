@@ -17,24 +17,32 @@ const TEMPLATES = [
   { name: 'franchise_inquiry_response', label: 'Franchise Inquiry Response' },
 ]
 
-// Status badge colors
-const STATUS_COLORS: Record<string, string> = {
-  NEW: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  DECK_SENT: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  REPLIED: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
-  NO_RESPONSE: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  CALL_DONE_INTERESTED: 'bg-teal-500/20 text-teal-300 border-teal-500/30',
-  HOT: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  FINAL_NEGOTIATION: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
-  CONVERTED: 'bg-green-500/20 text-green-400 border-green-500/30',
-  DELAYED: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  LOST: 'bg-red-500/20 text-red-400 border-red-500/30',
+// Status badge colors — theme-aware via CSS variables
+function makeStatusVars(cssVar: string): { bg: string; text: string; border: string } {
+  return {
+    bg: `color-mix(in srgb, ${cssVar} 15%, transparent)`,
+    text: cssVar,
+    border: `color-mix(in srgb, ${cssVar} 30%, transparent)`,
+  }
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-  HOT: 'bg-red-500/20 text-red-400 border-red-500/30',
-  WARM: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  COLD: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  NEW:                  makeStatusVars('var(--color-status-new)'),
+  DECK_SENT:            makeStatusVars('var(--color-status-deck-sent)'),
+  REPLIED:              makeStatusVars('var(--color-status-replied)'),
+  NO_RESPONSE:          makeStatusVars('var(--color-status-no-response)'),
+  CALL_DONE_INTERESTED: makeStatusVars('var(--color-status-call-done-interested)'),
+  HOT:                  makeStatusVars('var(--color-status-hot)'),
+  FINAL_NEGOTIATION:    makeStatusVars('var(--color-status-final-negotiation)'),
+  CONVERTED:            makeStatusVars('var(--color-status-converted)'),
+  DELAYED:              makeStatusVars('var(--color-status-delayed)'),
+  LOST:                 makeStatusVars('var(--color-status-lost)'),
+}
+
+const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  HOT:  makeStatusVars('var(--color-priority-hot)'),
+  WARM: makeStatusVars('var(--color-priority-warm)'),
+  COLD: makeStatusVars('var(--color-priority-cold)'),
 }
 
 function formatTime(ts: string): string {
@@ -610,10 +618,10 @@ export default function LeadDetailPage() {
           </button>
           <div className="w-px h-5 bg-border" />
           <h1 className="text-lg font-semibold">{lead.full_name}</h1>
-          <span className={`text-xs px-2 py-0.5 rounded border ${STATUS_COLORS[lead.lead_status] || 'bg-elevated text-muted border-border'}`}>
+          <span className="text-xs px-2 py-0.5 rounded border" style={STATUS_COLORS[lead.lead_status] ? { background: STATUS_COLORS[lead.lead_status].bg, color: STATUS_COLORS[lead.lead_status].text, borderColor: STATUS_COLORS[lead.lead_status].border } : { background: 'var(--color-elevated)', color: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
             {lead.lead_status}
           </span>
-          <span className={`text-xs px-2 py-0.5 rounded border ${PRIORITY_COLORS[lead.lead_priority] || 'bg-elevated text-muted border-border'}`}>
+          <span className="text-xs px-2 py-0.5 rounded border" style={PRIORITY_COLORS[lead.lead_priority] ? { background: PRIORITY_COLORS[lead.lead_priority].bg, color: PRIORITY_COLORS[lead.lead_priority].text, borderColor: PRIORITY_COLORS[lead.lead_priority].border } : { background: 'var(--color-elevated)', color: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
             {lead.lead_priority || '-'}
           </span>
         </div>

@@ -22,6 +22,7 @@ export default function AdminPage() {
   const [canAssign, setCanAssign] = useState(false)
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null)
+  const [formError, setFormError] = useState('')
 
   // Voice agent settings
   const [autoCallEnabled, setAutoCallEnabled] = useState(false)
@@ -77,10 +78,11 @@ export default function AdminPage() {
     const data = await res.json()
     if (data.success) {
       setName(''); setEmail(''); setPassword(''); setRole('agent'); setCanAssign(false)
+      setFormError('')
       setShowForm(false)
       fetchUsers()
     } else {
-      alert(data.error)
+      setFormError(data.error || 'Failed to create user')
     }
   }
 
@@ -155,6 +157,9 @@ export default function AdminPage() {
               <input type="checkbox" checked={canAssign} onChange={e => setCanAssign(e.target.checked)} className="rounded accent-accent" />
               Can assign leads to others
             </label>
+            {formError && (
+              <p className="text-xs px-3 py-2 rounded-lg" style={{ color: 'var(--color-danger)', background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-danger) 25%, transparent)' }}>{formError}</p>
+            )}
             <button type="submit" className="bg-accent hover:bg-accent-hover text-[#1a1209] text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
               Create User
             </button>
@@ -234,8 +239,8 @@ export default function AdminPage() {
             {/* Auto-call toggle */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-purple-500/15 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'var(--color-accent-soft)' }}>
+                  <svg className="w-5 h-5" style={{ color: 'var(--color-accent)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
                   </svg>
                 </div>
@@ -249,9 +254,8 @@ export default function AdminPage() {
               <button
                 onClick={toggleAutoCall}
                 disabled={togglingAutoCall}
-                className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
-                  autoCallEnabled ? 'bg-purple-500' : 'bg-border'
-                } disabled:opacity-50`}
+                className="relative w-12 h-6 rounded-full transition-colors duration-200 disabled:opacity-50"
+                style={{ background: autoCallEnabled ? 'var(--color-accent)' : 'var(--color-border)' }}
               >
                 <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
                   autoCallEnabled ? 'translate-x-6' : 'translate-x-0.5'
@@ -261,7 +265,7 @@ export default function AdminPage() {
 
             {/* Status indicator */}
             <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-elevated border border-border">
-              <span className={`w-2 h-2 rounded-full ${autoCallEnabled ? 'bg-purple-400 animate-pulse' : 'bg-zinc-500'}`} />
+              <span className={`w-2 h-2 rounded-full ${autoCallEnabled ? 'animate-pulse' : ''}`} style={{ background: autoCallEnabled ? 'var(--color-accent)' : 'var(--color-dim)' }} />
               <span className="text-xs text-muted">
                 {autoCallEnabled
                   ? 'AI agent will call new leads automatically'
@@ -270,8 +274,8 @@ export default function AdminPage() {
             </div>
 
             {/* Info box */}
-            <div className="bg-purple-500/5 border border-purple-500/15 rounded-lg p-3">
-              <p className="text-xs text-purple-300/80 leading-relaxed">
+            <div className="rounded-lg p-3" style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)' }}>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--color-muted)' }}>
                 The AI voice agent introduces TBWX, answers franchise questions, checks if the WhatsApp deck was received,
                 and gauges interest level. Call summaries and transcripts are logged on each lead&apos;s detail page.
               </p>

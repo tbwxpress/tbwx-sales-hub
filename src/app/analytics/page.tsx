@@ -285,12 +285,7 @@ export default function AnalyticsPage() {
                           <td className="px-3 py-2 text-right text-muted">{s.interested}</td>
                           <td className="px-3 py-2 text-right text-muted">{s.converted}</td>
                           <td className="px-3 py-2 text-right">
-                            <span className={`font-semibold ${
-                              s.conversionRate >= 20 ? 'text-status-converted' :
-                              s.conversionRate >= 10 ? 'text-status-interested' :
-                              s.conversionRate > 0 ? 'text-status-delayed' :
-                              'text-dim'
-                            }`}>
+                            <span className="font-semibold" style={{ color: s.conversionRate >= 20 ? 'var(--color-status-converted)' : s.conversionRate >= 10 ? 'var(--color-status-call-done-interested)' : s.conversionRate > 0 ? 'var(--color-status-delayed)' : 'var(--color-dim)' }}>
                               {s.conversionRate}%
                             </span>
                           </td>
@@ -328,12 +323,7 @@ export default function AnalyticsPage() {
                           <td className="px-3 py-2 text-right text-muted">{c.total}</td>
                           <td className="px-3 py-2 text-right text-muted">{c.converted}</td>
                           <td className="px-3 py-2 text-right">
-                            <span className={`font-semibold ${
-                              c.conversionRate >= 20 ? 'text-status-converted' :
-                              c.conversionRate >= 10 ? 'text-status-interested' :
-                              c.conversionRate > 0 ? 'text-status-delayed' :
-                              'text-dim'
-                            }`}>
+                            <span className="font-semibold" style={{ color: c.conversionRate >= 20 ? 'var(--color-status-converted)' : c.conversionRate >= 10 ? 'var(--color-status-call-done-interested)' : c.conversionRate > 0 ? 'var(--color-status-delayed)' : 'var(--color-dim)' }}>
                               {c.conversionRate}%
                             </span>
                           </td>

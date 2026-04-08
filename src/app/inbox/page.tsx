@@ -624,7 +624,7 @@ export default function InboxPage() {
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-16 right-4 z-50 bg-card text-text text-sm px-4 py-2.5 rounded-lg shadow-xl shadow-black/30 animate-slide-in border ${
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-card text-text text-sm px-4 py-2.5 rounded-lg shadow-xl shadow-black/30 animate-slide-in border ${
           toast.toLowerCase().includes('error') || toast.toLowerCase().includes('failed') || toast.toLowerCase().includes('not delivered')
             ? 'border-red-500/50 text-red-300'
             : 'border-border'

@@ -2,9 +2,12 @@ import { apiError } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 import { getLeads } from '@/lib/sheets'
 import { getTasks } from '@/lib/db'
+import { getSession, requireAuth } from '@/lib/auth'
 
 export async function GET() {
   try {
+    const session = await getSession()
+    requireAuth(session)
     const leads = await getLeads()
     const now = new Date()
     const todayStr = now.toISOString().split('T')[0]
