@@ -10,10 +10,24 @@
 }
 
 body {
-  background-color: var(--color-bg);
-  color: var(--color-text);
+  background-color: var(--color-bg) !important;
+  color: var(--color-text) !important;
   font-family: 'DM Sans', 'Inter', system-ui, -apple-system, sans-serif;
 }
+
+/* Force Tailwind bg/text utilities to use CSS variables for theme switching.
+   Without this, Tailwind v4 @theme compiles bg-bg/text-text to static values
+   that don't respond to html.light/html.dark class changes. */
+.bg-bg { background-color: var(--color-bg) !important; }
+.bg-card { background-color: var(--color-card) !important; }
+.bg-elevated { background-color: var(--color-elevated) !important; }
+.text-text { color: var(--color-text) !important; }
+.text-body { color: var(--color-body) !important; }
+.text-muted { color: var(--color-muted) !important; }
+.text-dim { color: var(--color-dim) !important; }
+.text-accent { color: var(--color-accent) !important; }
+.border-border { border-color: var(--color-border) !important; }
+.border-border-light { border-color: var(--color-border-light) !important; }
 
 /* Custom scrollbar — warm tones */
 ::-webkit-scrollbar {
