@@ -51,9 +51,9 @@ interface Stats {
   new: number
   deck_sent: number
   replied: number
-  calling: number
-  call_done: number
-  interested: number
+  no_response: number
+  call_done_interested: number
+  hot: number
   converted: number
   delayed: number
   lost: number
@@ -290,8 +290,8 @@ function AdminHeader({
         const recent = [...leads].sort((a, b) => new Date(b.created_time).getTime() - new Date(a.created_time).getTime()).slice(0, 8)
         const statusColor: Record<string, string> = {
           NEW: 'var(--color-accent)', DECK_SENT: 'var(--color-muted)', REPLIED: 'var(--color-success)',
-          CALLING: '#a78bfa', CALL_DONE: '#818cf8', INTERESTED: 'var(--color-status-interested)',
-          NEGOTIATION: '#f59e0b', CONVERTED: 'var(--color-status-converted)', DELAYED: '#f59e0b', LOST: 'var(--color-danger)',
+          NO_RESPONSE: '#facc15', CALL_DONE_INTERESTED: '#2dd4bf', HOT: '#fb923c',
+          FINAL_NEGOTIATION: '#f472b6', CONVERTED: 'var(--color-status-converted)', DELAYED: '#fbbf24', LOST: 'var(--color-danger)',
         }
         const priorityColor: Record<string, string> = { HOT: 'var(--color-hot)', WARM: '#fbbf24', COLD: '#60a5fa' }
         return (
@@ -787,8 +787,8 @@ export default function DashboardPage() {
         { label: 'New', value: stats.new, color: 'text-blue-400', icon: 'M12 6v6m0 0v6m0-6h6m-6 0H6' },
         { label: 'Deck Sent', value: stats.deck_sent, color: 'text-purple-400', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
         { label: 'Replied', value: stats.replied, color: 'text-green-400', icon: 'M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6' },
-        { label: 'Calling', value: stats.calling, color: 'text-yellow-400', icon: 'M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z' },
-        { label: 'Interested', value: stats.interested, color: 'text-cyan-400', icon: 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z' },
+        { label: 'No Response', value: stats.no_response, color: 'text-yellow-400', icon: 'M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z' },
+        { label: 'HOT', value: stats.hot, color: 'text-orange-400', icon: 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z' },
         { label: 'Converted', value: stats.converted, color: 'text-emerald-400', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
         { label: 'Delayed', value: stats.delayed, color: 'text-amber-400', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
         { label: 'Lost', value: stats.lost, color: 'text-red-400', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z' },

@@ -905,7 +905,7 @@ export default function LeadDetailPage() {
             )}
 
             <button
-              onClick={() => router.back()}
+              onClick={() => router.push('/leads')}
               className="w-full bg-elevated hover:bg-border border border-border text-muted rounded-md px-4 py-2.5 text-sm transition-colors"
             >
               &larr; Back to Leads
