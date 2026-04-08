@@ -1,13 +1,14 @@
 import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getLeads } from '@/lib/sheets'
-import { getMessages } from '@/lib/db'
+import { getMessages, getSetting, setSetting } from '@/lib/db'
 import { sendTemplate } from '@/lib/whatsapp'
 
 const CRON_SECRET = process.env.CRON_SECRET
 const ALERT_PHONE = process.env.DIGEST_WA_PHONE || '917973933630'
 const ALERT_TEMPLATE = process.env.REPLY_ALERT_TEMPLATE || 'reply_alert'
 const STALE_HOURS = 4
+const ALERT_COOLDOWN_HOURS = 8 // Don't re-alert for the same lead within this window
 
 /**
  * POST /api/cron/reply-alert
@@ -82,9 +83,23 @@ export async function POST(req: NextRequest) {
       } catch { /* Skip individual lead errors */ }
     }
 
-    // Send alerts
+    // Dedup: check which leads were already alerted recently
+    const alertedRaw = await getSetting('reply_alert_sent') || '{}'
+    let alertedMap: Record<string, number> = {}
+    try { alertedMap = JSON.parse(alertedRaw) } catch { alertedMap = {} }
+    const nowMs = Date.now()
+    const cooldownMs = ALERT_COOLDOWN_HOURS * 3600 * 1000
+
+    // Filter out leads alerted within cooldown window
+    const newAlerts = alerts.filter(a => {
+      const key = a.name.replace(/\s+/g, '_')
+      const lastAlerted = alertedMap[key] || 0
+      return (nowMs - lastAlerted) > cooldownMs
+    })
+
+    // Send alerts (max 5 per run)
     const results: { name: string; sent: boolean; error?: string }[] = []
-    for (const alert of alerts.slice(0, 5)) { // Max 5 alerts per run
+    for (const alert of newAlerts.slice(0, 5)) {
       try {
         const waResult = await sendTemplate(ALERT_PHONE, ALERT_TEMPLATE, [
           { type: 'text', text: alert.name },
@@ -93,10 +108,20 @@ export async function POST(req: NextRequest) {
           { type: 'text', text: alert.assigned },
         ])
         results.push({ name: alert.name, sent: waResult.success, error: waResult.error })
+        if (waResult.success) {
+          alertedMap[alert.name.replace(/\s+/g, '_')] = nowMs
+        }
       } catch (err) {
         results.push({ name: alert.name, sent: false, error: String(err) })
       }
     }
+
+    // Persist alert timestamps (prune entries older than 24h to prevent unbounded growth)
+    const pruned: Record<string, number> = {}
+    for (const [k, v] of Object.entries(alertedMap)) {
+      if (nowMs - v < 86400000) pruned[k] = v
+    }
+    await setSetting('reply_alert_sent', JSON.stringify(pruned))
 
     return NextResponse.json({
       success: true,

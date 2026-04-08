@@ -7,11 +7,12 @@ const VOICE_SECRET = process.env.VOICE_AGENT_SECRET || process.env.CRON_SECRET
 
 export async function POST(req: NextRequest) {
   // Verify caller is the voice agent server
-  if (VOICE_SECRET) {
-    const auth = req.headers.get('authorization')
-    if (auth !== `Bearer ${VOICE_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  const auth = req.headers.get('authorization')
+  if (!VOICE_SECRET) {
+    // No secret configured — reject all requests for safety
+    if (!auth) return NextResponse.json({ error: 'No auth secret configured' }, { status: 401 })
+  } else if (auth !== `Bearer ${VOICE_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {

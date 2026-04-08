@@ -137,10 +137,11 @@ const HOT_LEAD_AGENT = process.env.HOT_LEAD_AGENT || 'Happy'
 const MAX_ACTIVE_PER_AGENT = parseInt(process.env.MAX_ACTIVE_PER_AGENT || '15')
 const ACTIVE_STATUSES = ['NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION']
 
-async function pickAgent(priority: string): Promise<string> {
+interface AgentData { activeAgents: { name: string }[]; allLeads: { assigned_to: string; lead_status: string }[] }
+
+function pickAgentFromCache(priority: string, data: AgentData): string {
   try {
-    const [users, allLeads] = await Promise.all([getUsers(), getLeads()])
-    const activeAgents = users.filter(u => u.active)
+    const { activeAgents, allLeads } = data
     if (activeAgents.length === 0) return ''
 
     // HOT leads go to the designated closer
@@ -166,7 +167,7 @@ async function pickAgent(priority: string): Promise<string> {
 
     return candidates.length > 0 ? candidates[0].name : activeAgents[0].name
   } catch {
-    return '' // Don't block auto-send if assignment fails
+    return ''
   }
 }
 
@@ -197,6 +198,9 @@ async function markContacted(lead: RawLead, waMessageId: string, assignedTo: str
     spreadsheetId: process.env.LEADS_SHEET_ID!,
     requestBody: { valueInputOption: 'RAW', data },
   })
+
+  // Invalidate cache so next getLeads() reads fresh data
+  invalidateLeadsCache()
 }
 
 export async function POST(request: NextRequest) {
@@ -293,10 +297,20 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 6. Process each lead
+    // 6. Pre-fetch agent data ONCE (not per-lead) to avoid API hammering
+    let agentData: AgentData = { activeAgents: [], allLeads: [] }
+    try {
+      const [users, cachedLeads] = await Promise.all([getUsers(), getLeads()])
+      agentData = {
+        activeAgents: users.filter(u => u.active),
+        allLeads: cachedLeads,
+      }
+    } catch { /* assignment will fall back to empty */ }
+
+    // Process each lead
     for (const lead of batch) {
       lead.lead_priority = calcPriority(lead.experience, lead.timeline)
-      const assignedTo = await pickAgent(lead.lead_priority)
+      const assignedTo = pickAgentFromCache(lead.lead_priority, agentData)
 
       try {
         // Double-check: skip if we already sent to this phone (prevents duplicates

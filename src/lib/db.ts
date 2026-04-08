@@ -725,11 +725,12 @@ export async function upsertDripState(phone: string, data: {
   }
 }
 
-export async function getDripLeads(): Promise<any[]> {
+export async function getDripLeads(includesPaused: boolean = false): Promise<any[]> {
   const db = await ensureInit()
-  const result = await db.execute(`
-    SELECT * FROM drip_state WHERE enabled = 1 AND paused_at IS NULL
-  `)
+  const sql = includesPaused
+    ? 'SELECT * FROM drip_state WHERE enabled = 1'
+    : 'SELECT * FROM drip_state WHERE enabled = 1 AND paused_at IS NULL'
+  const result = await db.execute(sql)
   return serializeRows(result.rows) as any[]
 }
 

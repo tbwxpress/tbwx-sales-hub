@@ -95,8 +95,8 @@ export async function POST(req: NextRequest) {
       results.push({ phone, action: 'initialized' })
     }
 
-    // Process active drip sequences
-    const activeDrips = await getDripLeads()
+    // Process active drip sequences (include paused for auto-resume evaluation)
+    const activeDrips = await getDripLeads(true)
 
     for (const drip of activeDrips) {
       const dripPhone = String(drip.phone || '')
