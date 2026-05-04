@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     const user = requireAuth(session)
     requireAdmin(user)
 
-    const { name, email, password, role, can_assign } = await req.json()
+    const { name, email, password, role, can_assign, in_lead_pool, is_closer } = await req.json()
     if (!name || !email || !password) {
       return NextResponse.json({ success: false, error: 'Name, email, and password required' }, { status: 400 })
     }
@@ -36,6 +36,8 @@ export async function POST(req: NextRequest) {
       role: role || 'agent',
       can_assign: can_assign || false,
       active: true,
+      in_lead_pool: in_lead_pool || false,
+      is_closer: is_closer || false,
     })
 
     return NextResponse.json({ success: true, data: { id } })
@@ -50,7 +52,7 @@ export async function PATCH(req: NextRequest) {
     const user = requireAuth(session)
     requireAdmin(user)
 
-    const { user_id, can_assign, active, role } = await req.json()
+    const { user_id, can_assign, active, role, in_lead_pool, is_closer } = await req.json()
     if (!user_id) {
       return NextResponse.json({ success: false, error: 'User ID required' }, { status: 400 })
     }
@@ -59,6 +61,8 @@ export async function PATCH(req: NextRequest) {
     if (can_assign !== undefined) updates.can_assign = can_assign
     if (active !== undefined) updates.active = active
     if (role !== undefined) updates.role = role
+    if (in_lead_pool !== undefined) updates.in_lead_pool = in_lead_pool
+    if (is_closer !== undefined) updates.is_closer = is_closer
 
     await updateUser(user_id, updates)
     return NextResponse.json({ success: true })

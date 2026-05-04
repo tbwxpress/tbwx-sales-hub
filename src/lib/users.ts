@@ -39,11 +39,24 @@ async function ensureTable(): Promise<void> {
       role TEXT NOT NULL DEFAULT 'agent' CHECK(role IN ('admin', 'agent')),
       can_assign INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1,
+      in_lead_pool INTEGER NOT NULL DEFAULT 0,
+      is_closer INTEGER NOT NULL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
   `)
+
+  // Idempotent column migrations for upgrades from older schemas.
+  const cols = await db.execute('PRAGMA table_info(users)')
+  const colNames = new Set(cols.rows.map(r => String(r.name)))
+  if (!colNames.has('in_lead_pool')) {
+    await db.execute('ALTER TABLE users ADD COLUMN in_lead_pool INTEGER NOT NULL DEFAULT 0')
+  }
+  if (!colNames.has('is_closer')) {
+    await db.execute('ALTER TABLE users ADD COLUMN is_closer INTEGER NOT NULL DEFAULT 0')
+  }
+
   _tableReady = true
 }
 
@@ -59,6 +72,8 @@ export async function getUsers(): Promise<User[]> {
     role: String(row.role) as User['role'],
     can_assign: Boolean(row.can_assign),
     active: Boolean(row.active),
+    in_lead_pool: Boolean(row.in_lead_pool),
+    is_closer: Boolean(row.is_closer),
   }))
 }
 
@@ -79,6 +94,8 @@ export async function getUserByEmail(email: string): Promise<User | null> {
     role: String(row.role) as User['role'],
     can_assign: Boolean(row.can_assign),
     active: Boolean(row.active),
+    in_lead_pool: Boolean(row.in_lead_pool),
+    is_closer: Boolean(row.is_closer),
   }
 }
 
@@ -87,8 +104,8 @@ export async function createUser(user: Omit<User, 'id'>): Promise<string> {
   const db = getClient()
   const id = `u_${Date.now()}`
   await db.execute({
-    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, active)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, active, in_lead_pool, is_closer)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       id,
       user.name,
@@ -97,6 +114,8 @@ export async function createUser(user: Omit<User, 'id'>): Promise<string> {
       user.role,
       user.can_assign ? 1 : 0,
       user.active ? 1 : 0,
+      user.in_lead_pool ? 1 : 0,
+      user.is_closer ? 1 : 0,
     ],
   })
   return id
@@ -113,6 +132,8 @@ export async function updateUser(userId: string, fields: Partial<User>): Promise
   if (fields.role !== undefined) { updates.push('role = ?'); values.push(fields.role) }
   if (fields.can_assign !== undefined) { updates.push('can_assign = ?'); values.push(fields.can_assign ? 1 : 0) }
   if (fields.active !== undefined) { updates.push('active = ?'); values.push(fields.active ? 1 : 0) }
+  if (fields.in_lead_pool !== undefined) { updates.push('in_lead_pool = ?'); values.push(fields.in_lead_pool ? 1 : 0) }
+  if (fields.is_closer !== undefined) { updates.push('is_closer = ?'); values.push(fields.is_closer ? 1 : 0) }
 
   if (updates.length === 0) return
 

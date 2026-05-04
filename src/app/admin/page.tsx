@@ -8,7 +8,7 @@ import MetaAdsDashboard from '@/components/MetaAdsDashboard'
 
 interface User {
   id: string; name: string; email: string; role: string;
-  can_assign: boolean; active: boolean
+  can_assign: boolean; active: boolean; in_lead_pool: boolean; is_closer: boolean
 }
 
 export default function AdminPage() {
@@ -20,6 +20,8 @@ export default function AdminPage() {
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('agent')
   const [canAssign, setCanAssign] = useState(false)
+  const [inLeadPool, setInLeadPool] = useState(false)
+  const [isCloser, setIsCloser] = useState(false)
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null)
   const [formError, setFormError] = useState('')
@@ -73,11 +75,11 @@ export default function AdminPage() {
     const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password, role, can_assign: canAssign }),
+      body: JSON.stringify({ name, email, password, role, can_assign: canAssign, in_lead_pool: inLeadPool, is_closer: isCloser }),
     })
     const data = await res.json()
     if (data.success) {
-      setName(''); setEmail(''); setPassword(''); setRole('agent'); setCanAssign(false)
+      setName(''); setEmail(''); setPassword(''); setRole('agent'); setCanAssign(false); setInLeadPool(false); setIsCloser(false)
       setFormError('')
       setShowForm(false)
       fetchUsers()
@@ -86,7 +88,7 @@ export default function AdminPage() {
     }
   }
 
-  async function toggleField(userId: string, field: 'can_assign' | 'active', currentValue: boolean) {
+  async function toggleField(userId: string, field: 'can_assign' | 'active' | 'in_lead_pool' | 'is_closer', currentValue: boolean) {
     await fetch('/api/users', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -157,6 +159,14 @@ export default function AdminPage() {
               <input type="checkbox" checked={canAssign} onChange={e => setCanAssign(e.target.checked)} className="rounded accent-accent" />
               Can assign leads to others
             </label>
+            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input type="checkbox" checked={inLeadPool} onChange={e => setInLeadPool(e.target.checked)} className="rounded accent-accent" />
+              Receives auto-assigned new leads (round-robin pool)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input type="checkbox" checked={isCloser} onChange={e => setIsCloser(e.target.checked)} className="rounded accent-accent" />
+              Closer — HOT leads prefer this user (requires Lead Pool on)
+            </label>
             {formError && (
               <p className="text-xs px-3 py-2 rounded-lg" style={{ color: 'var(--color-danger)', background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-danger) 25%, transparent)' }}>{formError}</p>
             )}
@@ -172,6 +182,42 @@ export default function AdminPage() {
           </div>
         ) : (
           <div className="space-y-3">
+            {/* Lead Pool status banner */}
+            {(() => {
+              const poolUsers = users.filter(u => u.active && u.in_lead_pool)
+              const poolNames = poolUsers.map(u => u.name)
+              const closerNames = poolUsers.filter(u => u.is_closer).map(u => u.name)
+              const hasPool = poolNames.length > 0
+              const bg = hasPool ? 'var(--color-accent-soft)' : 'var(--color-elevated)'
+              const border = hasPool ? 'color-mix(in srgb, var(--color-accent) 35%, transparent)' : 'var(--color-border)'
+
+              let summary: string
+              if (!hasPool) {
+                summary = 'No one is set to receive auto-assigned leads. Toggle Lead Pool on for at least one agent.'
+              } else {
+                const base = poolNames.length === 1
+                  ? `New leads go to ${poolNames[0]}.`
+                  : `New leads round-robin between ${poolNames.join(', ')}.`
+                const hotPart = closerNames.length === 0
+                  ? ' HOT leads use the same round-robin (no closer set).'
+                  : closerNames.length === 1
+                    ? ` HOT leads prefer ${closerNames[0]}.`
+                    : ` HOT leads round-robin between closers ${closerNames.join(', ')}.`
+                summary = base + hotPart
+              }
+
+              return (
+                <div className="rounded-lg p-3 mb-2 flex items-start gap-3" style={{ background: bg, border: `1px solid ${border}` }}>
+                  <svg className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: 'var(--color-accent)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-text">Lead Pool {hasPool ? `(${poolNames.length})` : '— empty'}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted)' }}>{summary}</p>
+                  </div>
+                </div>
+              )
+            })()}
             {users.map(u => (
               <div key={u.id} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between hover:border-border-light transition-colors">
                 <div className="flex items-center gap-3">
@@ -199,7 +245,25 @@ export default function AdminPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-6">
-                  <label className="flex items-center gap-2 text-xs text-dim cursor-pointer">
+                  <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When on, this user receives auto-assigned new leads via round-robin">
+                    <span>Lead Pool</span>
+                    <button
+                      onClick={() => toggleField(u.id, 'in_lead_pool', u.in_lead_pool)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${u.in_lead_pool ? 'bg-accent' : 'bg-border'}`}
+                    >
+                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${u.in_lead_pool ? 'left-5' : 'left-0.5'}`} />
+                    </button>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When on, HOT leads prefer this user. Requires Lead Pool to be enabled to take effect.">
+                    <span>Closer</span>
+                    <button
+                      onClick={() => toggleField(u.id, 'is_closer', u.is_closer)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${u.is_closer ? 'bg-accent' : 'bg-border'}`}
+                    >
+                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${u.is_closer ? 'left-5' : 'left-0.5'}`} />
+                    </button>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When on, this user can manually reassign leads to other agents">
                     <span>Can Assign</span>
                     <button
                       onClick={() => toggleField(u.id, 'can_assign', u.can_assign)}

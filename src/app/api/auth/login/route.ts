@@ -58,6 +58,8 @@ export async function POST(req: NextRequest) {
           role: 'admin',
           can_assign: true,
           active: true,
+          in_lead_pool: false,
+          is_closer: false,
         })
       }
     }

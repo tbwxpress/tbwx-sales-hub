@@ -9,6 +9,8 @@ export interface User {
   role: UserRole
   can_assign: boolean
   active: boolean
+  in_lead_pool: boolean
+  is_closer: boolean
 }
 
 export interface SessionUser {

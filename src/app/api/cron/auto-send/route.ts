@@ -132,25 +132,24 @@ function calcPriority(experience: string, timeline: string): string {
   return 'COLD'
 }
 
-// --- Auto-assignment: HOT → Happy, else round-robin by lowest load ---
-const HOT_LEAD_AGENT = process.env.HOT_LEAD_AGENT || 'Happy'
+// --- Auto-assignment ---
+// Fully data-driven — no hardcoded names, all configured in Admin → Users:
+//   - in_lead_pool: receives auto-assigned leads via round-robin
+//   - is_closer:    HOT leads prefer these users (multiple closers round-robin among themselves)
+// If no closer is configured, HOT falls into the regular round-robin.
+// If the pool is empty, leads stay unassigned (admin re-enables from the panel).
 const MAX_ACTIVE_PER_AGENT = parseInt(process.env.MAX_ACTIVE_PER_AGENT || '15')
 const ACTIVE_STATUSES = ['NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION']
 
-interface AgentData { activeAgents: { name: string }[]; allLeads: { assigned_to: string; lead_status: string }[] }
+interface PoolAgent { name: string; is_closer: boolean }
+interface AgentData { activeAgents: PoolAgent[]; allLeads: { assigned_to: string; lead_status: string }[] }
 
 function pickAgentFromCache(priority: string, data: AgentData): string {
   try {
     const { activeAgents, allLeads } = data
     if (activeAgents.length === 0) return ''
 
-    // HOT leads go to the designated closer
-    if (priority === 'HOT') {
-      const closer = activeAgents.find(u => u.name === HOT_LEAD_AGENT)
-      if (closer) return closer.name
-    }
-
-    // Count active leads per agent
+    // Build a load map for the entire pool (used by both HOT and non-HOT paths).
     const loadMap = new Map<string, number>()
     for (const agent of activeAgents) loadMap.set(agent.name, 0)
     for (const lead of allLeads) {
@@ -159,7 +158,18 @@ function pickAgentFromCache(priority: string, data: AgentData): string {
       }
     }
 
-    // Round-robin: pick agent with fewest active leads (skip if overloaded)
+    // HOT leads prefer closers (round-robin among them by lowest load).
+    if (priority === 'HOT') {
+      const closers = activeAgents
+        .filter(a => a.is_closer)
+        .map(a => ({ name: a.name, load: loadMap.get(a.name) || 0 }))
+        .filter(a => a.load < MAX_ACTIVE_PER_AGENT)
+        .sort((a, b) => a.load - b.load)
+      if (closers.length > 0) return closers[0].name
+      // No closer available — fall through to general round-robin
+    }
+
+    // Non-HOT (or HOT with no available closer): round-robin pool members by lowest active load.
     const candidates = activeAgents
       .map(a => ({ name: a.name, load: loadMap.get(a.name) || 0 }))
       .filter(a => a.load < MAX_ACTIVE_PER_AGENT)
@@ -302,7 +312,11 @@ export async function POST(request: NextRequest) {
     try {
       const [users, cachedLeads] = await Promise.all([getUsers(), getLeads()])
       agentData = {
-        activeAgents: users.filter(u => u.active),
+        // Only agents who are both active AND in the lead pool receive auto-assignments.
+        // Pool membership and closer flag are toggled in Admin → Users.
+        activeAgents: users
+          .filter(u => u.active && u.in_lead_pool)
+          .map(u => ({ name: u.name, is_closer: u.is_closer })),
         allLeads: cachedLeads,
       }
     } catch { /* assignment will fall back to empty */ }
