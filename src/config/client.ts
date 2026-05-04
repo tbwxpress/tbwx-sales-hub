@@ -209,15 +209,16 @@ export const PRIORITY_COLORS: Record<string, string> = {
 export const DRIP_SEQUENCES: Record<string, { steps: { day: number; template: string; description: string }[] }> = {
   DECK_SENT: {
     steps: [
-      { day: 1, template: 'drip_deck_followup_1', description: 'Did you review the franchise deck?' },
-      { day: 3, template: 'drip_deck_followup_2', description: 'Partner earnings and ROI info' },
-      { day: 5, template: 'drip_deck_followup_3', description: 'Shall we schedule a call?' },
+      { day: 1, template: 'followup_value_hook', description: 'ROI & earnings hook with Yes/Not now buttons' },
+      { day: 4, template: 'followup_social_proof', description: 'Partner success story with Yes/Later/Not interested buttons' },
+      { day: 10, template: 'followup_last_chance', description: 'Final check-in with Interested/Stop buttons' },
     ],
   },
   CALL_DONE_INTERESTED: {
     steps: [
-      { day: 2, template: 'drip_postcall_followup_1', description: 'Post-call follow-up' },
-      { day: 4, template: 'drip_postcall_followup_2', description: 'Limited slots in your city' },
+      { day: 2, template: 'followup_value_hook', description: 'Post-call ROI reminder with Yes/Not now buttons' },
+      { day: 6, template: 'followup_social_proof', description: 'Partner success story with Yes/Later/Not interested buttons' },
+      { day: 14, template: 'followup_last_chance', description: 'Final check-in with Interested/Stop buttons' },
     ],
   },
 }

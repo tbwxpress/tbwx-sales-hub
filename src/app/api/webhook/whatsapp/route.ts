@@ -4,6 +4,11 @@ import { upsertContact, insertMessage, updateMessageStatus, getMessages, getCont
 import { sendTemplate } from '@/lib/whatsapp'
 import { logSentMessage, getLeadByRow } from '@/lib/sheets'
 
+// Button response classification for follow-up templates
+const POSITIVE_BUTTONS = ['yes, tell me more', "yes, let's talk", "i'm interested"]
+const DELAY_BUTTONS = ['not right now', 'maybe later']
+const OPTOUT_BUTTONS = ['not interested', 'stop messages']
+
 // WhatsApp webhook verification (GET)
 export async function GET(req: NextRequest) {
   const mode = req.nextUrl.searchParams.get('hub.mode')
@@ -124,6 +129,82 @@ export async function POST(req: NextRequest) {
             }
           } catch {
             // Non-critical — don't break webhook if drip pause fails
+          }
+
+          // Auto-classify leads from follow-up template button responses
+          // Buttons from followup_value_hook, followup_social_proof, followup_last_chance
+          try {
+            const buttonText = (
+              msg.type === 'interactive' ? (msg.interactive?.button_reply?.title || '') :
+              msg.type === 'button' ? (msg.button?.text || '') : ''
+            ).toLowerCase().trim()
+
+            if (buttonText && (POSITIVE_BUTTONS.includes(buttonText) || DELAY_BUTTONS.includes(buttonText) || OPTOUT_BUTTONS.includes(buttonText))) {
+              const { updateLead } = await import('@/lib/sheets')
+              const contact = await getContact(phone)
+
+              if (POSITIVE_BUTTONS.includes(buttonText)) {
+                // Lead is interested — mark HOT, pause drip, alert agent
+                if (contact?.lead_row) {
+                  await updateLead(Number(contact.lead_row), {
+                    lead_status: 'HOT',
+                    lead_priority: 'HOT',
+                    next_followup: new Date().toISOString().split('T')[0],
+                    notes: `[Auto] Lead tapped "${buttonText}" on follow-up — marked HOT`,
+                  })
+                }
+                await upsertDripState(phone, {
+                  paused_at: new Date().toISOString(),
+                  pause_reason: `Positive response: "${buttonText}"`,
+                })
+                // Alert the assigned agent via WhatsApp
+                const managerPhone = process.env.MANAGER_PHONE || '917973933630'
+                const leadName = contact?.name || phone
+                await sendTemplate(managerPhone, 'sales_lead_alert', [
+                  { type: 'text', text: `HOT LEAD ALERT: ${leadName} (${phone}) tapped "${buttonText}" — follow up NOW` },
+                ])
+                console.log(`[Webhook] Auto-classified ${phone} as HOT — button: "${buttonText}"`)
+
+              } else if (DELAY_BUTTONS.includes(buttonText)) {
+                // Lead wants to wait — mark DELAYED, follow up in 30 days
+                const followup30 = new Date()
+                followup30.setDate(followup30.getDate() + 30)
+                if (contact?.lead_row) {
+                  await updateLead(Number(contact.lead_row), {
+                    lead_status: 'DELAYED',
+                    next_followup: followup30.toISOString().split('T')[0],
+                    notes: `[Auto] Lead tapped "${buttonText}" — delayed 30 days`,
+                  })
+                }
+                await upsertDripState(phone, {
+                  paused_at: new Date().toISOString(),
+                  pause_reason: `Delayed: "${buttonText}"`,
+                })
+                console.log(`[Webhook] Auto-classified ${phone} as DELAYED — button: "${buttonText}"`)
+
+              } else if (OPTOUT_BUTTONS.includes(buttonText)) {
+                // Lead opted out — mark LOST, permanently stop all messaging
+                if (contact?.lead_row) {
+                  await updateLead(Number(contact.lead_row), {
+                    lead_status: 'LOST',
+                    notes: `[Auto] Lead tapped "${buttonText}" — opted out, no further messages`,
+                  })
+                }
+                await upsertDripState(phone, {
+                  enabled: false,
+                  paused_at: new Date().toISOString(),
+                  pause_reason: `Opted out: "${buttonText}"`,
+                  opted_out: true,
+                  opted_out_at: new Date().toISOString(),
+                })
+                console.log(`[Webhook] Auto-classified ${phone} as LOST (opted out) — button: "${buttonText}"`)
+              }
+
+              // Skip the default REPLIED status update below — we already set a specific status
+              continue
+            }
+          } catch (classifyErr) {
+            console.error('[Webhook] Auto-classify error (non-critical):', classifyErr)
           }
 
           // Auto-update lead status to REPLIED + schedule follow-up

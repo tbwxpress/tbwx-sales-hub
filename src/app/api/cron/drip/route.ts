@@ -5,26 +5,27 @@ import { getLeads } from '@/lib/sheets'
 import { DRIP_PAUSE_STATUSES, DRIP_DELAY_STATUSES, WHATSAPP } from '@/config/client'
 
 // Default sequences (used if no DB sequences configured)
+// Uses interactive button templates for auto-classification
 const DEFAULT_SEQUENCES: Record<string, { steps: { day: number; template: string; description: string }[] }> = {
   HOT: {
     steps: [
-      { day: 1, template: 'drip_deck_followup_1', description: 'Did you review the franchise deck?' },
-      { day: 2, template: 'drip_deck_followup_2', description: 'Partner earnings and ROI info' },
-      { day: 3, template: 'drip_deck_followup_3', description: 'Shall we schedule a call?' },
+      { day: 1, template: 'followup_value_hook', description: 'ROI & earnings hook with Yes/Not now buttons' },
+      { day: 3, template: 'followup_social_proof', description: 'Partner success story with Yes/Later/Not interested buttons' },
+      { day: 7, template: 'followup_last_chance', description: 'Final check-in with Interested/Stop buttons' },
     ],
   },
   WARM: {
     steps: [
-      { day: 3, template: 'drip_deck_followup_1', description: 'Did you review the franchise deck?' },
-      { day: 5, template: 'drip_deck_followup_2', description: 'Partner earnings and ROI info' },
-      { day: 7, template: 'drip_deck_followup_3', description: 'Shall we schedule a call?' },
+      { day: 3, template: 'followup_value_hook', description: 'ROI & earnings hook with Yes/Not now buttons' },
+      { day: 7, template: 'followup_social_proof', description: 'Partner success story with Yes/Later/Not interested buttons' },
+      { day: 14, template: 'followup_last_chance', description: 'Final check-in with Interested/Stop buttons' },
     ],
   },
   COLD: {
     steps: [
-      { day: 7, template: 'drip_deck_followup_1', description: 'Did you review the franchise deck?' },
-      { day: 14, template: 'drip_deck_followup_2', description: 'New outlets opening near you' },
-      { day: 21, template: 'drip_deck_followup_3', description: 'Still interested?' },
+      { day: 7, template: 'followup_value_hook', description: 'ROI & earnings hook with Yes/Not now buttons' },
+      { day: 14, template: 'followup_social_proof', description: 'Partner success story with Yes/Later/Not interested buttons' },
+      { day: 21, template: 'followup_last_chance', description: 'Final check-in with Interested/Stop buttons' },
     ],
   },
 }
@@ -144,6 +145,9 @@ export async function POST(req: NextRequest) {
 
       // Skip if paused for other reasons
       if (drip.paused_at) continue
+
+      // Never message opted-out leads
+      if (drip.opted_out === 1) continue
 
       // Match sequence by priority band
       const priority = String(drip.sequence) || lead.lead_priority || 'WARM'

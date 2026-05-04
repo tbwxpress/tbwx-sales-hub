@@ -131,6 +131,8 @@ async function ensureInit(): Promise<Client> {
         enabled INTEGER DEFAULT 1,
         paused_at TEXT,
         pause_reason TEXT,
+        opted_out INTEGER DEFAULT 0,
+        opted_out_at TEXT,
         created_at TEXT DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_drip_phone ON drip_state(phone);
@@ -705,6 +707,8 @@ export async function upsertDripState(phone: string, data: {
   enabled?: boolean
   paused_at?: string | null
   pause_reason?: string | null
+  opted_out?: boolean
+  opted_out_at?: string | null
 }) {
   const db = await ensureInit()
   const existing = await db.execute({ sql: 'SELECT * FROM drip_state WHERE phone = ?', args: [phone] })
@@ -718,14 +722,16 @@ export async function upsertDripState(phone: string, data: {
     if (data.enabled !== undefined) { updates.push('enabled = ?'); values.push(data.enabled ? 1 : 0) }
     if (data.paused_at !== undefined) { updates.push('paused_at = ?'); values.push(data.paused_at) }
     if (data.pause_reason !== undefined) { updates.push('pause_reason = ?'); values.push(data.pause_reason) }
+    if (data.opted_out !== undefined) { updates.push('opted_out = ?'); values.push(data.opted_out ? 1 : 0) }
+    if (data.opted_out_at !== undefined) { updates.push('opted_out_at = ?'); values.push(data.opted_out_at) }
     if (updates.length > 0) {
       values.push(phone)
       await db.execute({ sql: `UPDATE drip_state SET ${updates.join(', ')} WHERE phone = ?`, args: values })
     }
   } else {
     await db.execute({
-      sql: `INSERT INTO drip_state (phone, sequence, current_step, last_sent_at, enabled, paused_at, pause_reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      sql: `INSERT INTO drip_state (phone, sequence, current_step, last_sent_at, enabled, paused_at, pause_reason, opted_out, opted_out_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         phone,
         data.sequence || '',
@@ -734,6 +740,8 @@ export async function upsertDripState(phone: string, data: {
         data.enabled !== undefined ? (data.enabled ? 1 : 0) : 1,
         data.paused_at || null,
         data.pause_reason || null,
+        data.opted_out ? 1 : 0,
+        data.opted_out_at || null,
       ],
     })
   }
