@@ -6,6 +6,7 @@ import { sendFranchiseEmail } from '@/lib/email'
 import { logSentMessage, updateLead, getLeads, invalidateLeadsCache } from '@/lib/sheets'
 import { upsertContact, insertMessage, getMessages, getSetting } from '@/lib/db'
 import { getUsers } from '@/lib/users'
+import { getOptInTemplateName } from '@/lib/template-settings'
 
 const VOICE_AGENT_URL = process.env.VOICE_AGENT_URL || 'https://voice.tbwxpress.com'
 
@@ -30,8 +31,9 @@ const VOICE_AGENT_URL = process.env.VOICE_AGENT_URL || 'https://voice.tbwxpress.
 const CRON_SECRET = process.env.CRON_SECRET
 if (!CRON_SECRET) console.warn('[auto-send] CRON_SECRET is not set — cron endpoint is unprotected!')
 const SALES_PHONE = '917973933630'
-const TEMPLATE_NAME = 'opt_in_message'
 const SALES_ALERT_TEMPLATE = 'sales_lead_alert_v2'
+// TEMPLATE_NAME (the opt-in template) is resolved from DB-backed settings inside POST/GET
+// so admin can change it from the Admin panel without redeploying.
 
 // Rate limit: max leads to process per run (avoid timeout on Vercel 10s limit)
 const MAX_PER_RUN = 5
@@ -249,6 +251,9 @@ export async function POST(request: NextRequest) {
 
     // Force fresh read — don't use stale cache from a previous request
     invalidateLeadsCache()
+
+    // Resolve opt-in template name from DB settings (admin-configurable, no redeploy needed)
+    const TEMPLATE_NAME = await getOptInTemplateName()
 
     // 1. Read both tabs
     const newTabName = process.env.LEADS_TAB_NAME || 'AI Campaign Leads'
@@ -505,7 +510,7 @@ export async function GET() {
   return NextResponse.json({
     name: 'auto-send',
     description: 'Automatically sends WhatsApp to new leads from Google Sheets',
-    template: TEMPLATE_NAME,
+    template: await getOptInTemplateName(),
     sales_phone: SALES_PHONE,
     max_per_run: MAX_PER_RUN,
     schedule: 'Every 2 minutes (Vercel Cron)',

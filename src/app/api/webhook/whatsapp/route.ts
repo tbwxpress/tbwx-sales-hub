@@ -3,6 +3,7 @@ import { createHmac } from 'crypto'
 import { upsertContact, insertMessage, updateMessageStatus, getMessages, getContact, getDripState, upsertDripState } from '@/lib/db'
 import { sendTemplate } from '@/lib/whatsapp'
 import { logSentMessage, getLeadByRow } from '@/lib/sheets'
+import { getMarketingFirstTemplateName } from '@/lib/template-settings'
 
 // Button response classification for follow-up templates
 const POSITIVE_BUTTONS = ['yes, tell me more', "yes, let's talk", "i'm interested"]
@@ -249,11 +250,14 @@ export async function POST(req: NextRequest) {
             const isFirstReply = priorReceived.length === 0
 
             if (isOptInButton || isInteractiveOptIn || isTextOptIn || isFirstReply) {
+              // Resolve marketing template from DB settings (admin-configurable)
+              const MARKETING_FIRST_TEMPLATE = await getMarketingFirstTemplateName()
+
               // Check we haven't already sent the deck to this number
               const allMsgs = await getMessages(phone, 200, 0)
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const alreadySentDeck = (allMsgs || []).some(
-                (m: any) => m.direction === 'sent' && m.template_used === 'franchise_inquiry_response'
+                (m: any) => m.direction === 'sent' && m.template_used === MARKETING_FIRST_TEMPLATE
               )
 
               if (!alreadySentDeck) {
@@ -267,7 +271,7 @@ export async function POST(req: NextRequest) {
                   }
                 } catch { /* use contactName fallback */ }
 
-                const result = await sendTemplate(phone, 'franchise_inquiry_response', [
+                const result = await sendTemplate(phone, MARKETING_FIRST_TEMPLATE, [
                   { type: 'text', text: leadName },
                 ])
 
@@ -276,12 +280,12 @@ export async function POST(req: NextRequest) {
                   await insertMessage({
                     phone,
                     direction: 'sent',
-                    text: '[Template: franchise_inquiry_response] Franchise deck & investment details sent automatically',
+                    text: `[Template: ${MARKETING_FIRST_TEMPLATE}] Franchise deck & investment details sent automatically`,
                     timestamp: new Date().toISOString(),
                     sent_by: 'System (Auto)',
                     wa_message_id: result.message_id || '',
                     status: 'sent',
-                    template_used: 'franchise_inquiry_response',
+                    template_used: MARKETING_FIRST_TEMPLATE,
                     read: true,
                   })
 
@@ -293,7 +297,7 @@ export async function POST(req: NextRequest) {
                     sent_by: 'System (Auto)',
                     wa_message_id: result.message_id || '',
                     status: 'sent',
-                    template_used: 'franchise_inquiry_response',
+                    template_used: MARKETING_FIRST_TEMPLATE,
                   })
 
                   console.log(`[Webhook] Auto-sent franchise deck to ${phone}`)

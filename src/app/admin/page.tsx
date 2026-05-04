@@ -30,6 +30,13 @@ export default function AdminPage() {
   const [autoCallEnabled, setAutoCallEnabled] = useState(false)
   const [togglingAutoCall, setTogglingAutoCall] = useState(false)
 
+  // WhatsApp template settings
+  const [templateOptIn, setTemplateOptIn] = useState('')
+  const [templateMarketingFirst, setTemplateMarketingFirst] = useState('')
+  const [approvedTemplates, setApprovedTemplates] = useState<{ name: string; category: string; status: string }[]>([])
+  const [savingTemplates, setSavingTemplates] = useState(false)
+  const [templateMsg, setTemplateMsg] = useState('')
+
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
       if (d.success) {
@@ -39,7 +46,44 @@ export default function AdminPage() {
     })
     fetchUsers()
     fetchVoiceAgentSettings()
+    fetchTemplateSettings()
   }, [router])
+
+  async function fetchTemplateSettings() {
+    try {
+      const [s, t] = await Promise.all([
+        fetch('/api/settings/templates').then(r => r.json()),
+        fetch('/api/templates').then(r => r.json()),
+      ])
+      if (s.success) {
+        setTemplateOptIn(s.data.opt_in || '')
+        setTemplateMarketingFirst(s.data.marketing_first || '')
+      }
+      if (t.success) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setApprovedTemplates((t.data || []).map((tpl: any) => ({ name: tpl.name, category: tpl.category, status: tpl.status })))
+      }
+    } catch { /* silent */ }
+  }
+
+  async function saveTemplateSettings() {
+    setSavingTemplates(true)
+    setTemplateMsg('')
+    try {
+      const res = await fetch('/api/settings/templates', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opt_in: templateOptIn, marketing_first: templateMarketingFirst }),
+      })
+      const data = await res.json()
+      if (data.success) setTemplateMsg('Saved — changes take effect on next inbound lead.')
+      else setTemplateMsg(data.error || 'Save failed')
+    } catch (err) {
+      setTemplateMsg(String(err))
+    }
+    setSavingTemplates(false)
+    setTimeout(() => setTemplateMsg(''), 4000)
+  }
 
   async function fetchVoiceAgentSettings() {
     try {
@@ -292,6 +336,65 @@ export default function AdminPage() {
           <h2 className="text-lg font-bold text-text mb-1">Meta Ads</h2>
           <p className="text-sm text-dim mb-4">Campaign performance from your Meta ad account</p>
           <MetaAdsDashboard />
+        </div>
+
+        {/* WhatsApp Templates */}
+        <div className="mt-8 mb-6">
+          <h2 className="text-lg font-bold text-text mb-1">WhatsApp Templates</h2>
+          <p className="text-sm text-dim mb-4">Choose which approved Meta template each automation uses. Changes take effect on the next inbound lead — no redeploy required.</p>
+          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+            {(() => {
+              const approved = approvedTemplates.filter(t => t.status === 'APPROVED')
+              const optInStatus = approvedTemplates.find(t => t.name === templateOptIn)?.status
+              const marketingStatus = approvedTemplates.find(t => t.name === templateMarketingFirst)?.status
+              const renderStatusPill = (status: string | undefined) => {
+                if (!status) return <span className="text-[10px] text-dim">unknown</span>
+                if (status === 'APPROVED') return <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-success)' }}>Approved</span>
+                if (status === 'PENDING') return <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-warning)' }}>Pending</span>
+                return <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-danger)' }}>{status}</span>
+              }
+              return (
+                <>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-medium text-muted">Opt-in template (auto-send cron)</label>
+                      {renderStatusPill(optInStatus)}
+                    </div>
+                    <select value={templateOptIn} onChange={e => setTemplateOptIn(e.target.value)} className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50">
+                      {!approved.find(t => t.name === templateOptIn) && templateOptIn && (
+                        <option value={templateOptIn}>{templateOptIn} (current — not in approved list)</option>
+                      )}
+                      {approved.map(t => (
+                        <option key={t.name} value={t.name}>{t.name} · {t.category}</option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-dim mt-1">Sent to every new lead from the form. Should be UTILITY category.</p>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-medium text-muted">First marketing template (sent on opt-in / first reply)</label>
+                      {renderStatusPill(marketingStatus)}
+                    </div>
+                    <select value={templateMarketingFirst} onChange={e => setTemplateMarketingFirst(e.target.value)} className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50">
+                      {!approved.find(t => t.name === templateMarketingFirst) && templateMarketingFirst && (
+                        <option value={templateMarketingFirst}>{templateMarketingFirst} (current — not in approved list)</option>
+                      )}
+                      {approved.map(t => (
+                        <option key={t.name} value={t.name}>{t.name} · {t.category}</option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-dim mt-1">Carries the franchise deck. Sent the moment the lead replies to the opt-in.</p>
+                  </div>
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-xs text-dim">{templateMsg || `${approved.length} approved template${approved.length === 1 ? '' : 's'} available`}</span>
+                    <button onClick={saveTemplateSettings} disabled={savingTemplates} className="bg-accent hover:bg-accent-hover text-[#1a1209] text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
+                      {savingTemplates ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
+          </div>
         </div>
 
         {/* Voice Agent Settings */}
