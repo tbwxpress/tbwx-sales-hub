@@ -55,8 +55,17 @@ export async function GET(req: NextRequest) {
       lead_status: (STATUS_MIGRATION[l.lead_status] || l.lead_status) as typeof l.lead_status,
     }))
 
+    // Resolve current is_telecaller flag from DB (live, not from cached JWT — so admin flag
+    // changes take effect immediately and stale sessions never strand a telecaller).
+    let liveIsTelecaller = Boolean(session!.is_telecaller)
+    if (session!.role === 'agent') {
+      const { getUserByEmail } = await import('@/lib/users')
+      const u = await getUserByEmail(session!.email)
+      if (u) liveIsTelecaller = u.is_telecaller
+    }
+
     // Telecaller filter: see only leads in their queue (manual + auto-queue, opted-out excluded)
-    if (session!.role === 'agent' && session!.is_telecaller) {
+    if (session!.role === 'agent' && liveIsTelecaller) {
       const optedOutPhones = await getOptedOutPhones()
       const visibleRows = await getTelecallerVisibleLeadRows({
         telecallerUserId: session!.id,
