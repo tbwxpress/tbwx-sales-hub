@@ -77,6 +77,7 @@ export default function InboxPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [sending, setSending] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [msgLoading, setMsgLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -1333,6 +1334,40 @@ export default function InboxPage() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                   </svg>
+                </button>
+
+                {/* AI Suggest button */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!activePhone || aiLoading) return
+                    setAiLoading(true)
+                    try {
+                      const res = await fetch('/api/inbox/ai-suggest', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: activePhone }),
+                      })
+                      const data = await res.json()
+                      if (data.success && data.data?.suggestion) {
+                        setInputText(data.data.suggestion)
+                      }
+                    } catch { /* silent */ }
+                    setAiLoading(false)
+                  }}
+                  disabled={aiLoading || !activePhone}
+                  className="text-dim hover:text-accent transition-colors p-1 flex-shrink-0 disabled:opacity-40"
+                  title="AI-suggest a reply"
+                >
+                  {aiLoading ? (
+                    <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path d="M12 2v4m0 12v4m-8-10H2m20 0h-4m-2.343-5.657L14.828 7.172m-5.656 9.656l-2.829 2.829m11.314 0l-2.829-2.829m-5.656-9.656L6.343 4.343" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.456-2.456L14.25 6l1.035-.259a3.375 3.375 0 002.456-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                    </svg>
+                  )}
                 </button>
 
                 {/* Text input */}
