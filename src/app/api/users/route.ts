@@ -55,12 +55,69 @@ export async function PATCH(req: NextRequest) {
     const user = requireAuth(session)
     requireAdmin(user)
 
-    const { user_id, can_assign, active, role, in_lead_pool, is_closer, is_telecaller } = await req.json()
+    const { user_id, name, email, password, can_assign, active, role, in_lead_pool, is_closer, is_telecaller } = await req.json()
     if (!user_id) {
       return NextResponse.json({ success: false, error: 'User ID required' }, { status: 400 })
     }
 
+    // Profile fields require validation + (for name change) cascade to the Sheet
+    let nameToWrite: string | undefined
+    let emailToWrite: string | undefined
+    let passwordHashToWrite: string | undefined
+    let leadsRenamed = 0
+
+    if (typeof name === 'string') {
+      const trimmed = name.trim()
+      if (!trimmed) {
+        return NextResponse.json({ success: false, error: 'Name cannot be empty' }, { status: 400 })
+      }
+      nameToWrite = trimmed
+    }
+
+    if (typeof email === 'string') {
+      const trimmed = email.trim().toLowerCase()
+      if (!/^\S+@\S+\.\S+$/.test(trimmed)) {
+        return NextResponse.json({ success: false, error: 'Invalid email' }, { status: 400 })
+      }
+      // Uniqueness check (allow same email if it's the user's own current value)
+      const existing = await getUserById(user_id)
+      if (!existing) {
+        return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 })
+      }
+      if (trimmed !== existing.email.toLowerCase()) {
+        const allUsers = await getUsers()
+        const conflict = allUsers.find(u => u.email.toLowerCase() === trimmed && u.id !== user_id)
+        if (conflict) {
+          return NextResponse.json({ success: false, error: `Another user already has the email ${trimmed}` }, { status: 409 })
+        }
+      }
+      emailToWrite = trimmed
+    }
+
+    if (typeof password === 'string' && password.length > 0) {
+      if (password.length < 6) {
+        return NextResponse.json({ success: false, error: 'Password must be at least 6 characters' }, { status: 400 })
+      }
+      passwordHashToWrite = await hashPassword(password)
+    }
+
+    // Cascade name change to Sheet's assigned_to so leads stay attached to the right user
+    if (nameToWrite) {
+      const existing = await getUserById(user_id)
+      if (existing && existing.name !== nameToWrite) {
+        const allLeads = await getLeads()
+        const ownedRows = allLeads.filter(l => l.assigned_to === existing.name).map(l => l.row_number)
+        if (ownedRows.length > 0) {
+          await bulkUpdateField(ownedRows, 'assigned_to', nameToWrite)
+          leadsRenamed = ownedRows.length
+        }
+      }
+    }
+
     const updates: Record<string, unknown> = {}
+    if (nameToWrite !== undefined) updates.name = nameToWrite
+    if (emailToWrite !== undefined) updates.email = emailToWrite
+    if (passwordHashToWrite !== undefined) updates.password_hash = passwordHashToWrite
     if (can_assign !== undefined) updates.can_assign = can_assign
     if (active !== undefined) updates.active = active
     if (role !== undefined) updates.role = role
@@ -69,7 +126,7 @@ export async function PATCH(req: NextRequest) {
     if (is_telecaller !== undefined) updates.is_telecaller = is_telecaller
 
     await updateUser(user_id, updates)
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, data: { leads_renamed: leadsRenamed } })
   } catch (err) {
     return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }

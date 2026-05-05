@@ -46,6 +46,14 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null)
   const currentUserId = currentUser?.id || ''
+
+  // Edit user modal state
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editPassword, setEditPassword] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+  const [editErr, setEditErr] = useState('')
   const [formError, setFormError] = useState('')
 
   // Voice agent settings
@@ -170,6 +178,55 @@ export default function AdminPage() {
       body: JSON.stringify({ user_id: userId, [field]: !currentValue }),
     })
     fetchUsers()
+  }
+
+  function openEditUser(u: User) {
+    setEditingUser(u)
+    setEditName(u.name)
+    setEditEmail(u.email)
+    setEditPassword('')
+    setEditErr('')
+  }
+
+  function closeEditUser() {
+    setEditingUser(null)
+    setEditName('')
+    setEditEmail('')
+    setEditPassword('')
+    setEditErr('')
+  }
+
+  async function saveEditUser() {
+    if (!editingUser) return
+    setEditSaving(true)
+    setEditErr('')
+    const body: Record<string, unknown> = { user_id: editingUser.id }
+    if (editName.trim() && editName.trim() !== editingUser.name) body.name = editName.trim()
+    if (editEmail.trim().toLowerCase() !== editingUser.email.toLowerCase()) body.email = editEmail.trim()
+    if (editPassword.trim()) body.password = editPassword.trim()
+
+    if (Object.keys(body).length === 1) {
+      // Only user_id, nothing changed
+      closeEditUser()
+      setEditSaving(false)
+      return
+    }
+
+    const res = await fetch('/api/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (data.success) {
+      const renamed = data.data?.leads_renamed
+      closeEditUser()
+      if (renamed > 0) alert(`Saved — ${renamed} lead(s) re-attributed to the new name.`)
+      fetchUsers()
+    } else {
+      setEditErr(data.error || 'Save failed')
+    }
+    setEditSaving(false)
   }
 
   async function deleteUser(userId: string, userName: string) {
@@ -458,6 +515,16 @@ export default function AdminPage() {
                       <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${u.active ? 'left-5' : 'left-0.5'}`} />
                     </button>
                   </label>
+                  <button
+                    onClick={() => openEditUser(u)}
+                    title={`Edit ${u.name}`}
+                    className="p-1.5 rounded-md text-dim hover:text-accent hover:bg-accent/10 transition-colors"
+                    aria-label={`Edit ${u.name}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                    </svg>
+                  </button>
                   {u.id !== currentUserId && (
                     <button
                       onClick={() => deleteUser(u.id, u.name)}
@@ -666,6 +733,67 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
+
+      {/* ─── Edit User Modal ─────────────────────────────────────── */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={closeEditUser}>
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <h2 className="text-base font-semibold text-text">Edit user</h2>
+              <button onClick={closeEditUser} className="text-dim hover:text-text transition-colors" aria-label="Close">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-dim mb-1">Name</label>
+                <input
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+                />
+                <p className="text-[11px] text-dim mt-1">Renaming this user will re-attribute all of their leads in the Sheet (assigned_to gets bulk-rewritten).</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-dim mb-1">Email (login)</label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={e => setEditEmail(e.target.value)}
+                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-dim mb-1">Reset password</label>
+                <input
+                  type="password"
+                  value={editPassword}
+                  onChange={e => setEditPassword(e.target.value)}
+                  placeholder="Leave blank to keep current"
+                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+                />
+                <p className="text-[11px] text-dim mt-1">Min 6 chars. Leave blank to keep the user&apos;s current password.</p>
+              </div>
+              {editErr && (
+                <p className="text-xs px-3 py-2 rounded-lg" style={{ color: 'var(--color-danger)', background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-danger) 25%, transparent)' }}>{editErr}</p>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2">
+              <button onClick={closeEditUser} className="text-sm text-dim hover:text-text px-3 py-1.5 rounded-md transition-colors">Cancel</button>
+              <button
+                onClick={saveEditUser}
+                disabled={editSaving}
+                className="bg-accent hover:bg-accent-hover disabled:opacity-50 text-[#1a1209] text-sm font-semibold px-4 py-1.5 rounded-md transition-colors"
+              >
+                {editSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <PoweredBy />
     </div>
   )
