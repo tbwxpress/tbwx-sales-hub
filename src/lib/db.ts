@@ -225,6 +225,33 @@ async function ensureInit(): Promise<Client> {
         notes TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_telecaller_assignments_user ON lead_telecaller_assignments(telecaller_user_id);
+
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL DEFAULT '',
+        ref_phone TEXT,
+        ref_lead_row INTEGER,
+        read INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS commission_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        closer_user_id TEXT NOT NULL,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        lead_rows TEXT NOT NULL DEFAULT '[]',
+        amount REAL NOT NULL DEFAULT 0,
+        paid INTEGER NOT NULL DEFAULT 0,
+        paid_at TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_commission_payments_closer ON commission_payments(closer_user_id, paid);
     `)
 
     // Additive migrations (try-catch for existing DBs)

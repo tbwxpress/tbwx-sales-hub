@@ -42,6 +42,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
 
     await assignTelecaller(leadRow, telecaller_user_id, user.id, notes || null)
+
+    // Notify the telecaller that they have a new lead in their queue
+    try {
+      const { notifyQuiet } = await import('@/lib/notifications')
+      const lead = await getLeadByRow(leadRow)
+      await notifyQuiet({
+        user_id: telecaller_user_id,
+        type: 'lead_assigned',
+        title: `New telecalling assignment${lead?.full_name ? `: ${lead.full_name}` : ''}`,
+        body: `Owner: ${lead?.assigned_to || 'unassigned'} · Status: ${lead?.lead_status || ''}${notes ? ` · ${notes}` : ''}`,
+        ref_phone: lead?.phone || null,
+        ref_lead_row: leadRow,
+      })
+    } catch { /* non-critical */ }
+
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })

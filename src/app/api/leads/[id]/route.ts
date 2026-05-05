@@ -94,7 +94,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       } catch { /* SLA tracking is non-critical */ }
     }
 
-    // Log assignment changes
+    // Log assignment changes + notify the new owner
     if (body.assigned_to !== undefined) {
       const leads = await getLeads()
       const lead = leads.find(l => l.row_number === rowNum)
@@ -105,6 +105,52 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         to_agent: body.assigned_to,
         assigned_by: user.name,
       })
+      if (body.assigned_to && body.assigned_to !== lead?.assigned_to) {
+        try {
+          const { getUsers } = await import('@/lib/users')
+          const { notifyQuiet } = await import('@/lib/notifications')
+          const users = await getUsers()
+          const newOwner = users.find(u => u.name === body.assigned_to && u.active)
+          if (newOwner) {
+            await notifyQuiet({
+              user_id: newOwner.id,
+              type: 'lead_assigned',
+              title: `New lead assigned: ${lead?.full_name || lead?.phone || 'lead'}`,
+              body: `Reassigned by ${user.name}${lead?.lead_priority ? ` · ${lead.lead_priority}` : ''}`,
+              ref_phone: lead?.phone || null,
+              ref_lead_row: rowNum,
+            })
+          }
+        } catch { /* notification failures non-critical */ }
+      }
+    }
+
+    // Notify lead's owner when a non-owner (typically a telecaller) updates the lead
+    // — for status changes that signal a real progression (HOT, CALL_DONE_INTERESTED, etc.)
+    if (body.lead_status) {
+      try {
+        const leads = await getLeads()
+        const lead = leads.find(l => l.row_number === rowNum)
+        const owner = lead?.assigned_to
+        const isOwnerEditing = owner && owner === user.name
+        const isReassignment = body.assigned_to !== undefined
+        if (owner && !isOwnerEditing && !isReassignment && body.lead_status !== lead?.lead_status) {
+          const { getUsers } = await import('@/lib/users')
+          const { notifyQuiet } = await import('@/lib/notifications')
+          const users = await getUsers()
+          const ownerUser = users.find(u => u.name === owner && u.active)
+          if (ownerUser) {
+            await notifyQuiet({
+              user_id: ownerUser.id,
+              type: body.lead_status === 'HOT' ? 'lead_hot' : 'telecaller_update',
+              title: `${lead?.full_name || lead?.phone || 'Lead'} → ${body.lead_status}`,
+              body: `Updated by ${user.name}`,
+              ref_phone: lead?.phone || null,
+              ref_lead_row: rowNum,
+            })
+          }
+        }
+      } catch { /* non-critical */ }
     }
 
     await updateLead(rowNum, body)

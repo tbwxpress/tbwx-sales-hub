@@ -4,6 +4,8 @@ import { upsertContact, insertMessage, updateMessageStatus, getMessages, getCont
 import { sendTemplate } from '@/lib/whatsapp'
 import { logSentMessage, getLeadByRow } from '@/lib/sheets'
 import { getMarketingFirstTemplateName } from '@/lib/template-settings'
+import { notifyQuiet } from '@/lib/notifications'
+import { getUsers } from '@/lib/users'
 
 // Button response classification for follow-up templates
 const POSITIVE_BUTTONS = ['yes, tell me more', "yes, let's talk", "i'm interested"]
@@ -232,6 +234,25 @@ export async function POST(req: NextRequest) {
                 updateFields.lead_status = 'REPLIED'
               }
               await updateLead(Number(contact.lead_row), updateFields)
+
+              // Notify the lead's owner (assigned agent) that a reply came in
+              if (lead?.assigned_to) {
+                try {
+                  const allUsers = await getUsers()
+                  const owner = allUsers.find(u => u.name === lead.assigned_to && u.active)
+                  if (owner) {
+                    const previewText = (text || '').slice(0, 80)
+                    await notifyQuiet({
+                      user_id: owner.id,
+                      type: 'lead_replied',
+                      title: `${lead.full_name || phone} replied`,
+                      body: previewText,
+                      ref_phone: phone,
+                      ref_lead_row: Number(contact.lead_row),
+                    })
+                  }
+                } catch { /* best effort */ }
+              }
             }
           } catch {
             // Non-critical — don't break webhook if sheet update fails
