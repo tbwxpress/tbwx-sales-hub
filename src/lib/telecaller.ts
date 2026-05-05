@@ -76,6 +76,19 @@ export async function unassignTelecaller(leadRow: number): Promise<void> {
   })
 }
 
+/**
+ * Removes all telecaller assignments where the given user is the telecaller.
+ * Used during user deletion to prevent orphaned rows.
+ */
+export async function clearAssignmentsForTelecaller(telecallerUserId: string): Promise<number> {
+  const db = getClient()
+  const r = await db.execute({
+    sql: 'DELETE FROM lead_telecaller_assignments WHERE telecaller_user_id = ?',
+    args: [telecallerUserId],
+  })
+  return Number(r.rowsAffected || 0)
+}
+
 export async function getAssignmentForLead(leadRow: number): Promise<TelecallerAssignment | null> {
   const db = getClient()
   const r = await db.execute({

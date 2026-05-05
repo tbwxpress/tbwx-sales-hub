@@ -159,7 +159,7 @@ export default function LeadDetailPage() {
   // Core state
   const [lead, setLead] = useState<Lead | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
-  const [users, setUsers] = useState<{ id: string; name: string; role: string; is_telecaller?: boolean }[]>([])
+  const [users, setUsers] = useState<{ id: string; name: string; role: string; active?: boolean; is_telecaller?: boolean }[]>([])
   const [telecallerAssignment, setTelecallerAssignment] = useState<{ telecaller_user_id: string; telecaller_name: string; assigned_at: string; notes: string | null } | null>(null)
   const [tcSelected, setTcSelected] = useState('')
   const [tcSaving, setTcSaving] = useState(false)
@@ -959,7 +959,7 @@ export default function LeadDetailPage() {
                     <div className="flex items-center gap-2">
                       <select value={tcSelected} onChange={e => setTcSelected(e.target.value)} className="flex-1 bg-card border border-border rounded-md px-2 py-1.5 text-xs text-text focus:outline-none focus:border-accent/50">
                         <option value="">Pick a telecaller…</option>
-                        {users.filter(u => u.is_telecaller).map(u => (
+                        {users.filter(u => u.is_telecaller && u.active !== false).map(u => (
                           <option key={u.id} value={u.id}>{u.name}</option>
                         ))}
                       </select>
@@ -968,7 +968,7 @@ export default function LeadDetailPage() {
                       </button>
                     </div>
                   )}
-                  {users.filter(u => u.is_telecaller).length === 0 && (
+                  {users.filter(u => u.is_telecaller && u.active !== false).length === 0 && (
                     <p className="text-[11px] text-dim mt-1">No telecallers configured. Add one in Admin → Users.</p>
                   )}
                 </div>

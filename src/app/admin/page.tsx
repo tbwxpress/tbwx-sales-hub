@@ -44,7 +44,8 @@ export default function AdminPage() {
   const [savingAq, setSavingAq] = useState(false)
   const [aqMsg, setAqMsg] = useState('')
   const [loading, setLoading] = useState(true)
-  const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null)
+  const currentUserId = currentUser?.id || ''
   const [formError, setFormError] = useState('')
 
   // Voice agent settings
@@ -170,6 +171,56 @@ export default function AdminPage() {
     })
     fetchUsers()
   }
+
+  async function deleteUser(userId: string, userName: string) {
+    if (!window.confirm(`Permanently delete ${userName}? This cannot be undone.`)) return
+
+    // Try delete; server is authoritative about whether reassignment is required.
+    let res = await fetch('/api/users', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId }),
+    })
+    let data = await res.json()
+
+    if (!data.success && data.requires_reassign) {
+      const candidates = users.filter(u => u.id !== userId && u.active && u.in_lead_pool)
+      if (candidates.length === 0) {
+        alert(`Cannot delete ${userName}: they own ${data.owned_leads} active lead(s) and there's no other active Closer to reassign to. Add another active Closer first, or mark ${userName} inactive instead of deleting.`)
+        return
+      }
+      const promptText = `${userName} owns ${data.owned_leads} active lead(s). Reassign to which user?\n\n${candidates.map((u, i) => `${i + 1}. ${u.name}`).join('\n')}\n\nEnter the number:`
+      const pick = window.prompt(promptText)
+      const idx = pick ? parseInt(pick, 10) - 1 : -1
+      if (idx < 0 || idx >= candidates.length) {
+        alert('Cancelled — invalid choice.')
+        return
+      }
+      const newOwner = candidates[idx].name
+      if (!window.confirm(`Reassign ${data.owned_leads} lead(s) to ${newOwner} and delete ${userName}?`)) return
+
+      res = await fetch('/api/users', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, reassign_leads_to: newOwner }),
+      })
+      data = await res.json()
+    }
+
+    if (!data.success) {
+      alert(`Cannot delete ${userName}: ${data.error}`)
+      return
+    }
+
+    const parts: string[] = []
+    if (data.data?.leads_reassigned) parts.push(`${data.data.leads_reassigned} lead(s) reassigned`)
+    if (data.data?.telecaller_assignments_cleared) parts.push(`${data.data.telecaller_assignments_cleared} telecaller assignment(s) cleared`)
+    if (data.data?.auto_queue_reset) parts.push('auto-queue reset')
+    alert(`${userName} deleted${parts.length ? ' — ' + parts.join(', ') : ''}.`)
+    fetchUsers()
+    fetchAutoQueue()
+  }
+
 
   async function changeUserType(userId: string, newType: AgentType) {
     const flags = flagsForType(newType)
@@ -407,6 +458,18 @@ export default function AdminPage() {
                       <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${u.active ? 'left-5' : 'left-0.5'}`} />
                     </button>
                   </label>
+                  {u.id !== currentUserId && (
+                    <button
+                      onClick={() => deleteUser(u.id, u.name)}
+                      title={`Delete ${u.name} permanently`}
+                      className="p-1.5 rounded-md text-dim hover:text-danger hover:bg-danger/10 transition-colors"
+                      aria-label={`Delete ${u.name}`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

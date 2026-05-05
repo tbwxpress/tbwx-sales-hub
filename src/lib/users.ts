@@ -128,6 +128,39 @@ export async function createUser(user: Omit<User, 'id'>): Promise<string> {
   return id
 }
 
+export async function getUserById(userId: string): Promise<User | null> {
+  await ensureTable()
+  const db = getClient()
+  const r = await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [userId] })
+  if (r.rows.length === 0) return null
+  const row = r.rows[0]
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    email: String(row.email),
+    password_hash: String(row.password_hash),
+    role: String(row.role) as User['role'],
+    can_assign: Boolean(row.can_assign),
+    active: Boolean(row.active),
+    in_lead_pool: Boolean(row.in_lead_pool),
+    is_closer: Boolean(row.is_closer),
+    is_telecaller: Boolean(row.is_telecaller),
+  }
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  await ensureTable()
+  const db = getClient()
+  await db.execute({ sql: 'DELETE FROM users WHERE id = ?', args: [userId] })
+}
+
+export async function countAdmins(): Promise<number> {
+  await ensureTable()
+  const db = getClient()
+  const r = await db.execute("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND active = 1")
+  return Number(r.rows[0]?.n || 0)
+}
+
 export async function updateUser(userId: string, fields: Partial<User>): Promise<void> {
   const db = getClient()
   const updates: string[] = []

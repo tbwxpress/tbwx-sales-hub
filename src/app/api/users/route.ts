@@ -1,7 +1,9 @@
 import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth, requireAdmin, hashPassword } from '@/lib/auth'
-import { getUsers, createUser, updateUser } from '@/lib/users'
+import { getUsers, createUser, updateUser, getUserById, deleteUser, countAdmins } from '@/lib/users'
+import { clearAssignmentsForTelecaller, getAutoQueueConfig, setAutoQueueConfig } from '@/lib/telecaller'
+import { getLeads, bulkUpdateField } from '@/lib/sheets'
 
 export async function GET() {
   try {
@@ -68,6 +70,93 @@ export async function PATCH(req: NextRequest) {
 
     await updateUser(user_id, updates)
     return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
+  }
+}
+
+// DELETE /api/users
+// Body: { user_id, reassign_leads_to?: string }
+// Cascade cleanup:
+//   - blocks self-delete
+//   - blocks last-active-admin delete
+//   - if user owns leads in the Sheet (assigned_to=name), requires reassign_leads_to
+//   - reassigns Sheet leads to the new owner
+//   - clears all lead_telecaller_assignments where deleted user is the telecaller
+//   - clears auto-queue config if it pointed at the deleted user
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await getSession()
+    const user = requireAuth(session)
+    requireAdmin(user)
+
+    const { user_id, reassign_leads_to } = await req.json()
+    if (!user_id) {
+      return NextResponse.json({ success: false, error: 'User ID required' }, { status: 400 })
+    }
+
+    if (user_id === user.id) {
+      return NextResponse.json({ success: false, error: 'You cannot delete yourself.' }, { status: 400 })
+    }
+
+    const target = await getUserById(user_id)
+    if (!target) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 })
+    }
+
+    // Block deleting the only active admin
+    if (target.role === 'admin' && target.active) {
+      const adminCount = await countAdmins()
+      if (adminCount <= 1) {
+        return NextResponse.json({ success: false, error: 'Cannot delete the only active admin.' }, { status: 400 })
+      }
+    }
+
+    // If the user owns leads in the Sheet, require a reassign target
+    const allLeads = await getLeads()
+    const ownedLeadRows = allLeads
+      .filter(l => l.assigned_to === target.name && !['CONVERTED', 'LOST'].includes(l.lead_status))
+      .map(l => l.row_number)
+
+    if (ownedLeadRows.length > 0) {
+      if (!reassign_leads_to) {
+        return NextResponse.json({
+          success: false,
+          requires_reassign: true,
+          owned_leads: ownedLeadRows.length,
+          error: `${target.name} owns ${ownedLeadRows.length} active lead(s). Pick a new owner to reassign them before deleting.`,
+        }, { status: 409 })
+      }
+      // Validate reassign target exists and is active
+      const allUsers = await getUsers()
+      const newOwner = allUsers.find(u => u.name === reassign_leads_to && u.active)
+      if (!newOwner) {
+        return NextResponse.json({ success: false, error: `Reassign target "${reassign_leads_to}" not found or inactive.` }, { status: 400 })
+      }
+      // Reassign in one batch
+      await bulkUpdateField(ownedLeadRows, 'assigned_to', reassign_leads_to)
+    }
+
+    // Cascade: clear telecaller assignments where deleted user is the telecaller
+    const tcCleared = await clearAssignmentsForTelecaller(user_id)
+
+    // Cascade: clear auto-queue config if it pointed at this user
+    const autoQ = await getAutoQueueConfig()
+    if (autoQ.user_id === user_id) {
+      await setAutoQueueConfig({ enabled: false, user_id: '' })
+    }
+
+    // Finally remove the user
+    await deleteUser(user_id)
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        leads_reassigned: ownedLeadRows.length,
+        telecaller_assignments_cleared: tcCleared,
+        auto_queue_reset: autoQ.user_id === user_id,
+      },
+    })
   } catch (err) {
     return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
