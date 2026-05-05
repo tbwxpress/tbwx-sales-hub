@@ -201,8 +201,12 @@ export async function POST(req: NextRequest) {
                 console.log(`[Webhook] Auto-classified ${phone} as LOST (opted out) — button: "${buttonText}"`)
               }
 
-              // Skip the default REPLIED status update below — we already set a specific status
-              continue
+              // For DELAY/OPTOUT we stop here (they won't get the deck — lead is paused or opted out).
+              // For POSITIVE we let control fall through so the deck-send block below also fires
+              // (a positive button tap is exactly when we want to deliver the deck).
+              if (DELAY_BUTTONS.includes(buttonText) || OPTOUT_BUTTONS.includes(buttonText)) {
+                continue
+              }
             }
           } catch (classifyErr) {
             console.error('[Webhook] Auto-classify error (non-critical):', classifyErr)
