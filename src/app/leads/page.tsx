@@ -62,7 +62,7 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string
   COLD: makeStatusVars('var(--color-priority-cold)'),
 }
 
-const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST']
+const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST', 'ARCHIVED']
 const PRIORITY_OPTIONS = ['HOT', 'WARM', 'COLD']
 
 

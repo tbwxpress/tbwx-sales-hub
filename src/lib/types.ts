@@ -1,5 +1,5 @@
 export type UserRole = 'admin' | 'agent'
-export type LeadStatus = 'NEW' | 'DECK_SENT' | 'REPLIED' | 'NO_RESPONSE' | 'CALL_DONE_INTERESTED' | 'HOT' | 'FINAL_NEGOTIATION' | 'CONVERTED' | 'DELAYED' | 'LOST'
+export type LeadStatus = 'NEW' | 'DECK_SENT' | 'REPLIED' | 'NO_RESPONSE' | 'CALL_DONE_INTERESTED' | 'HOT' | 'FINAL_NEGOTIATION' | 'CONVERTED' | 'DELAYED' | 'LOST' | 'ARCHIVED'
 
 export interface User {
   id: string

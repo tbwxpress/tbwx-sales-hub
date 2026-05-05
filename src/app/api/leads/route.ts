@@ -85,6 +85,9 @@ export async function GET(req: NextRequest) {
 
     if (status) {
       leads = leads.filter(l => l.lead_status === status || l.lead_priority === status)
+    } else {
+      // Hide ARCHIVED from default lists (only show when explicitly filtered by status=ARCHIVED)
+      leads = leads.filter(l => l.lead_status !== 'ARCHIVED')
     }
     if (assigned) {
       leads = leads.filter(l => l.assigned_to === assigned)

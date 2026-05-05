@@ -145,7 +145,12 @@ export const LEAD_STATUSES = [
   'CONVERTED',
   'DELAYED',
   'LOST',
+  'ARCHIVED',
 ] as const
+
+// Statuses considered terminal / dead — leads in these stages should NOT
+// receive auto-send, drip, telecaller auto-queue, or appear in active KPIs.
+export const TERMINAL_STATUSES = ['CONVERTED', 'LOST', 'ARCHIVED'] as const
 
 // Human-readable labels for each status
 export const STATUS_LABELS: Record<string, string> = {
@@ -159,6 +164,7 @@ export const STATUS_LABELS: Record<string, string> = {
   CONVERTED: 'Converted',
   DELAYED: 'Delayed',
   LOST: 'Lost',
+  ARCHIVED: 'Archived',
 }
 
 // Migration map: old status → new status (used to auto-update existing leads)
