@@ -50,6 +50,7 @@ export async function getSession(): Promise<SessionUser | null> {
       email: payload.email as string,
       role: payload.role as SessionUser['role'],
       can_assign: payload.can_assign as boolean,
+      is_telecaller: Boolean(payload.is_telecaller),
     }
   } catch {
     return null

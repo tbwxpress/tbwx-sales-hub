@@ -41,6 +41,7 @@ async function ensureTable(): Promise<void> {
       active INTEGER NOT NULL DEFAULT 1,
       in_lead_pool INTEGER NOT NULL DEFAULT 0,
       is_closer INTEGER NOT NULL DEFAULT 0,
+      is_telecaller INTEGER NOT NULL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -55,6 +56,9 @@ async function ensureTable(): Promise<void> {
   }
   if (!colNames.has('is_closer')) {
     await db.execute('ALTER TABLE users ADD COLUMN is_closer INTEGER NOT NULL DEFAULT 0')
+  }
+  if (!colNames.has('is_telecaller')) {
+    await db.execute('ALTER TABLE users ADD COLUMN is_telecaller INTEGER NOT NULL DEFAULT 0')
   }
 
   _tableReady = true
@@ -74,6 +78,7 @@ export async function getUsers(): Promise<User[]> {
     active: Boolean(row.active),
     in_lead_pool: Boolean(row.in_lead_pool),
     is_closer: Boolean(row.is_closer),
+    is_telecaller: Boolean(row.is_telecaller),
   }))
 }
 
@@ -96,6 +101,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
     active: Boolean(row.active),
     in_lead_pool: Boolean(row.in_lead_pool),
     is_closer: Boolean(row.is_closer),
+    is_telecaller: Boolean(row.is_telecaller),
   }
 }
 
@@ -104,8 +110,8 @@ export async function createUser(user: Omit<User, 'id'>): Promise<string> {
   const db = getClient()
   const id = `u_${Date.now()}`
   await db.execute({
-    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, active, in_lead_pool, is_closer)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, active, in_lead_pool, is_closer, is_telecaller)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       id,
       user.name,
@@ -116,6 +122,7 @@ export async function createUser(user: Omit<User, 'id'>): Promise<string> {
       user.active ? 1 : 0,
       user.in_lead_pool ? 1 : 0,
       user.is_closer ? 1 : 0,
+      user.is_telecaller ? 1 : 0,
     ],
   })
   return id
@@ -134,6 +141,7 @@ export async function updateUser(userId: string, fields: Partial<User>): Promise
   if (fields.active !== undefined) { updates.push('active = ?'); values.push(fields.active ? 1 : 0) }
   if (fields.in_lead_pool !== undefined) { updates.push('in_lead_pool = ?'); values.push(fields.in_lead_pool ? 1 : 0) }
   if (fields.is_closer !== undefined) { updates.push('is_closer = ?'); values.push(fields.is_closer ? 1 : 0) }
+  if (fields.is_telecaller !== undefined) { updates.push('is_telecaller = ?'); values.push(fields.is_telecaller ? 1 : 0) }
 
   if (updates.length === 0) return
 

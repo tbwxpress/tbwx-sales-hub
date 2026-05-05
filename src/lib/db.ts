@@ -216,6 +216,15 @@ async function ensureInit(): Promise<Client> {
         value TEXT NOT NULL DEFAULT '',
         updated_at TEXT DEFAULT (datetime('now'))
       );
+
+      CREATE TABLE IF NOT EXISTS lead_telecaller_assignments (
+        lead_row INTEGER PRIMARY KEY,
+        telecaller_user_id TEXT NOT NULL,
+        assigned_by_user_id TEXT NOT NULL,
+        assigned_at TEXT DEFAULT (datetime('now')),
+        notes TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_telecaller_assignments_user ON lead_telecaller_assignments(telecaller_user_id);
     `)
 
     // Additive migrations (try-catch for existing DBs)
@@ -892,6 +901,13 @@ export async function getVoiceAgentCallBySid(callSid: string) {
     args: [callSid],
   })
   return result.rows[0] ? serializeRow(result.rows[0]) : null
+}
+
+// --- Opted-out lookup (used to exclude leads who tapped Not Interested) ---
+export async function getOptedOutPhones(): Promise<Set<string>> {
+  const db = await ensureInit()
+  const result = await db.execute('SELECT phone FROM drip_state WHERE opted_out = 1')
+  return new Set(result.rows.map(r => normalizePhone(String(r.phone))))
 }
 
 // --- Settings operations ---

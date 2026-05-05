@@ -4,6 +4,8 @@ import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, getLeadStats, createLead } from '@/lib/sheets'
 import { computeLeadScore } from '@/lib/scoring'
 import { STATUS_MIGRATION } from '@/config/client'
+import { getTelecallerVisibleLeadRows, getAllAssignments } from '@/lib/telecaller'
+import { getOptedOutPhones } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   try {
@@ -53,10 +55,24 @@ export async function GET(req: NextRequest) {
       lead_status: (STATUS_MIGRATION[l.lead_status] || l.lead_status) as typeof l.lead_status,
     }))
 
-    // Agents see assigned leads + unassigned (if can_assign)
-    if (session!.role === 'agent') {
+    // Telecaller filter: see only leads in their queue (manual + auto-queue, opted-out excluded)
+    if (session!.role === 'agent' && session!.is_telecaller) {
+      const optedOutPhones = await getOptedOutPhones()
+      const visibleRows = await getTelecallerVisibleLeadRows({
+        telecallerUserId: session!.id,
+        leads: leads.map(l => ({ row_number: l.row_number, lead_status: l.lead_status, phone: l.phone })),
+        optedOutPhones,
+      })
+      leads = leads.filter(l => visibleRows.has(l.row_number))
+    } else if (session!.role === 'agent') {
+      // Closer / regular agent: see assigned leads + unassigned (if can_assign)
       leads = leads.filter(l => l.assigned_to === session!.name || (session!.can_assign && !l.assigned_to))
     }
+
+    // Attach telecaller_assignment metadata so agents can see who's working their leads,
+    // and telecallers can see the owner agent for handoff.
+    const allTcAssignments = await getAllAssignments()
+    const tcByRow = new Map(allTcAssignments.map(a => [a.lead_row, a]))
 
     if (status) {
       leads = leads.filter(l => l.lead_status === status || l.lead_priority === status)
@@ -74,8 +90,23 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // Attach computed scores
-    const scoredLeads = leads.map(l => ({ ...l, lead_score: computeLeadScore(l) }))
+    // Build a name lookup so we can show telecaller name (not just user_id) on each card
+    const { getUsers } = await import('@/lib/users')
+    const allUsers = await getUsers()
+    const userById = new Map(allUsers.map(u => [u.id, u]))
+
+    // Attach computed scores + telecaller assignment metadata
+    const scoredLeads = leads.map(l => {
+      const tc = tcByRow.get(l.row_number)
+      const tcUser = tc ? userById.get(tc.telecaller_user_id) : null
+      return {
+        ...l,
+        lead_score: computeLeadScore(l),
+        telecaller_user_id: tc?.telecaller_user_id || '',
+        telecaller_name: tcUser?.name || '',
+        telecaller_assigned_at: tc?.assigned_at || '',
+      }
+    })
 
     // Sort based on query parameter (default: score descending)
     const sort = url.searchParams.get('sort') || 'score'

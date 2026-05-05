@@ -159,7 +159,10 @@ export default function LeadDetailPage() {
   // Core state
   const [lead, setLead] = useState<Lead | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
-  const [users, setUsers] = useState<{ id: string; name: string; role: string }[]>([])
+  const [users, setUsers] = useState<{ id: string; name: string; role: string; is_telecaller?: boolean }[]>([])
+  const [telecallerAssignment, setTelecallerAssignment] = useState<{ telecaller_user_id: string; telecaller_name: string; assigned_at: string; notes: string | null } | null>(null)
+  const [tcSelected, setTcSelected] = useState('')
+  const [tcSaving, setTcSaving] = useState(false)
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -278,6 +281,46 @@ export default function LeadDetailPage() {
     }
   }, [])
 
+  // Fetch telecaller assignment for this lead
+  const fetchTelecallerAssignment = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/leads/${id}/telecaller`)
+      const json = await res.json()
+      if (json.success) setTelecallerAssignment(json.data)
+    } catch { /* silent */ }
+  }, [id])
+
+  async function assignTelecaller() {
+    if (!tcSelected) return
+    setTcSaving(true)
+    try {
+      const res = await fetch(`/api/leads/${id}/telecaller`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telecaller_user_id: tcSelected }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setTcSelected('')
+        await fetchTelecallerAssignment()
+      } else {
+        setToast(json.error || 'Failed to assign')
+      }
+    } catch (e) { setToast(String(e)) }
+    setTcSaving(false)
+  }
+
+  async function unassignTelecaller() {
+    setTcSaving(true)
+    try {
+      const res = await fetch(`/api/leads/${id}/telecaller`, { method: 'DELETE' })
+      const json = await res.json()
+      if (json.success) await fetchTelecallerAssignment()
+      else setToast(json.error || 'Failed to unassign')
+    } catch (e) { setToast(String(e)) }
+    setTcSaving(false)
+  }
+
   // Fetch quick replies
   const fetchQuickReplies = useCallback(async () => {
     try {
@@ -377,11 +420,11 @@ export default function LeadDetailPage() {
   useEffect(() => {
     async function load() {
       setLoading(true)
-      await Promise.all([fetchLead(), fetchMessages(), fetchUsers(), fetchQuickReplies(), fetchAutoMsgStatus(), fetchAssignHistory()])
+      await Promise.all([fetchLead(), fetchMessages(), fetchUsers(), fetchQuickReplies(), fetchAutoMsgStatus(), fetchAssignHistory(), fetchTelecallerAssignment()])
       setLoading(false)
     }
     load()
-  }, [fetchLead, fetchMessages, fetchUsers, fetchQuickReplies, fetchAutoMsgStatus, fetchAssignHistory])
+  }, [fetchLead, fetchMessages, fetchUsers, fetchQuickReplies, fetchAutoMsgStatus, fetchAssignHistory, fetchTelecallerAssignment])
 
   // Fetch drip state when lead is loaded
   useEffect(() => {
@@ -899,6 +942,37 @@ export default function LeadDetailPage() {
                 ) : (
                   <p className="text-sm text-muted">{lead.assigned_to || 'Unassigned'}</p>
                 )}
+                {/* Telecaller assignment */}
+                <div className="mt-3 rounded-lg p-3" style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)' }}>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-muted)' }}>Telecaller</p>
+                  {telecallerAssignment ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs">
+                        <span className="font-medium text-text">{telecallerAssignment.telecaller_name}</span>
+                        <span className="text-dim ml-2">assigned for telecalling</span>
+                      </div>
+                      <button onClick={unassignTelecaller} disabled={tcSaving} className="text-[11px] text-dim hover:text-danger transition-colors disabled:opacity-50">
+                        Unassign
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <select value={tcSelected} onChange={e => setTcSelected(e.target.value)} className="flex-1 bg-card border border-border rounded-md px-2 py-1.5 text-xs text-text focus:outline-none focus:border-accent/50">
+                        <option value="">Pick a telecaller…</option>
+                        {users.filter(u => u.is_telecaller).map(u => (
+                          <option key={u.id} value={u.id}>{u.name}</option>
+                        ))}
+                      </select>
+                      <button onClick={assignTelecaller} disabled={!tcSelected || tcSaving} className="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors disabled:opacity-50" style={{ background: 'var(--color-accent)', color: '#1a1209' }}>
+                        Assign
+                      </button>
+                    </div>
+                  )}
+                  {users.filter(u => u.is_telecaller).length === 0 && (
+                    <p className="text-[11px] text-dim mt-1">No telecallers configured. Add one in Admin → Users.</p>
+                  )}
+                </div>
+
                 {/* Assignment History */}
                 {assignHistory.length > 0 && (
                   <div className="mt-2 space-y-1">

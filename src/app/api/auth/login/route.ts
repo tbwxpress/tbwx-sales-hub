@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
           active: true,
           in_lead_pool: false,
           is_closer: false,
+          is_telecaller: false,
         })
       }
     }
@@ -80,11 +81,12 @@ export async function POST(req: NextRequest) {
       email: user.email,
       role: user.role,
       can_assign: user.can_assign,
+      is_telecaller: user.is_telecaller,
     })
 
     return NextResponse.json({
       success: true,
-      data: { id: user.id, name: user.name, email: user.email, role: user.role, can_assign: user.can_assign },
+      data: { id: user.id, name: user.name, email: user.email, role: user.role, can_assign: user.can_assign, is_telecaller: user.is_telecaller },
     })
   } catch (err) {
     return NextResponse.json({ success: false, error: apiError(err, 'Login failed') }, { status: 500 })

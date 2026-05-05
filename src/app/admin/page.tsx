@@ -8,7 +8,21 @@ import MetaAdsDashboard from '@/components/MetaAdsDashboard'
 
 interface User {
   id: string; name: string; email: string; role: string;
-  can_assign: boolean; active: boolean; in_lead_pool: boolean; is_closer: boolean
+  can_assign: boolean; active: boolean; in_lead_pool: boolean; is_closer: boolean; is_telecaller: boolean
+}
+
+type AgentType = 'closer' | 'telecaller' | 'none'
+
+function userType(u: { in_lead_pool: boolean; is_telecaller: boolean }): AgentType {
+  if (u.is_telecaller) return 'telecaller'
+  if (u.in_lead_pool) return 'closer'
+  return 'none'
+}
+
+function flagsForType(t: AgentType): { in_lead_pool: boolean; is_telecaller: boolean; is_closer?: boolean } {
+  if (t === 'closer') return { in_lead_pool: true, is_telecaller: false }
+  if (t === 'telecaller') return { in_lead_pool: false, is_telecaller: true, is_closer: false }
+  return { in_lead_pool: false, is_telecaller: false, is_closer: false }
 }
 
 export default function AdminPage() {
@@ -20,8 +34,15 @@ export default function AdminPage() {
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('agent')
   const [canAssign, setCanAssign] = useState(false)
-  const [inLeadPool, setInLeadPool] = useState(false)
-  const [isCloser, setIsCloser] = useState(false)
+  const [newType, setNewType] = useState<AgentType>('none')
+  const [newHotPriority, setNewHotPriority] = useState(false)
+
+  // Telecaller auto-queue
+  const [aqEnabled, setAqEnabled] = useState(false)
+  const [aqUserId, setAqUserId] = useState('')
+  const [aqStatuses, setAqStatuses] = useState<string[]>([])
+  const [savingAq, setSavingAq] = useState(false)
+  const [aqMsg, setAqMsg] = useState('')
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null)
   const [formError, setFormError] = useState('')
@@ -47,6 +68,7 @@ export default function AdminPage() {
     fetchUsers()
     fetchVoiceAgentSettings()
     fetchTemplateSettings()
+    fetchAutoQueue()
   }, [router])
 
   async function fetchTemplateSettings() {
@@ -116,14 +138,22 @@ export default function AdminPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
+    const flags = flagsForType(newType)
+    const is_closer = newType === 'closer' ? newHotPriority : false
     const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password, role, can_assign: canAssign, in_lead_pool: inLeadPool, is_closer: isCloser }),
+      body: JSON.stringify({
+        name, email, password, role,
+        can_assign: canAssign,
+        in_lead_pool: flags.in_lead_pool,
+        is_telecaller: flags.is_telecaller,
+        is_closer,
+      }),
     })
     const data = await res.json()
     if (data.success) {
-      setName(''); setEmail(''); setPassword(''); setRole('agent'); setCanAssign(false); setInLeadPool(false); setIsCloser(false)
+      setName(''); setEmail(''); setPassword(''); setRole('agent'); setCanAssign(false); setNewType('none'); setNewHotPriority(false)
       setFormError('')
       setShowForm(false)
       fetchUsers()
@@ -132,13 +162,52 @@ export default function AdminPage() {
     }
   }
 
-  async function toggleField(userId: string, field: 'can_assign' | 'active' | 'in_lead_pool' | 'is_closer', currentValue: boolean) {
+  async function toggleField(userId: string, field: 'can_assign' | 'active' | 'in_lead_pool' | 'is_closer' | 'is_telecaller', currentValue: boolean) {
     await fetch('/api/users', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, [field]: !currentValue }),
     })
     fetchUsers()
+  }
+
+  async function changeUserType(userId: string, newType: AgentType) {
+    const flags = flagsForType(newType)
+    const body: Record<string, unknown> = { user_id: userId, in_lead_pool: flags.in_lead_pool, is_telecaller: flags.is_telecaller }
+    // When switching away from Closer, clear is_closer (HOT priority) too
+    if (newType !== 'closer') body.is_closer = false
+    await fetch('/api/users', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    fetchUsers()
+  }
+
+  // --- Telecaller auto-queue load + save ---
+  async function fetchAutoQueue() {
+    try {
+      const res = await fetch('/api/settings/telecaller-auto-queue')
+      const data = await res.json()
+      if (data.success) {
+        setAqEnabled(data.data.enabled)
+        setAqUserId(data.data.user_id || '')
+        setAqStatuses(data.data.statuses || [])
+      }
+    } catch { /* silent */ }
+  }
+
+  async function saveAutoQueue() {
+    setSavingAq(true)
+    setAqMsg('')
+    try {
+      const res = await fetch('/api/settings/telecaller-auto-queue', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: aqEnabled, user_id: aqUserId, statuses: aqStatuses }),
+      })
+      const data = await res.json()
+      if (data.success) setAqMsg('Saved.')
+      else setAqMsg(data.error || 'Save failed')
+    } catch (err) { setAqMsg(String(err)) }
+    setSavingAq(false)
+    setTimeout(() => setAqMsg(''), 3500)
   }
 
   if (!currentUser || currentUser.role !== 'admin') return null
@@ -199,17 +268,25 @@ export default function AdminPage() {
                 </select>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-dim mb-1">Type</label>
+                <select value={newType} onChange={e => setNewType(e.target.value as AgentType)} className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50">
+                  <option value="none">None (admin / support)</option>
+                  <option value="closer">Closer (owns leads, gets auto-assigned)</option>
+                  <option value="telecaller">Telecaller (assists with calls)</option>
+                </select>
+              </div>
+              {newType === 'closer' && (
+                <label className="flex items-center gap-2 text-sm text-muted cursor-pointer mt-6">
+                  <input type="checkbox" checked={newHotPriority} onChange={e => setNewHotPriority(e.target.checked)} className="rounded accent-accent" />
+                  HOT lead priority (gets the hottest leads first)
+                </label>
+              )}
+            </div>
             <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
               <input type="checkbox" checked={canAssign} onChange={e => setCanAssign(e.target.checked)} className="rounded accent-accent" />
-              Can assign leads to others
-            </label>
-            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <input type="checkbox" checked={inLeadPool} onChange={e => setInLeadPool(e.target.checked)} className="rounded accent-accent" />
-              Receives auto-assigned new leads (round-robin pool)
-            </label>
-            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <input type="checkbox" checked={isCloser} onChange={e => setIsCloser(e.target.checked)} className="rounded accent-accent" />
-              Closer — HOT leads prefer this user (requires Lead Pool on)
+              Can assign / reassign leads (manager permission)
             </label>
             {formError && (
               <p className="text-xs px-3 py-2 rounded-lg" style={{ color: 'var(--color-danger)', background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-danger) 25%, transparent)' }}>{formError}</p>
@@ -288,26 +365,31 @@ export default function AdminPage() {
                     <p className="text-xs text-dim mt-0.5">{u.email}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-6">
-                  <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When on, this user receives auto-assigned new leads via round-robin">
-                    <span>Lead Pool</span>
-                    <button
-                      onClick={() => toggleField(u.id, 'in_lead_pool', u.in_lead_pool)}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${u.in_lead_pool ? 'bg-accent' : 'bg-border'}`}
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-xs text-dim" title="Type defines this user's role in the lead flow">
+                    <span>Type</span>
+                    <select
+                      value={userType(u)}
+                      onChange={e => changeUserType(u.id, e.target.value as AgentType)}
+                      className="bg-elevated border border-border rounded-md px-2 py-1 text-xs text-text focus:outline-none focus:border-accent/50"
                     >
-                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${u.in_lead_pool ? 'left-5' : 'left-0.5'}`} />
-                    </button>
+                      <option value="none">None</option>
+                      <option value="closer">Closer</option>
+                      <option value="telecaller">Telecaller</option>
+                    </select>
                   </label>
-                  <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When on, HOT leads prefer this user. Requires Lead Pool to be enabled to take effect.">
-                    <span>Closer</span>
-                    <button
-                      onClick={() => toggleField(u.id, 'is_closer', u.is_closer)}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${u.is_closer ? 'bg-accent' : 'bg-border'}`}
-                    >
-                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${u.is_closer ? 'left-5' : 'left-0.5'}`} />
-                    </button>
-                  </label>
-                  <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When on, this user can manually reassign leads to other agents">
+                  {u.in_lead_pool && (
+                    <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When on, HOT leads prefer this user">
+                      <span>HOT Priority</span>
+                      <button
+                        onClick={() => toggleField(u.id, 'is_closer', u.is_closer)}
+                        className={`w-10 h-5 rounded-full transition-colors relative ${u.is_closer ? 'bg-accent' : 'bg-border'}`}
+                      >
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${u.is_closer ? 'left-5' : 'left-0.5'}`} />
+                      </button>
+                    </label>
+                  )}
+                  <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When on, this user can manually reassign leads">
                     <span>Can Assign</span>
                     <button
                       onClick={() => toggleField(u.id, 'can_assign', u.can_assign)}
@@ -447,6 +529,77 @@ export default function AdminPage() {
                 and gauges interest level. Call summaries and transcripts are logged on each lead&apos;s detail page.
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Telecaller Auto-Queue */}
+        <div className="mt-8 mb-6">
+          <h2 className="text-lg font-bold text-text mb-1">Telecaller Auto-Queue</h2>
+          <p className="text-sm text-dim mb-4">When enabled, leads matching the chosen statuses are auto-routed to the picked telecaller&apos;s queue (lead owner stays the agent). Opted-out leads are excluded.</p>
+          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+            {(() => {
+              const telecallers = users.filter(u => u.is_telecaller && u.active)
+              const allStatuses = ['NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST']
+              const noTelecallers = telecallers.length === 0
+              return (
+                <>
+                  {noTelecallers && (
+                    <div className="rounded-lg p-3 text-xs" style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)', color: 'var(--color-muted)' }}>
+                      No telecallers configured yet. Add a user above and set Type = Telecaller to enable this.
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-text">Enable auto-queue</p>
+                      <p className="text-xs text-dim mt-0.5">Off by default — leads only land in telecaller queue when assigned manually.</p>
+                    </div>
+                    <button
+                      onClick={() => setAqEnabled(!aqEnabled)}
+                      disabled={noTelecallers}
+                      className="relative w-12 h-6 rounded-full transition-colors duration-200 disabled:opacity-50"
+                      style={{ background: aqEnabled ? 'var(--color-accent)' : 'var(--color-border)' }}
+                    >
+                      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${aqEnabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1.5">Telecaller</label>
+                    <select value={aqUserId} onChange={e => setAqUserId(e.target.value)} disabled={noTelecallers || !aqEnabled} className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text disabled:opacity-50 focus:outline-none focus:border-accent/50">
+                      <option value="">— pick a telecaller —</option>
+                      {telecallers.map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1.5">Auto-queue statuses</label>
+                    <div className="flex flex-wrap gap-2">
+                      {allStatuses.map(s => {
+                        const checked = aqStatuses.includes(s)
+                        return (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => setAqStatuses(checked ? aqStatuses.filter(x => x !== s) : [...aqStatuses, s])}
+                            disabled={!aqEnabled}
+                            className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors disabled:opacity-50 ${checked ? 'bg-accent text-[#1a1209] border-accent' : 'bg-elevated text-muted border-border hover:border-accent/40'}`}
+                          >
+                            {s}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="text-[11px] text-dim mt-2">Leads matching ANY checked status flow into the telecaller&apos;s queue automatically.</p>
+                  </div>
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-xs text-dim">{aqMsg}</span>
+                    <button onClick={saveAutoQueue} disabled={savingAq || noTelecallers} className="bg-accent hover:bg-accent-hover text-[#1a1209] text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
+                      {savingAq ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         </div>
       </div>

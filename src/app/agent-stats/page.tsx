@@ -195,6 +195,10 @@ export default function AgentStatsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [slaData, setSlaData] = useState<SlaData | null>(null)
+  const [tcStats, setTcStats] = useState<{
+    telecallers: Array<{ user_id: string; name: string; email: string; active: boolean; manual_assigned: number; auto_queue_eligible: number; total_queue: number; by_status: Record<string, number>; calls_logged_7d: number; notes_added_7d: number }>;
+    auto_queue: { enabled: boolean; user_id: string; statuses: string[] };
+  } | null>(null)
 
   // ─── Auth Check ──────────────────────────────────────────────────────────
 
@@ -222,15 +226,17 @@ export default function AgentStatsPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [leadsRes, usersRes, slaRes] = await Promise.all([
+      const [leadsRes, usersRes, slaRes, tcRes] = await Promise.all([
         fetch('/api/leads'),
         fetch('/api/users'),
         fetch('/api/reports/sla'),
+        fetch('/api/analytics/telecallers'),
       ])
-      const [leadsData, usersData, slaResult] = await Promise.all([
+      const [leadsData, usersData, slaResult, tcResult] = await Promise.all([
         leadsRes.json(),
         usersRes.json(),
         slaRes.json(),
+        tcRes.json(),
       ])
 
       if (leadsData.success) setLeads(leadsData.data)
@@ -239,6 +245,8 @@ export default function AgentStatsPage() {
       if (usersData.success) setAgents(usersData.data.filter((u: AgentUser) => u.active))
 
       if (slaResult.success) setSlaData(slaResult.data)
+
+      if (tcResult.success) setTcStats(tcResult.data)
     } catch {
       setError('Failed to load data')
     }
@@ -600,6 +608,55 @@ export default function AgentStatsPage() {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ─── Telecaller Activity ─────────────────────────────────── */}
+        {tcStats && tcStats.telecallers.length > 0 && (
+          <div className="mt-6 bg-card border border-border rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-bold text-text">Telecaller Activity</h2>
+              <span className="text-[11px]" style={{ color: 'var(--color-muted)' }}>
+                {tcStats.auto_queue.enabled
+                  ? `Auto-queue ON · statuses: ${tcStats.auto_queue.statuses.join(', ')}`
+                  : 'Auto-queue OFF'}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-dim border-b border-border">
+                    <th className="px-3 py-2 text-left font-medium">Telecaller</th>
+                    <th className="px-3 py-2 text-center font-medium">Manual</th>
+                    <th className="px-3 py-2 text-center font-medium">Auto-queue</th>
+                    <th className="px-3 py-2 text-center font-medium">Total queue</th>
+                    <th className="px-3 py-2 text-center font-medium">Calls (7d)</th>
+                    <th className="px-3 py-2 text-center font-medium">Notes (7d)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tcStats.telecallers.map(tc => (
+                    <tr key={tc.user_id} className="border-b border-border/50 hover:bg-elevated/50">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-text">{tc.name}</span>
+                          {!tc.active && <span className="text-[10px] text-danger">(inactive)</span>}
+                        </div>
+                        <p className="text-[11px] text-dim mt-0.5">{tc.email}</p>
+                      </td>
+                      <td className="px-3 py-3 text-center text-muted">{tc.manual_assigned}</td>
+                      <td className="px-3 py-3 text-center text-muted">{tc.auto_queue_eligible}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-text">{tc.total_queue}</td>
+                      <td className="px-3 py-3 text-center text-muted">{tc.calls_logged_7d}</td>
+                      <td className="px-3 py-3 text-center text-muted">{tc.notes_added_7d}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-[11px] text-dim mt-3">Manual = explicitly assigned via Lead detail or bulk action. Auto-queue = leads matching configured statuses (excludes opted-out leads). Calls/Notes count actions logged in the last 7 days, matched by name.</p>
           </div>
         )}
       </main>

@@ -129,7 +129,9 @@ export default function LeadsPage() {
   const [assignTo, setAssignTo] = useState('')
   const [assigning, setAssigning] = useState(false)
   const [bulkStatus, setBulkStatus] = useState('')
-  const [agents, setAgents] = useState<{ id: string; name: string; active: boolean }[]>([])
+  const [tcAssignToId, setTcAssignToId] = useState('')
+  const [tcAssigning, setTcAssigning] = useState(false)
+  const [agents, setAgents] = useState<{ id: string; name: string; active: boolean; is_telecaller?: boolean }[]>([])
 
   // Add Lead
   const [showAddLead, setShowAddLead] = useState(false)
@@ -318,6 +320,31 @@ export default function LeadsPage() {
       setError('Assignment failed')
     }
     setAssigning(false)
+  }
+
+  async function bulkAssignTelecaller() {
+    if (!tcAssignToId || selected.size === 0) return
+    setTcAssigning(true)
+    try {
+      const res = await fetch('/api/leads/telecaller-bulk-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_rows: Array.from(selected), telecaller_user_id: tcAssignToId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSelected(new Set())
+        setTcAssignToId('')
+        const tcName = agents.find(a => a.id === tcAssignToId)?.name || 'telecaller'
+        setToast(`${data.data?.processed ?? selected.size} leads assigned to ${tcName}${data.data?.skipped ? ` (${data.data.skipped} skipped — not your leads)` : ''}`)
+        fetchLeads()
+      } else {
+        setError(data.error || 'Telecaller assignment failed')
+      }
+    } catch {
+      setError('Telecaller assignment failed')
+    }
+    setTcAssigning(false)
   }
 
   async function handleAddLead() {
@@ -819,6 +846,30 @@ export default function LeadsPage() {
                       className="bg-accent hover:bg-accent-hover disabled:bg-accent/30 disabled:cursor-not-allowed text-[#1a1209] text-sm font-semibold px-4 py-1.5 rounded-md transition-colors"
                     >
                       {assigning ? 'Working...' : 'Assign'}
+                    </button>
+                    <div className="w-px h-6 bg-border mx-1" />
+                  </>
+                )}
+
+                {/* Bulk Telecaller Assign */}
+                {agents.some(a => a.is_telecaller) && (
+                  <>
+                    <select
+                      value={tcAssignToId}
+                      onChange={e => setTcAssignToId(e.target.value)}
+                      className="bg-card border border-border rounded-md px-3 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50"
+                    >
+                      <option value="">Telecaller...</option>
+                      {agents.filter(a => a.is_telecaller).map(a => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={bulkAssignTelecaller}
+                      disabled={!tcAssignToId || tcAssigning}
+                      className="bg-accent hover:bg-accent-hover disabled:bg-accent/30 disabled:cursor-not-allowed text-[#1a1209] text-sm font-semibold px-4 py-1.5 rounded-md transition-colors"
+                    >
+                      {tcAssigning ? 'Working...' : 'Telecall'}
                     </button>
                     <div className="w-px h-6 bg-border mx-1" />
                   </>

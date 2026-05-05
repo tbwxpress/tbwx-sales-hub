@@ -11,6 +11,7 @@ export interface User {
   active: boolean
   in_lead_pool: boolean
   is_closer: boolean
+  is_telecaller: boolean
 }
 
 export interface SessionUser {
@@ -19,6 +20,7 @@ export interface SessionUser {
   email: string
   role: UserRole
   can_assign: boolean
+  is_telecaller?: boolean
 }
 
 export interface Lead {
