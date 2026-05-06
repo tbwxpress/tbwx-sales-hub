@@ -101,23 +101,26 @@ export async function sendFranchiseEmail(
 
   const senderName = 'TBWX Sales Team'
   const senderEmail = process.env.EMAIL_SENDER || 'ai@tbwxpress.com'
-  const subject = `${leadName}, Franchise Opportunity - The Belgian Waffle Xpress`
+  const subject = `${leadName}, TBWX franchise — early-bird ₹1.5L+GST till May 18`
 
+  // NOTE: contains hard-coded May 18 2026 early-bird deadline — refresh after that date
   const body = `Hi ${leadName},
 
-Thank you for showing interest in TBWX (The Belgian Waffle Xpress).
+Thank you for showing interest in TBWX (The Belgian Waffle Xpress) — India's fastest-growing waffle brand, with 40+ outlets across 22+ cities and growing.
 
-We are by far the most franchise friendly waffle brand based out of Chandigarh.
+The TBWX franchise:
+- Investment: ₹4-7 lakhs total (franchise fee + setup, equipment, initial stock)
+- Format: 100+ sq ft express outlet, delivery-first model
+- Staff: 2-4 people
+- Average ROI: 8-12 months
+- Full support: brand kit, SOPs, training, supply chain, ongoing operations
 
-We'd love to discuss this exciting franchise opportunity and how you can be a part of our growing dessert cafe network.
+EARLY BIRD OFFER (till 18 May 2026):
+We've raised our official franchise fee to ₹2,00,000 + GST (₹2,36,000 total) starting May 2026. Until 18 May, you can lock in the early-bird rate of ₹1,50,000 + GST (₹1,77,000 total) — saving ₹59,000.
 
-Please find our official franchise pitch deck, which outlines the brand vision, investment details, and support structure:
-https://drive.google.com/drive/folders/1JPSdGLXL8WeeF3PVWMd93HQOKx5roJdN
+View the latest deck: https://tbwxpress.com/FranchiseDeck
 
-Our Menu:
-https://drive.google.com/drive/folders/1tFnHQGPiy5j1mr6ympqQGM1Rko_jfcgp
-
-After reviewing it, feel free to share a convenient time for a quick call so we can take this discussion forward.
+Reply to this email or WhatsApp us at +91 7973933630 to schedule a quick call.
 
 Thanks,
 TBWX Sales Team
