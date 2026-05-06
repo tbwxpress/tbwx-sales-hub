@@ -12,6 +12,7 @@ export interface User {
   in_lead_pool: boolean
   is_closer: boolean
   is_telecaller: boolean
+  lead_pool_paused: boolean
 }
 
 export interface SessionUser {

@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     const user = requireAuth(session)
     requireAdmin(user)
 
-    const { name, email, password, role, can_assign, in_lead_pool, is_closer, is_telecaller } = await req.json()
+    const { name, email, password, role, can_assign, in_lead_pool, is_closer, is_telecaller, lead_pool_paused } = await req.json()
     if (!name || !email || !password) {
       return NextResponse.json({ success: false, error: 'Name, email, and password required' }, { status: 400 })
     }
@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       in_lead_pool: in_lead_pool || false,
       is_closer: is_closer || false,
       is_telecaller: is_telecaller || false,
+      lead_pool_paused: lead_pool_paused || false,
     })
 
     return NextResponse.json({ success: true, data: { id } })
@@ -55,7 +56,7 @@ export async function PATCH(req: NextRequest) {
     const user = requireAuth(session)
     requireAdmin(user)
 
-    const { user_id, name, email, password, can_assign, active, role, in_lead_pool, is_closer, is_telecaller } = await req.json()
+    const { user_id, name, email, password, can_assign, active, role, in_lead_pool, is_closer, is_telecaller, lead_pool_paused } = await req.json()
     if (!user_id) {
       return NextResponse.json({ success: false, error: 'User ID required' }, { status: 400 })
     }
@@ -124,6 +125,7 @@ export async function PATCH(req: NextRequest) {
     if (in_lead_pool !== undefined) updates.in_lead_pool = in_lead_pool
     if (is_closer !== undefined) updates.is_closer = is_closer
     if (is_telecaller !== undefined) updates.is_telecaller = is_telecaller
+    if (lead_pool_paused !== undefined) updates.lead_pool_paused = lead_pool_paused
 
     await updateUser(user_id, updates)
     return NextResponse.json({ success: true, data: { leads_renamed: leadsRenamed } })

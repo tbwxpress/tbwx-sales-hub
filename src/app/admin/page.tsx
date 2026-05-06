@@ -8,7 +8,7 @@ import MetaAdsDashboard from '@/components/MetaAdsDashboard'
 
 interface User {
   id: string; name: string; email: string; role: string;
-  can_assign: boolean; active: boolean; in_lead_pool: boolean; is_closer: boolean; is_telecaller: boolean
+  can_assign: boolean; active: boolean; in_lead_pool: boolean; is_closer: boolean; is_telecaller: boolean; lead_pool_paused: boolean
 }
 
 type AgentType = 'closer' | 'telecaller' | 'none'
@@ -171,7 +171,7 @@ export default function AdminPage() {
     }
   }
 
-  async function toggleField(userId: string, field: 'can_assign' | 'active' | 'in_lead_pool' | 'is_closer' | 'is_telecaller', currentValue: boolean) {
+  async function toggleField(userId: string, field: 'can_assign' | 'active' | 'in_lead_pool' | 'is_closer' | 'is_telecaller' | 'lead_pool_paused', currentValue: boolean) {
     await fetch('/api/users', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -413,26 +413,22 @@ export default function AdminPage() {
           <div className="space-y-3">
             {/* Lead Pool status banner */}
             {(() => {
-              const poolUsers = users.filter(u => u.active && u.in_lead_pool)
-              const poolNames = poolUsers.map(u => u.name)
-              const closerNames = poolUsers.filter(u => u.is_closer).map(u => u.name)
-              const hasPool = poolNames.length > 0
-              const bg = hasPool ? 'var(--color-accent-soft)' : 'var(--color-elevated)'
-              const border = hasPool ? 'color-mix(in srgb, var(--color-accent) 35%, transparent)' : 'var(--color-border)'
+              const closers = users.filter(u => u.active && u.in_lead_pool)
+              const receiving = closers.filter(u => !u.lead_pool_paused)
+              const paused = closers.filter(u => u.lead_pool_paused)
+              const hasReceiving = receiving.length > 0
+              const bg = hasReceiving ? 'var(--color-accent-soft)' : 'var(--color-elevated)'
+              const border = hasReceiving ? 'color-mix(in srgb, var(--color-accent) 35%, transparent)' : 'var(--color-border)'
 
               let summary: string
-              if (!hasPool) {
-                summary = 'No one is set to receive auto-assigned leads. Toggle Lead Pool on for at least one agent.'
+              if (closers.length === 0) {
+                summary = 'No Closers configured. Set someone’s Type = Closer to start receiving auto-assigned leads.'
+              } else if (!hasReceiving) {
+                summary = `All ${closers.length} Closer(s) are paused. New leads will stay unassigned until at least one is set to Receiving = ON.`
+              } else if (receiving.length === 1) {
+                summary = `New leads go to ${receiving[0].name}.${paused.length > 0 ? ` ${paused.map(p => p.name).join(', ')} paused.` : ''}`
               } else {
-                const base = poolNames.length === 1
-                  ? `New leads go to ${poolNames[0]}.`
-                  : `New leads round-robin between ${poolNames.join(', ')}.`
-                const hotPart = closerNames.length === 0
-                  ? ' HOT leads use the same round-robin (no closer set).'
-                  : closerNames.length === 1
-                    ? ` HOT leads prefer ${closerNames[0]}.`
-                    : ` HOT leads round-robin between closers ${closerNames.join(', ')}.`
-                summary = base + hotPart
+                summary = `New leads alternate between ${receiving.map(r => r.name).join(' → ')}.${paused.length > 0 ? ` ${paused.map(p => p.name).join(', ')} paused.` : ''}`
               }
 
               return (
@@ -441,7 +437,7 @@ export default function AdminPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
                   </svg>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-text">Lead Pool {hasPool ? `(${poolNames.length})` : '— empty'}</p>
+                    <p className="text-xs font-semibold text-text">Lead Alternation {hasReceiving ? `(${receiving.length} active${paused.length > 0 ? `, ${paused.length} paused` : ''})` : '— paused'}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted)' }}>{summary}</p>
                   </div>
                 </div>
@@ -487,13 +483,13 @@ export default function AdminPage() {
                     </select>
                   </label>
                   {u.in_lead_pool && (
-                    <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When on, HOT leads prefer this user">
-                      <span>HOT Priority</span>
+                    <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When ON, this Closer receives auto-assigned new leads. OFF = paused (still a Closer, just not in the alternation cycle).">
+                      <span>Receiving</span>
                       <button
-                        onClick={() => toggleField(u.id, 'is_closer', u.is_closer)}
-                        className={`w-10 h-5 rounded-full transition-colors relative ${u.is_closer ? 'bg-accent' : 'bg-border'}`}
+                        onClick={() => toggleField(u.id, 'lead_pool_paused', u.lead_pool_paused)}
+                        className={`w-10 h-5 rounded-full transition-colors relative ${!u.lead_pool_paused ? 'bg-success' : 'bg-border'}`}
                       >
-                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${u.is_closer ? 'left-5' : 'left-0.5'}`} />
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${!u.lead_pool_paused ? 'left-5' : 'left-0.5'}`} />
                       </button>
                     </label>
                   )}

@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
           in_lead_pool: false,
           is_closer: false,
           is_telecaller: false,
+          lead_pool_paused: false,
         })
       }
     }

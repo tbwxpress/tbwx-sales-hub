@@ -4,7 +4,7 @@ import { google } from 'googleapis'
 import { sendTemplate } from '@/lib/whatsapp'
 import { sendFranchiseEmail } from '@/lib/email'
 import { logSentMessage, updateLead, getLeads, invalidateLeadsCache } from '@/lib/sheets'
-import { upsertContact, insertMessage, getMessages, getSetting } from '@/lib/db'
+import { upsertContact, insertMessage, getMessages, getSetting, setSetting } from '@/lib/db'
 import { getUsers } from '@/lib/users'
 import { getOptInTemplateName } from '@/lib/template-settings'
 
@@ -134,53 +134,22 @@ function calcPriority(experience: string, timeline: string): string {
   return 'COLD'
 }
 
-// --- Auto-assignment ---
-// Fully data-driven — no hardcoded names, all configured in Admin → Users:
-//   - in_lead_pool: receives auto-assigned leads via round-robin
-//   - is_closer:    HOT leads prefer these users (multiple closers round-robin among themselves)
-// If no closer is configured, HOT falls into the regular round-robin.
-// If the pool is empty, leads stay unassigned (admin re-enables from the panel).
-const MAX_ACTIVE_PER_AGENT = parseInt(process.env.MAX_ACTIVE_PER_AGENT || '15')
-const ACTIVE_STATUSES = ['NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION']
+// --- Auto-assignment: STRICT ALTERNATION ---
+// Fully data-driven, configured per user in Admin → Users:
+//   - active && in_lead_pool && !lead_pool_paused → eligible for new leads
+//   - lead_pool_paused: admin can pause an agent without removing them as a Closer
+// A persistent counter (settings.auto_assign.counter) advances by one per
+// assignment so leads alternate strictly: pool[counter % pool.length].
+// No HOT special-casing — every lead alternates. No load cap. If the pool
+// is empty (or all paused), leads stay unassigned until admin un-pauses.
+const COUNTER_KEY = 'auto_assign.counter'
 
-interface PoolAgent { name: string; is_closer: boolean }
+interface PoolAgent { name: string }
 interface AgentData { activeAgents: PoolAgent[]; allLeads: { assigned_to: string; lead_status: string }[] }
 
-function pickAgentFromCache(priority: string, data: AgentData): string {
-  try {
-    const { activeAgents, allLeads } = data
-    if (activeAgents.length === 0) return ''
-
-    // Build a load map for the entire pool (used by both HOT and non-HOT paths).
-    const loadMap = new Map<string, number>()
-    for (const agent of activeAgents) loadMap.set(agent.name, 0)
-    for (const lead of allLeads) {
-      if (lead.assigned_to && loadMap.has(lead.assigned_to) && ACTIVE_STATUSES.includes(lead.lead_status)) {
-        loadMap.set(lead.assigned_to, (loadMap.get(lead.assigned_to) || 0) + 1)
-      }
-    }
-
-    // HOT leads prefer closers (round-robin among them by lowest load).
-    if (priority === 'HOT') {
-      const closers = activeAgents
-        .filter(a => a.is_closer)
-        .map(a => ({ name: a.name, load: loadMap.get(a.name) || 0 }))
-        .filter(a => a.load < MAX_ACTIVE_PER_AGENT)
-        .sort((a, b) => a.load - b.load)
-      if (closers.length > 0) return closers[0].name
-      // No closer available — fall through to general round-robin
-    }
-
-    // Non-HOT (or HOT with no available closer): round-robin pool members by lowest active load.
-    const candidates = activeAgents
-      .map(a => ({ name: a.name, load: loadMap.get(a.name) || 0 }))
-      .filter(a => a.load < MAX_ACTIVE_PER_AGENT)
-      .sort((a, b) => a.load - b.load)
-
-    return candidates.length > 0 ? candidates[0].name : activeAgents[0].name
-  } catch {
-    return ''
-  }
+function pickAgentByCounter(pool: PoolAgent[], counter: number): string {
+  if (pool.length === 0) return ''
+  return pool[((counter % pool.length) + pool.length) % pool.length].name
 }
 
 // --- Update the correct tab ---
@@ -317,19 +286,28 @@ export async function POST(request: NextRequest) {
     try {
       const [users, cachedLeads] = await Promise.all([getUsers(), getLeads()])
       agentData = {
-        // Only agents who are both active AND in the lead pool receive auto-assignments.
-        // Pool membership and closer flag are toggled in Admin → Users.
+        // Eligible: active + in_lead_pool + not paused. Sorted by created_at (already
+        // returned from getUsers in that order) so alternation is deterministic across runs.
         activeAgents: users
-          .filter(u => u.active && u.in_lead_pool)
-          .map(u => ({ name: u.name, is_closer: u.is_closer })),
+          .filter(u => u.active && u.in_lead_pool && !u.lead_pool_paused)
+          .map(u => ({ name: u.name })),
         allLeads: cachedLeads,
       }
     } catch { /* assignment will fall back to empty */ }
 
+    // Read the persistent alternation counter once at the top of this run.
+    let assignCounter = 0
+    try {
+      const stored = await getSetting(COUNTER_KEY)
+      const parsed = stored ? parseInt(stored, 10) : 0
+      assignCounter = Number.isFinite(parsed) ? parsed : 0
+    } catch { /* if read fails, start from 0 */ }
+
     // Process each lead
     for (const lead of batch) {
       lead.lead_priority = calcPriority(lead.experience, lead.timeline)
-      const assignedTo = pickAgentFromCache(lead.lead_priority, agentData)
+      const assignedTo = pickAgentByCounter(agentData.activeAgents, assignCounter)
+      if (assignedTo) assignCounter++
 
       try {
         // Double-check: skip if we already sent to this phone (prevents duplicates
@@ -484,6 +462,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Persist the alternation counter so the next cron run picks up where we left off.
+    // Best-effort — if this write fails, next run will re-read the prior value (no double-skip).
+    try { await setSetting(COUNTER_KEY, String(assignCounter)) } catch { /* non-critical */ }
+
     return NextResponse.json({
       success: true,
       stats: {
@@ -493,6 +475,7 @@ export async function POST(request: NextRequest) {
         processed: batch.length,
         sent: results.filter(r => r.status === 'sent').length,
         failed: results.filter(r => r.status !== 'sent').length,
+        next_assign_counter: assignCounter,
       },
       results,
     })
