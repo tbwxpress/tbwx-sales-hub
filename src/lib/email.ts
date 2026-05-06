@@ -101,9 +101,10 @@ export async function sendFranchiseEmail(
 
   const senderName = 'TBWX Sales Team'
   const senderEmail = process.env.EMAIL_SENDER || 'ai@tbwxpress.com'
-  const subject = `${leadName}, TBWX franchise — early-bird ₹1.5L+GST till May 18`
+  const subject = `${leadName}, your TBWX franchise overview`
 
-  // NOTE: contains hard-coded May 18 2026 early-bird deadline — refresh after that date
+  // Auto-sent to NEW leads on arrival. Show official pricing + deck only — never expose
+  // promotional offers (e.g. early-bird) here, those go via targeted WhatsApp campaigns.
   const body = `Hi ${leadName},
 
 Thank you for showing interest in TBWX (The Belgian Waffle Xpress) — India's fastest-growing waffle brand, with 40+ outlets across 22+ cities and growing.
@@ -115,10 +116,7 @@ The TBWX franchise:
 - Average ROI: 8-12 months
 - Full support: brand kit, SOPs, training, supply chain, ongoing operations
 
-EARLY BIRD OFFER (till 18 May 2026):
-We've raised our official franchise fee to ₹2,00,000 + GST (₹2,36,000 total) starting May 2026. Until 18 May, you can lock in the early-bird rate of ₹1,50,000 + GST (₹1,77,000 total) — saving ₹59,000.
-
-View the latest deck: https://tbwxpress.com/FranchiseDeck
+View our franchise deck: https://tbwxpress.com/FranchiseDeck
 
 Reply to this email or WhatsApp us at +91 7973933630 to schedule a quick call.
 
