@@ -83,6 +83,8 @@ export default function InboxPage() {
   const [inputText, setInputText] = useState('')
   const [sending, setSending] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
+  const [uploadingMedia, setUploadingMedia] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(true)
   const [msgLoading, setMsgLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -1362,6 +1364,57 @@ export default function InboxPage() {
 
               {/* Message Input */}
               <form onSubmit={handleSend} className="border-t border-border glass-nav px-3 py-2.5 flex items-center gap-2">
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+                  onChange={async e => {
+                    const f = e.target.files?.[0]
+                    if (!f || !activePhone || uploadingMedia) return
+                    setUploadingMedia(true)
+                    try {
+                      const fd = new FormData()
+                      fd.append('file', f)
+                      fd.append('phone', activePhone)
+                      fd.append('caption', inputText)
+                      fd.append('contact_name', activeContact?.name || '')
+                      const res = await fetch('/api/whatsapp/send-media', { method: 'POST', body: fd })
+                      const data = await res.json()
+                      if (data.success) {
+                        setInputText('')
+                        await fetchMessages(activePhone)
+                      } else {
+                        alert(`Send failed: ${data.error || 'unknown error'}`)
+                      }
+                    } catch (err) {
+                      alert(`Send failed: ${err}`)
+                    }
+                    setUploadingMedia(false)
+                    if (fileInputRef.current) fileInputRef.current.value = ''
+                  }}
+                />
+
+                {/* Attach media button */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingMedia || !activePhone}
+                  className="text-dim hover:text-muted transition-colors p-1 flex-shrink-0 disabled:opacity-40"
+                  title="Send photo / video / document"
+                >
+                  {uploadingMedia ? (
+                    <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path d="M12 2v4m0 12v4m-8-10H2m20 0h-4m-2.343-5.657L14.828 7.172m-5.656 9.656l-2.829 2.829m11.314 0l-2.829-2.829m-5.656-9.656L6.343 4.343" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                    </svg>
+                  )}
+                </button>
+
                 {/* Quick reply button */}
                 <button
                   type="button"
