@@ -609,6 +609,87 @@ export async function getCallLogs(phone: string) {
   return serializeRows(result.rows)
 }
 
+// --- Last discussion lookup (lead list view) ---
+// Returns a Map from normalized phone (91XXXXXXXXXX) to the most recent
+// human-curated interaction across notes, calls, and inbound messages.
+// Auto-sent templates and system messages are excluded — they're not "discussion."
+export interface LastDiscussion {
+  source: 'note' | 'call' | 'message_in' | 'message_out'
+  text: string
+  by: string
+  at: string
+}
+export async function getLastDiscussionByPhone(): Promise<Map<string, LastDiscussion>> {
+  try {
+    const db = await ensureInit()
+    const map = new Map<string, LastDiscussion>()
+
+    // Helper: keep the most recent entry per phone
+    const consider = (phone: string, candidate: LastDiscussion) => {
+      const existing = map.get(phone)
+      if (!existing || candidate.at > existing.at) map.set(phone, candidate)
+    }
+
+    // Latest note per phone — SQLite "bare column with MAX" trick gives
+    // the row that owns the MAX value
+    const notesRes = await db.execute(
+      "SELECT phone, note, created_by, MAX(created_at) AS at FROM lead_notes GROUP BY phone"
+    )
+    for (const r of notesRes.rows) {
+      const phone = normalizePhone(String(r.phone))
+      consider(phone, {
+        source: 'note',
+        text: String(r.note || ''),
+        by: String(r.created_by || ''),
+        at: String(r.at || ''),
+      })
+    }
+
+    // Latest call log per phone — prefer notes field, fall back to outcome
+    const callsRes = await db.execute(
+      "SELECT phone, outcome, notes, logged_by, MAX(created_at) AS at FROM call_logs GROUP BY phone"
+    )
+    for (const r of callsRes.rows) {
+      const phone = normalizePhone(String(r.phone))
+      const text = String(r.notes || r.outcome || '').trim()
+      if (!text) continue
+      consider(phone, {
+        source: 'call',
+        text,
+        by: String(r.logged_by || ''),
+        at: String(r.at || ''),
+      })
+    }
+
+    // Latest non-template, non-auto message per phone (both directions)
+    // Skip messages where text starts with "[Template:" or "[Auto]" or sent_by is auto
+    const msgsRes = await db.execute(
+      `SELECT phone, text, direction, sent_by, MAX(timestamp) AS at
+       FROM messages
+       WHERE text NOT LIKE '[Template:%'
+         AND text NOT LIKE '[Auto]%'
+         AND sent_by NOT IN ('auto-send', 'System (Auto)')
+       GROUP BY phone`
+    )
+    for (const r of msgsRes.rows) {
+      const phone = normalizePhone(String(r.phone))
+      const text = String(r.text || '').trim()
+      if (!text) continue
+      consider(phone, {
+        source: String(r.direction) === 'received' ? 'message_in' : 'message_out',
+        text,
+        by: String(r.sent_by || (String(r.direction) === 'received' ? 'lead' : '')),
+        at: String(r.at || ''),
+      })
+    }
+
+    return map
+  } catch (err) {
+    console.error('[getLastDiscussionByPhone] non-critical:', err)
+    return new Map()
+  }
+}
+
 // --- Lead notes ---
 
 export async function insertNote(data: { phone: string; note: string; created_by?: string }) {

@@ -5,7 +5,7 @@ import { getLeads, getLeadStats, createLead } from '@/lib/sheets'
 import { computeLeadScore } from '@/lib/scoring'
 import { STATUS_MIGRATION } from '@/config/client'
 import { getTelecallerVisibleLeadRows, getAllAssignments } from '@/lib/telecaller'
-import { getOptedOutPhones } from '@/lib/db'
+import { getOptedOutPhones, getLastDiscussionByPhone, normalizePhone } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   try {
@@ -107,16 +107,22 @@ export async function GET(req: NextRequest) {
     const allUsers = await getUsers()
     const userById = new Map(allUsers.map(u => [u.id, u]))
 
-    // Attach computed scores + telecaller assignment metadata
+    // Last-discussion lookup (notes / calls / inbound msgs, excluding auto-sent)
+    const lastDiscussionByPhone = await getLastDiscussionByPhone()
+
+    // Attach computed scores + telecaller assignment metadata + last discussion
     const scoredLeads = leads.map(l => {
       const tc = tcByRow.get(l.row_number)
       const tcUser = tc ? userById.get(tc.telecaller_user_id) : null
+      const normPhone = normalizePhone(String(l.phone || ''))
+      const last = lastDiscussionByPhone.get(normPhone)
       return {
         ...l,
         lead_score: computeLeadScore(l),
         telecaller_user_id: tc?.telecaller_user_id || '',
         telecaller_name: tcUser?.name || '',
         telecaller_assigned_at: tc?.assigned_at || '',
+        last_discussion: last || null,
       }
     })
 

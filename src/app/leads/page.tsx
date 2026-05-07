@@ -11,6 +11,13 @@ import { scoreColor, scoreBg, scoreBorder } from '@/lib/score-colors'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+interface LastDiscussion {
+  source: 'note' | 'call' | 'message_in' | 'message_out'
+  text: string
+  by: string
+  at: string
+}
+
 interface Lead {
   row_number: number
   full_name: string
@@ -25,6 +32,7 @@ interface Lead {
   wa_message_id: string
   next_followup: string
   lead_score?: number
+  last_discussion?: LastDiscussion | null
 }
 
 interface SessionUser {
@@ -653,6 +661,25 @@ export default function LeadsPage() {
                           >
                             {lead.full_name || 'Unknown'}
                           </Link>
+                          {lead.last_discussion && (() => {
+                            const ld = lead.last_discussion
+                            const icon = ld.source === 'note' ? '📝'
+                              : ld.source === 'call' ? '📞'
+                              : ld.source === 'message_in' ? '💬←'
+                              : '💬→'
+                            const ms = Date.now() - new Date(ld.at.replace(' ', 'T') + (ld.at.includes('Z') ? '' : 'Z')).getTime()
+                            const m = Math.max(0, Math.floor(ms / 60000))
+                            const ago = m < 60 ? `${m || 0}m` : m < 1440 ? `${Math.floor(m/60)}h` : `${Math.floor(m/1440)}d`
+                            const snippet = ld.text.length > 70 ? ld.text.slice(0, 67) + '…' : ld.text
+                            const tooltip = `${ld.source.replace('_', ' ')} · ${ld.by || 'system'} · ${ld.at}\n\n${ld.text}`
+                            return (
+                              <p className="text-[11px] text-dim mt-0.5 italic truncate max-w-[28ch] sm:max-w-[42ch]" title={tooltip}>
+                                <span className="not-italic mr-1">{icon}</span>
+                                {snippet}
+                                <span className="not-italic text-[10px] ml-1 opacity-70">— {ld.by || 'system'}, {ago}</span>
+                              </p>
+                            )
+                          })()}
                         </td>
 
                         {/* Phone */}
