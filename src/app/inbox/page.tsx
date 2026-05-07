@@ -85,6 +85,10 @@ export default function InboxPage() {
   const [aiLoading, setAiLoading] = useState(false)
   const [uploadingMedia, setUploadingMedia] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [forwardSrc, setForwardSrc] = useState<Message | null>(null)
+  const [forwardTarget, setForwardTarget] = useState('')
+  const [forwardCaption, setForwardCaption] = useState('')
+  const [forwarding, setForwarding] = useState(false)
   const [loading, setLoading] = useState(true)
   const [msgLoading, setMsgLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -1240,6 +1244,19 @@ export default function InboxPage() {
                                 <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words text-wa-meta italic">(empty)</p>
                               )}
                               <div className="flex items-center justify-end gap-1 mt-0.5">
+                                {msg.media_type && msg.wa_message_id && msg.media_path && (
+                                  <button
+                                    type="button"
+                                    onClick={() => { setForwardSrc(msg); setForwardTarget(''); setForwardCaption('') }}
+                                    className="text-[9px] text-wa-meta hover:text-accent transition-colors mr-1 flex items-center gap-0.5"
+                                    title="Forward this media"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 010 1.954l-7.108 4.061A1.125 1.125 0 013 16.811V8.69zM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 010 1.954l-7.108 4.061a1.125 1.125 0 01-1.683-.977V8.69z" />
+                                    </svg>
+                                    Forward
+                                  </button>
+                                )}
                                 {msg.direction === 'sent' && msg.sent_by && (
                                   <span className="text-[9px] text-wa-meta">{msg.sent_by}</span>
                                 )}
@@ -1504,6 +1521,106 @@ export default function InboxPage() {
           )}
         </div>
       </div>
+
+      {/* ─── Forward Media Modal ──────────────────────────────────────── */}
+      {forwardSrc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => !forwarding && setForwardSrc(null)}>
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-text">Forward {forwardSrc.media_type}</h2>
+              <button onClick={() => !forwarding && setForwardSrc(null)} className="text-dim hover:text-text" disabled={forwarding} aria-label="Close">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              {/* Source preview */}
+              <div className="text-[11px] text-dim">
+                Forwarding {forwardSrc.media_type} ({forwardSrc.media_filename || 'file'})
+                {forwardSrc.text && !forwardSrc.text.startsWith('[') && (
+                  <span className="block mt-1 italic text-muted">&ldquo;{forwardSrc.text.slice(0, 80)}{forwardSrc.text.length > 80 ? '…' : ''}&rdquo;</span>
+                )}
+              </div>
+              {/* Recipient picker */}
+              <div>
+                <label className="block text-xs font-medium text-dim mb-1">Send to (existing contact)</label>
+                <select
+                  value={forwardTarget}
+                  onChange={e => setForwardTarget(e.target.value)}
+                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+                >
+                  <option value="">— pick a contact —</option>
+                  {contacts.filter(c => c.phone !== forwardSrc.phone).slice(0, 200).map(c => (
+                    <option key={c.phone} value={c.phone}>
+                      {c.name || formatPhoneDisplay(c.phone)} · {formatPhoneDisplay(c.phone)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-dim mb-1">Or enter a new phone (E.164 / 91XXXXXXXXXX)</label>
+                <input
+                  type="tel"
+                  value={forwardTarget.startsWith('91') || /^\d/.test(forwardTarget) ? forwardTarget : ''}
+                  onChange={e => setForwardTarget(e.target.value)}
+                  placeholder="919876543210"
+                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+                />
+              </div>
+              {(forwardSrc.media_type === 'image' || forwardSrc.media_type === 'video' || forwardSrc.media_type === 'document') && (
+                <div>
+                  <label className="block text-xs font-medium text-dim mb-1">Caption (optional)</label>
+                  <textarea
+                    value={forwardCaption}
+                    onChange={e => setForwardCaption(e.target.value)}
+                    rows={2}
+                    placeholder="Add a note before sending…"
+                    className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50 resize-none"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2">
+              <button onClick={() => !forwarding && setForwardSrc(null)} disabled={forwarding} className="text-sm text-dim hover:text-text px-3 py-1.5 rounded-md transition-colors">Cancel</button>
+              <button
+                onClick={async () => {
+                  if (!forwardTarget.trim() || !forwardSrc.wa_message_id) return
+                  setForwarding(true)
+                  try {
+                    const res = await fetch('/api/whatsapp/forward-media', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        source_wa_message_id: forwardSrc.wa_message_id,
+                        to_phone: forwardTarget.trim(),
+                        caption: forwardCaption.trim() || undefined,
+                      }),
+                    })
+                    const data = await res.json()
+                    if (data.success) {
+                      setForwardSrc(null)
+                      setForwardTarget('')
+                      setForwardCaption('')
+                      setToast(`Forwarded to ${data.data?.to || forwardTarget}`)
+                      setTimeout(() => setToast(''), 3000)
+                    } else {
+                      alert(`Forward failed: ${data.error || 'unknown'}`)
+                    }
+                  } catch (err) {
+                    alert(`Forward failed: ${err}`)
+                  }
+                  setForwarding(false)
+                }}
+                disabled={!forwardTarget.trim() || forwarding}
+                className="bg-accent hover:bg-accent-hover disabled:opacity-50 text-[#1a1209] text-sm font-semibold px-4 py-1.5 rounded-md transition-colors"
+              >
+                {forwarding ? 'Sending…' : 'Forward'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
