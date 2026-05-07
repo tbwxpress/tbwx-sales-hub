@@ -256,6 +256,8 @@ async function ensureInit(): Promise<Client> {
 
     // Additive migrations (try-catch for existing DBs)
     try { await db.execute('ALTER TABLE drip_state ADD COLUMN resumed_at TEXT') } catch { /* column may already exist */ }
+    try { await db.execute('ALTER TABLE drip_state ADD COLUMN opted_out INTEGER DEFAULT 0') } catch { /* column may already exist */ }
+    try { await db.execute('ALTER TABLE drip_state ADD COLUMN opted_out_at TEXT') } catch { /* column may already exist */ }
 
     _initialized = true
   }
@@ -931,10 +933,17 @@ export async function getVoiceAgentCallBySid(callSid: string) {
 }
 
 // --- Opted-out lookup (used to exclude leads who tapped Not Interested) ---
+// Defensive: if the opted_out column is missing on an older DB schema, return
+// an empty set rather than throw — never block the leads route over this.
 export async function getOptedOutPhones(): Promise<Set<string>> {
-  const db = await ensureInit()
-  const result = await db.execute('SELECT phone FROM drip_state WHERE opted_out = 1')
-  return new Set(result.rows.map(r => normalizePhone(String(r.phone))))
+  try {
+    const db = await ensureInit()
+    const result = await db.execute('SELECT phone FROM drip_state WHERE opted_out = 1')
+    return new Set(result.rows.map(r => normalizePhone(String(r.phone))))
+  } catch (err) {
+    console.error('[getOptedOutPhones] non-critical:', err)
+    return new Set()
+  }
 }
 
 // --- Settings operations ---
