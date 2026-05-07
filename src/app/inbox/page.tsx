@@ -36,6 +36,11 @@ interface Message {
   status: string
   template_used: string
   read: number
+  media_type?: string
+  media_id?: string
+  media_mime?: string
+  media_filename?: string
+  media_path?: string
 }
 
 interface QuickReply {
@@ -1186,7 +1191,52 @@ export default function InboxPage() {
                                   Template: {msg.template_used}
                                 </div>
                               )}
-                              <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words" style={{ overflowWrap: 'anywhere' }}>{msg.text}</p>
+                              {/* Media render — image / video / audio / document */}
+                              {msg.media_type && msg.wa_message_id && (() => {
+                                const src = `/api/media/${encodeURIComponent(msg.wa_message_id)}`
+                                const fname = msg.media_filename || msg.media_type
+                                if (msg.media_type === 'image' || msg.media_type === 'sticker') {
+                                  return (
+                                    <a href={src} target="_blank" rel="noreferrer" className="block mb-1.5">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={src} alt={fname} className="rounded-lg max-w-full max-h-[320px] object-contain" loading="lazy" />
+                                    </a>
+                                  )
+                                }
+                                if (msg.media_type === 'video') {
+                                  return (
+                                    <video controls preload="metadata" className="rounded-lg max-w-full max-h-[320px] mb-1.5" src={src}>
+                                      Your browser does not support video playback.
+                                    </video>
+                                  )
+                                }
+                                if (msg.media_type === 'audio') {
+                                  return (
+                                    <audio controls preload="metadata" className="w-full mb-1.5" src={src}>
+                                      Your browser does not support audio playback.
+                                    </audio>
+                                  )
+                                }
+                                // document or unknown — show as a download chip
+                                return (
+                                  <a href={src} target="_blank" rel="noreferrer" download={fname} className="flex items-center gap-2 mb-1.5 px-2.5 py-2 rounded-lg bg-black/15 hover:bg-black/25 transition-colors">
+                                    <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.6}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3V11.25M5.625 21H18a2.25 2.25 0 002.25-2.25V11.25a9 9 0 00-9-9H5.625C4.504 2.25 4 2.754 4 3.375v16.25c0 .621.504 1.125 1.125 1.125z" />
+                                    </svg>
+                                    <span className="text-[12px] truncate flex-1">{fname}</span>
+                                    <span className="text-[10px] opacity-70 shrink-0">{msg.media_mime?.split('/')[1] || 'file'}</span>
+                                  </a>
+                                )
+                              })()}
+                              {msg.text && !(msg.text.startsWith('[Image]') || msg.text.startsWith('[Video]') || msg.text.startsWith('[Audio') || msg.text.startsWith('[Document]') || msg.text.startsWith('[Sticker]')) && (
+                                <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words" style={{ overflowWrap: 'anywhere' }}>{msg.text}</p>
+                              )}
+                              {msg.text && (msg.text.startsWith('[Image]') || msg.text.startsWith('[Video]') || msg.text.startsWith('[Document]')) && msg.text.replace(/^\[(Image|Video|Document)\]\s*/, '').trim() && (
+                                <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words" style={{ overflowWrap: 'anywhere' }}>{msg.text.replace(/^\[(Image|Video|Document)\]\s*/, '')}</p>
+                              )}
+                              {!msg.media_type && !msg.text && (
+                                <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words text-wa-meta italic">(empty)</p>
+                              )}
                               <div className="flex items-center justify-end gap-1 mt-0.5">
                                 {msg.direction === 'sent' && msg.sent_by && (
                                   <span className="text-[9px] text-wa-meta">{msg.sent_by}</span>

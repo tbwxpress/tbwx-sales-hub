@@ -67,6 +67,11 @@ async function ensureInit(): Promise<Client> {
         status TEXT DEFAULT '',
         template_used TEXT DEFAULT '',
         read INTEGER DEFAULT 0,
+        media_type TEXT DEFAULT '',
+        media_id TEXT DEFAULT '',
+        media_mime TEXT DEFAULT '',
+        media_filename TEXT DEFAULT '',
+        media_path TEXT DEFAULT '',
         FOREIGN KEY (phone) REFERENCES contacts(phone) ON DELETE CASCADE
       );
 
@@ -258,6 +263,11 @@ async function ensureInit(): Promise<Client> {
     try { await db.execute('ALTER TABLE drip_state ADD COLUMN resumed_at TEXT') } catch { /* column may already exist */ }
     try { await db.execute('ALTER TABLE drip_state ADD COLUMN opted_out INTEGER DEFAULT 0') } catch { /* column may already exist */ }
     try { await db.execute('ALTER TABLE drip_state ADD COLUMN opted_out_at TEXT') } catch { /* column may already exist */ }
+    try { await db.execute("ALTER TABLE messages ADD COLUMN media_type TEXT DEFAULT ''") } catch { /* column may already exist */ }
+    try { await db.execute("ALTER TABLE messages ADD COLUMN media_id TEXT DEFAULT ''") } catch { /* column may already exist */ }
+    try { await db.execute("ALTER TABLE messages ADD COLUMN media_mime TEXT DEFAULT ''") } catch { /* column may already exist */ }
+    try { await db.execute("ALTER TABLE messages ADD COLUMN media_filename TEXT DEFAULT ''") } catch { /* column may already exist */ }
+    try { await db.execute("ALTER TABLE messages ADD COLUMN media_path TEXT DEFAULT ''") } catch { /* column may already exist */ }
 
     _initialized = true
   }
@@ -395,6 +405,11 @@ export async function insertMessage(data: {
   status?: string
   template_used?: string
   read?: boolean
+  media_type?: string
+  media_id?: string
+  media_mime?: string
+  media_filename?: string
+  media_path?: string
 }) {
   const db = await ensureInit()
   data.phone = normalizePhone(data.phone)
@@ -406,8 +421,10 @@ export async function insertMessage(data: {
   }
 
   const result = await db.execute({
-    sql: `INSERT INTO messages (phone, direction, text, timestamp, sent_by, wa_message_id, status, template_used, read)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO messages
+            (phone, direction, text, timestamp, sent_by, wa_message_id, status, template_used, read,
+             media_type, media_id, media_mime, media_filename, media_path)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       data.phone,
       data.direction,
@@ -418,6 +435,11 @@ export async function insertMessage(data: {
       data.status || '',
       data.template_used || '',
       data.read ? 1 : 0,
+      data.media_type || '',
+      data.media_id || '',
+      data.media_mime || '',
+      data.media_filename || '',
+      data.media_path || '',
     ],
   })
 

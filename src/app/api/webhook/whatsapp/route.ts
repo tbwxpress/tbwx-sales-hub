@@ -109,6 +109,38 @@ export async function POST(req: NextRequest) {
           // Ensure contact exists
           await upsertContact(phone, { name: contactName })
 
+          // If this is a media message, download + store the binary so we can render
+          // it in Inbox (and forward later) without depending on Meta's signed URL TTL.
+          let mediaInfo: { type: string; id: string; mime: string; filename: string; path: string } | null = null
+          const mediaTypes = ['image', 'video', 'audio', 'document', 'sticker'] as const
+          if (mediaTypes.includes(msg.type as typeof mediaTypes[number])) {
+            try {
+              const m = (msg as Record<string, { id?: string; mime_type?: string; filename?: string; caption?: string }>)[msg.type]
+              if (m?.id) {
+                const { downloadInboundMedia } = await import('@/lib/media')
+                const dl = await downloadInboundMedia({
+                  mediaId: m.id,
+                  waMessageId: msg.id || `noid-${Date.now()}`,
+                  mimeFromWebhook: m.mime_type,
+                  filename: m.filename,
+                })
+                if (dl.success && dl.path) {
+                  mediaInfo = {
+                    type: msg.type,
+                    id: m.id,
+                    mime: dl.mime || m.mime_type || '',
+                    filename: m.filename || '',
+                    path: dl.path,
+                  }
+                } else {
+                  console.error(`[Webhook] media download failed for ${msg.type} ${m.id}:`, dl.error)
+                }
+              }
+            } catch (e) {
+              console.error('[Webhook] media download error (non-critical):', e)
+            }
+          }
+
           // Insert message
           await insertMessage({
             phone,
@@ -118,6 +150,11 @@ export async function POST(req: NextRequest) {
             wa_message_id: msg.id || '',
             status: 'received',
             read: false,
+            media_type: mediaInfo?.type || '',
+            media_id: mediaInfo?.id || '',
+            media_mime: mediaInfo?.mime || '',
+            media_filename: mediaInfo?.filename || '',
+            media_path: mediaInfo?.path || '',
           })
 
           // Auto-pause drip sequence when lead replies
