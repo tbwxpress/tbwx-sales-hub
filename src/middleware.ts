@@ -4,7 +4,17 @@ import { jwtVerify } from 'jose'
 if (!process.env.JWT_SECRET) throw new Error('FATAL: JWT_SECRET environment variable is required')
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET)
 const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'saleshub_session'
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout', '/api/webhook/whatsapp', '/api/cron/auto-send', '/api/voice-agent/log']
+const PUBLIC_PATHS = [
+  '/login',
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/webhook/whatsapp',
+  '/api/voice-agent/log',
+  // Cron endpoints — they enforce CRON_SECRET bearer auth themselves OR fall back to admin session
+  '/api/cron/auto-send',
+  '/api/cron/cleanup-media',
+  '/api/cron/meta-audience-sync',
+]
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
