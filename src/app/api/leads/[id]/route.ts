@@ -94,6 +94,43 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       } catch { /* SLA tracking is non-critical */ }
     }
 
+    // Meta CAPI feedback — fire offline conversion events on real progression.
+    // Only fires when status actually changes (not on every PATCH that includes
+    // the same status). Hashed PII per Meta spec; never logs raw phone/email.
+    // Whether the event actually goes to Meta is gated by meta_capi.enabled
+    // setting in the admin panel.
+    if (body.lead_status === 'HOT' || body.lead_status === 'CONVERTED') {
+      try {
+        const leads = await getLeads()
+        const lead = leads.find(l => l.row_number === rowNum)
+        if (lead?.phone && lead.lead_status !== body.lead_status) {
+          const [firstName, ...rest] = String(lead.full_name || '').trim().split(/\s+/)
+          const lastName = rest.join(' ')
+          if (body.lead_status === 'HOT') {
+            const { fireLeadHotEvent } = await import('@/lib/meta-capi')
+            await fireLeadHotEvent({
+              lead_row: rowNum,
+              phone: lead.phone,
+              email: lead.email,
+              first_name: firstName,
+              last_name: lastName,
+              city: lead.city,
+            }).catch(e => console.error('[CAPI] Lead event failed:', e))
+          } else if (body.lead_status === 'CONVERTED') {
+            const { fireConvertedEvent } = await import('@/lib/meta-capi')
+            await fireConvertedEvent({
+              lead_row: rowNum,
+              phone: lead.phone,
+              email: lead.email,
+              first_name: firstName,
+              last_name: lastName,
+              city: lead.city,
+            }).catch(e => console.error('[CAPI] Purchase event failed:', e))
+          }
+        }
+      } catch { /* CAPI is non-critical to lead update */ }
+    }
+
     // Log assignment changes + notify the new owner
     if (body.assigned_to !== undefined) {
       const leads = await getLeads()

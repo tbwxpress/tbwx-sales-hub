@@ -244,6 +244,26 @@ async function ensureInit(): Promise<Client> {
       );
       CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read, created_at DESC);
 
+      CREATE TABLE IF NOT EXISTS meta_capi_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lead_row INTEGER,
+        phone TEXT NOT NULL DEFAULT '',
+        event_name TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        value REAL DEFAULT 0,
+        currency TEXT DEFAULT 'INR',
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'failed', 'test')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        meta_response TEXT,
+        meta_events_received INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        sent_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_meta_capi_events_status ON meta_capi_events(status);
+      CREATE INDEX IF NOT EXISTS idx_meta_capi_events_event_id ON meta_capi_events(event_id);
+      CREATE INDEX IF NOT EXISTS idx_meta_capi_events_phone ON meta_capi_events(phone);
+
       CREATE TABLE IF NOT EXISTS commission_payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         closer_user_id TEXT NOT NULL,

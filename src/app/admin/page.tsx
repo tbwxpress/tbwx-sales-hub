@@ -43,6 +43,19 @@ export default function AdminPage() {
   const [aqStatuses, setAqStatuses] = useState<string[]>([])
   const [savingAq, setSavingAq] = useState(false)
   const [aqMsg, setAqMsg] = useState('')
+
+  // Meta CAPI
+  const [capiSettings, setCapiSettings] = useState<{
+    pixel_id: string; enabled: boolean; has_token: boolean; test_event_code: string;
+    purchase_value: number; lead_value: number; currency: string; event_source_url: string;
+  } | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [capiRecent, setCapiRecent] = useState<any[]>([])
+  const [capiStats, setCapiStats] = useState<{ sent_24h: number; failed_24h: number; test_24h: number; total: number } | null>(null)
+  const [capiTokenInput, setCapiTokenInput] = useState('')
+  const [savingCapi, setSavingCapi] = useState(false)
+  const [capiMsg, setCapiMsg] = useState('')
+  const [capiTesting, setCapiTesting] = useState(false)
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null)
   const currentUserId = currentUser?.id || ''
@@ -78,7 +91,62 @@ export default function AdminPage() {
     fetchVoiceAgentSettings()
     fetchTemplateSettings()
     fetchAutoQueue()
+    fetchCapi()
   }, [router])
+
+  async function fetchCapi() {
+    try {
+      const res = await fetch('/api/settings/meta-capi')
+      const data = await res.json()
+      if (data.success) {
+        setCapiSettings(data.data.settings)
+        setCapiRecent(data.data.recent || [])
+        setCapiStats(data.data.stats || null)
+      }
+    } catch { /* silent */ }
+  }
+
+  async function saveCapi(patch: Record<string, unknown>) {
+    setSavingCapi(true)
+    setCapiMsg('')
+    try {
+      const res = await fetch('/api/settings/meta-capi', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setCapiSettings(data.data.settings)
+        setCapiTokenInput('')
+        setCapiMsg('Saved.')
+      } else {
+        setCapiMsg(data.error || 'Save failed')
+      }
+    } catch (err) { setCapiMsg(String(err)) }
+    setSavingCapi(false)
+    setTimeout(() => setCapiMsg(''), 3500)
+  }
+
+  async function fireCapiTest() {
+    setCapiTesting(true)
+    setCapiMsg('')
+    try {
+      const res = await fetch('/api/admin/meta-capi-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setCapiMsg(`Sent — Meta accepted ${data.data?.events_received ?? '?'} event(s). ${data.data?.test_mode ? 'Check Meta Events Manager → Test Events tab.' : 'Visible in Events Manager → Overview.'}`)
+      } else {
+        setCapiMsg(`Failed: ${data.data?.error || data.error || 'unknown'}`)
+      }
+      await fetchCapi()
+    } catch (err) { setCapiMsg(String(err)) }
+    setCapiTesting(false)
+  }
 
   async function fetchTemplateSettings() {
     try {
@@ -726,6 +794,211 @@ export default function AdminPage() {
                 </>
               )
             })()}
+          </div>
+        </div>
+
+        {/* Meta Conversions API */}
+        <div className="mt-8 mb-6">
+          <h2 className="text-lg font-bold text-text mb-1">Meta Conversions API <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded ml-2" style={{ background: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>Lead Quality</span></h2>
+          <p className="text-sm text-dim mb-4">Sends real conversion signals (HOT, CONVERTED) back to Meta so the algorithm optimizes for actual buyers — not just form-fillers. Industry benchmark: 30–50% CPL reduction on quality leads within 4–6 weeks.</p>
+          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+            {!capiSettings ? (
+              <p className="text-xs text-dim">Loading…</p>
+            ) : (
+              <>
+                {/* Status row */}
+                <div className="flex items-center justify-between gap-4 pb-3 border-b border-border">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${capiSettings.enabled ? 'animate-pulse' : ''}`} style={{ background: capiSettings.enabled ? 'var(--color-success)' : 'var(--color-dim)' }} />
+                      <p className="text-sm font-medium text-text">{capiSettings.enabled ? 'Live — events firing on status changes' : 'Disabled — no events sent'}</p>
+                    </div>
+                    {capiSettings.test_event_code && (
+                      <p className="text-[11px] mt-1" style={{ color: 'var(--color-warning)' }}>⚠ Test mode active — events route to Meta &ldquo;Test Events&rdquo; tab only. Clear test_event_code for production firing.</p>
+                    )}
+                    {!capiSettings.has_token && (
+                      <p className="text-[11px] mt-1" style={{ color: 'var(--color-danger)' }}>No access token — set one below or rely on WHATSAPP_TOKEN env var.</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => saveCapi({ enabled: !capiSettings.enabled })}
+                    disabled={savingCapi || !capiSettings.has_token}
+                    className="relative w-12 h-6 rounded-full transition-colors duration-200 disabled:opacity-50 shrink-0"
+                    style={{ background: capiSettings.enabled ? 'var(--color-success)' : 'var(--color-border)' }}
+                    title={capiSettings.enabled ? 'Disable CAPI' : 'Enable CAPI'}
+                  >
+                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${capiSettings.enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+
+                {/* 24h stats */}
+                {capiStats && (
+                  <div className="grid grid-cols-4 gap-2">
+                    <div className="rounded-lg p-2 text-center" style={{ background: 'var(--color-elevated)' }}>
+                      <div className="text-lg font-bold" style={{ color: 'var(--color-success)' }}>{capiStats.sent_24h}</div>
+                      <div className="text-[10px] text-dim uppercase tracking-wider">Sent 24h</div>
+                    </div>
+                    <div className="rounded-lg p-2 text-center" style={{ background: 'var(--color-elevated)' }}>
+                      <div className="text-lg font-bold" style={{ color: 'var(--color-warning)' }}>{capiStats.test_24h}</div>
+                      <div className="text-[10px] text-dim uppercase tracking-wider">Test 24h</div>
+                    </div>
+                    <div className="rounded-lg p-2 text-center" style={{ background: 'var(--color-elevated)' }}>
+                      <div className="text-lg font-bold" style={{ color: 'var(--color-danger)' }}>{capiStats.failed_24h}</div>
+                      <div className="text-[10px] text-dim uppercase tracking-wider">Failed 24h</div>
+                    </div>
+                    <div className="rounded-lg p-2 text-center" style={{ background: 'var(--color-elevated)' }}>
+                      <div className="text-lg font-bold text-text">{capiStats.total}</div>
+                      <div className="text-[10px] text-dim uppercase tracking-wider">All-time</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pixel + token */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">Pixel ID</label>
+                    <input
+                      type="text"
+                      defaultValue={capiSettings.pixel_id}
+                      onBlur={e => { if (e.target.value !== capiSettings.pixel_id) saveCapi({ pixel_id: e.target.value }) }}
+                      className="w-full bg-elevated border border-border rounded-md px-3 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">Test Event Code <span className="text-[10px] text-dim">(optional)</span></label>
+                    <input
+                      type="text"
+                      defaultValue={capiSettings.test_event_code}
+                      onBlur={e => { if (e.target.value !== capiSettings.test_event_code) saveCapi({ test_event_code: e.target.value }) }}
+                      placeholder="TEST12345 — leave blank for production"
+                      className="w-full bg-elevated border border-border rounded-md px-3 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Access token */}
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">
+                    Access Token override <span className="text-[10px] text-dim">(default: WHATSAPP_TOKEN env)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={capiTokenInput}
+                      onChange={e => setCapiTokenInput(e.target.value)}
+                      placeholder={capiSettings.has_token ? '•••••• (set — leave blank to keep)' : 'Paste a long-lived ads_management token'}
+                      className="flex-1 bg-elevated border border-border rounded-md px-3 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50 font-mono"
+                    />
+                    <button
+                      onClick={() => capiTokenInput.trim() && saveCapi({ access_token: capiTokenInput.trim() })}
+                      disabled={!capiTokenInput.trim() || savingCapi}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-md disabled:opacity-50"
+                      style={{ background: 'var(--color-elevated)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+                    >
+                      Save token
+                    </button>
+                  </div>
+                </div>
+
+                {/* Values */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">Lead value (HOT)</label>
+                    <input
+                      type="number"
+                      defaultValue={capiSettings.lead_value}
+                      onBlur={e => { const n = Number(e.target.value); if (n > 0 && n !== capiSettings.lead_value) saveCapi({ lead_value: n }) }}
+                      className="w-full bg-elevated border border-border rounded-md px-3 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">Purchase value (CONVERTED)</label>
+                    <input
+                      type="number"
+                      defaultValue={capiSettings.purchase_value}
+                      onBlur={e => { const n = Number(e.target.value); if (n > 0 && n !== capiSettings.purchase_value) saveCapi({ purchase_value: n }) }}
+                      className="w-full bg-elevated border border-border rounded-md px-3 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">Currency</label>
+                    <input
+                      type="text"
+                      defaultValue={capiSettings.currency}
+                      onBlur={e => { if (e.target.value && e.target.value !== capiSettings.currency) saveCapi({ currency: e.target.value }) }}
+                      className="w-full bg-elevated border border-border rounded-md px-3 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50"
+                    />
+                  </div>
+                </div>
+
+                {/* Test + status message */}
+                <div className="flex items-center justify-between pt-2 border-t border-border">
+                  <span className="text-xs text-dim flex-1">{capiMsg}</span>
+                  <button
+                    onClick={fireCapiTest}
+                    disabled={capiTesting || !capiSettings.has_token}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-md disabled:opacity-50 transition-colors"
+                    style={{ background: 'var(--color-accent)', color: '#1a1209' }}
+                  >
+                    {capiTesting ? 'Sending…' : 'Send test event'}
+                  </button>
+                </div>
+
+                {/* Recent events log */}
+                {capiRecent.length > 0 && (
+                  <div className="pt-2 border-t border-border">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-2">Recent CAPI events</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-dim border-b border-border/50">
+                            <th className="px-2 py-1.5 text-left font-medium">When</th>
+                            <th className="px-2 py-1.5 text-left font-medium">Event</th>
+                            <th className="px-2 py-1.5 text-right font-medium">Value</th>
+                            <th className="px-2 py-1.5 text-center font-medium">Status</th>
+                            <th className="px-2 py-1.5 text-left font-medium">Note</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {capiRecent.map(e => (
+                            <tr key={e.id} className="border-b border-border/30 last:border-b-0">
+                              <td className="px-2 py-1.5 text-dim whitespace-nowrap">{e.created_at?.slice(5, 16) || ''}</td>
+                              <td className="px-2 py-1.5 text-text">{e.event_name}</td>
+                              <td className="px-2 py-1.5 text-right text-muted">{e.currency || ''} {Number(e.value || 0).toLocaleString('en-IN')}</td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full" style={{
+                                  background: e.status === 'sent' ? 'color-mix(in srgb, var(--color-success) 15%, transparent)' :
+                                             e.status === 'failed' ? 'color-mix(in srgb, var(--color-danger) 15%, transparent)' :
+                                             e.status === 'test' ? 'color-mix(in srgb, var(--color-warning) 15%, transparent)' :
+                                             'var(--color-elevated)',
+                                  color: e.status === 'sent' ? 'var(--color-success)' :
+                                         e.status === 'failed' ? 'var(--color-danger)' :
+                                         e.status === 'test' ? 'var(--color-warning)' :
+                                         'var(--color-muted)',
+                                }}>{e.status}</span>
+                              </td>
+                              <td className="px-2 py-1.5 text-dim truncate max-w-[24ch]" title={e.last_error || ''}>
+                                {e.meta_events_received !== null ? `accepted ${e.meta_events_received}` : (e.last_error || '')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Quick guide */}
+                <details className="pt-2 border-t border-border">
+                  <summary className="text-xs text-dim cursor-pointer hover:text-muted">How this works + verification steps</summary>
+                  <div className="mt-2 text-xs space-y-1.5" style={{ color: 'var(--color-muted)' }}>
+                    <p><span className="font-semibold text-text">Triggers:</span> when a lead status is changed to <span className="text-accent">HOT</span>, a <code className="text-[10px] px-1 rounded" style={{ background: 'var(--color-elevated)' }}>Lead</code> event fires; on <span className="text-accent">CONVERTED</span>, a <code className="text-[10px] px-1 rounded" style={{ background: 'var(--color-elevated)' }}>Purchase</code> event fires with the value above.</p>
+                    <p><span className="font-semibold text-text">Privacy:</span> phone &amp; email are SHA-256 hashed before sending. Raw values never logged.</p>
+                    <p><span className="font-semibold text-text">Verify before going live:</span> (1) Set a Test Event Code from Events Manager → Test Events → click &ldquo;Test events&rdquo; → grab the code. (2) Save it above + flip Enable on. (3) Click &ldquo;Send test event&rdquo;. (4) Watch Events Manager → Test Events tab — should appear within seconds. (5) Once verified, clear the Test Event Code and events go live.</p>
+                  </div>
+                </details>
+              </>
+            )}
           </div>
         </div>
       </div>
