@@ -14,6 +14,7 @@ const PUBLIC_PATHS = [
   '/api/cron/auto-send',
   '/api/cron/cleanup-media',
   '/api/cron/meta-audience-sync',
+  '/api/cron/meta-daily-report',
 ]
 
 export async function middleware(req: NextRequest) {
