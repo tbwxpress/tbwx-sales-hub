@@ -178,6 +178,10 @@ export interface SendCapiInput {
     fbc?: string // fbclid → fbc click id
     client_ip?: string
     client_user_agent?: string
+    // Meta-generated leadgen_id from the lead form (highest-priority match key
+    // per Meta's "Conversion Leads" / Conversions API for CRM docs). Pass with
+    // or without the "l:" prefix — we strip it.
+    lead_id?: string | number
   }
   custom_data?: {
     value?: number
@@ -222,7 +226,10 @@ export async function sendCapiEvent(input: SendCapiInput): Promise<SendCapiResul
   const testMode = !!cfg.test_event_code
 
   // Hash PII per Meta spec — Meta accepts arrays of hashes
-  const ud: Record<string, string[] | string> = {}
+  // lead_id (Meta-generated) is the HIGHEST-priority match key per Meta's
+  // CRM Conversion Leads spec — pass it raw (NOT hashed), strip the "l:" prefix
+  // some Meta export formats add.
+  const ud: Record<string, string[] | string | number> = {}
   const ph = hashPhone(input.user_data.phone)
   if (ph) ud.ph = [ph]
   const em = hashEmail(input.user_data.email)
@@ -237,6 +244,12 @@ export async function sendCapiEvent(input: SendCapiInput): Promise<SendCapiResul
   if (input.user_data.fbc) ud.fbc = input.user_data.fbc
   if (input.user_data.client_ip) ud.client_ip_address = input.user_data.client_ip
   if (input.user_data.client_user_agent) ud.client_user_agent = input.user_data.client_user_agent
+  const cleanLeadId = stripLeadIdPrefix(input.user_data.lead_id)
+  if (cleanLeadId) {
+    // Meta accepts numeric or string. Use numeric if it parses cleanly.
+    const asNum = Number(cleanLeadId)
+    ud.lead_id = Number.isFinite(asNum) && /^\d+$/.test(cleanLeadId) ? asNum : cleanLeadId
+  }
 
   // Insert log row in pending state
   const db = getClient()
@@ -274,14 +287,17 @@ export async function sendCapiEvent(input: SendCapiInput): Promise<SendCapiResul
     event_source_url: input.event_source_url || cfg.event_source_url,
     user_data: ud,
   }
-  if (input.custom_data) {
-    event.custom_data = {
-      ...(input.custom_data.value !== undefined && { value: input.custom_data.value }),
-      ...(input.custom_data.currency && { currency: input.custom_data.currency }),
-      ...(input.custom_data.content_name && { content_name: input.custom_data.content_name }),
-      ...(input.custom_data.content_category && { content_category: input.custom_data.content_category }),
-      ...(input.custom_data.content_ids && { content_ids: input.custom_data.content_ids }),
-    }
+  // CRM tags are REQUIRED for Meta to recognize this as a Conversion Leads
+  // / CRM event (vs a generic Pixel fire). Without these the event is still
+  // accepted but the "Maximise conversion leads" optimizer can't use it.
+  event.custom_data = {
+    event_source: CRM_EVENT_SOURCE,
+    lead_event_source: CRM_LEAD_EVENT_SOURCE,
+    ...(input.custom_data?.value !== undefined && { value: input.custom_data.value }),
+    ...(input.custom_data?.currency && { currency: input.custom_data.currency }),
+    ...(input.custom_data?.content_name && { content_name: input.custom_data.content_name }),
+    ...(input.custom_data?.content_category && { content_category: input.custom_data.content_category }),
+    ...(input.custom_data?.content_ids && { content_ids: input.custom_data.content_ids }),
   }
 
   const body: Record<string, unknown> = {
@@ -345,6 +361,7 @@ export async function fireLeadHotEvent(opts: {
   first_name?: string
   last_name?: string
   city?: string
+  lead_id?: string | number  // Meta's leadgen_id (col A in Sheet, with or without "l:" prefix)
 }): Promise<SendCapiResult> {
   const cfg = await getMetaCapiSettings()
   return sendCapiEvent({
@@ -357,6 +374,7 @@ export async function fireLeadHotEvent(opts: {
       first_name: opts.first_name,
       last_name: opts.last_name,
       city: opts.city,
+      lead_id: opts.lead_id,
     },
     custom_data: {
       value: cfg.lead_value,
@@ -374,6 +392,7 @@ export async function fireConvertedEvent(opts: {
   first_name?: string
   last_name?: string
   city?: string
+  lead_id?: string | number
   override_value?: number
 }): Promise<SendCapiResult> {
   const cfg = await getMetaCapiSettings()
@@ -387,6 +406,7 @@ export async function fireConvertedEvent(opts: {
       first_name: opts.first_name,
       last_name: opts.last_name,
       city: opts.city,
+      lead_id: opts.lead_id,
     },
     custom_data: {
       value: opts.override_value ?? cfg.purchase_value,
@@ -449,8 +469,22 @@ export async function getRecentCapiEvents(limit = 20): Promise<RecentCapiEvent[]
 // schema specifying field types. We send PHONE-only batches (we don't always
 // have email).
 
-const META_API_VERSION = process.env.META_API_VERSION || 'v21.0'
+const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const META_GRAPH = process.env.META_GRAPH_API_BASE || `https://graph.facebook.com/${META_API_VERSION}`
+
+// Tags Meta uses to recognize an event as coming from a CRM (vs a generic Pixel
+// fire). Without these, "Maximise conversion leads" optimization mode can't
+// route the event correctly in the auction.
+const CRM_EVENT_SOURCE = 'crm'
+const CRM_LEAD_EVENT_SOURCE = 'TBWX Sales Hub'
+
+function stripLeadIdPrefix(raw: string | number | undefined): string | undefined {
+  if (raw === undefined || raw === null) return undefined
+  const s = String(raw).trim()
+  if (!s) return undefined
+  // Meta's CSV / lead-form export prefixes the leadgen_id with "l:" — strip
+  return s.replace(/^l:\s*/i, '')
+}
 
 async function getAdAccountId(): Promise<string> {
   return (await getSetting(META_CAPI_KEYS.AD_ACCOUNT_ID)) || META_CAPI_DEFAULTS.AD_ACCOUNT_ID

@@ -115,6 +115,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               first_name: firstName,
               last_name: lastName,
               city: lead.city,
+              lead_id: lead.id,  // Meta-generated leadgen_id ("l:..." prefix auto-stripped)
             }).catch(e => console.error('[CAPI] Lead event failed:', e))
           } else if (body.lead_status === 'CONVERTED') {
             const { fireConvertedEvent } = await import('@/lib/meta-capi')
@@ -125,6 +126,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               first_name: firstName,
               last_name: lastName,
               city: lead.city,
+              lead_id: lead.id,
             }).catch(e => console.error('[CAPI] Purchase event failed:', e))
           }
         }
