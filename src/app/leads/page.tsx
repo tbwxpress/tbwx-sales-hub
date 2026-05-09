@@ -384,6 +384,12 @@ export default function LeadsPage() {
 
   const assignedNames = [...new Set(leads.map(l => l.assigned_to).filter(Boolean))]
   const canBulkAction = user?.role === 'admin' || user?.can_assign
+  // Any active agent can bulk-route their OWN leads to a telecaller. The
+  // server-side endpoint enforces ownership for non-managers, so we just
+  // need to expose the checkbox + telecaller dropdown to all logged-in users.
+  const hasTelecallers = agents.some(a => a.is_telecaller)
+  const canBulkTelecaller = !!user && hasTelecallers
+  const showCheckboxColumn = canBulkAction || canBulkTelecaller
 
   // ─── Loading State ───────────────────────────────────────────────────────
 
@@ -565,7 +571,7 @@ export default function LeadsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-elevated/50">
-                  {canBulkAction && (
+                  {showCheckboxColumn && (
                     <th className="px-3 py-3 text-left w-10">
                       <input
                         type="checkbox"
@@ -592,7 +598,7 @@ export default function LeadsPage() {
                 {leads.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={canBulkAction ? 12 : 11}
+                      colSpan={showCheckboxColumn ? 12 : 11}
                       className="px-3 py-16 text-center"
                     >
                       <div className="flex flex-col items-center gap-3">
@@ -622,7 +628,7 @@ export default function LeadsPage() {
                     return (
                       <React.Fragment key={lead.row_number}>
                       <tr className="lead-row table-row-hover">
-                        {canBulkAction && (
+                        {showCheckboxColumn && (
                           <td className="px-3 py-2.5">
                             <input
                               type="checkbox"
@@ -804,7 +810,7 @@ export default function LeadsPage() {
                       {/* Inline quick note input */}
                       {quickNotePhone === lead.phone && (
                         <tr className="bg-accent/5">
-                          <td colSpan={canBulkAction ? 12 : 11} className="px-3 py-2">
+                          <td colSpan={showCheckboxColumn ? 12 : 11} className="px-3 py-2">
                             <div className="flex items-center gap-2 max-w-2xl">
                               <span className="text-xs text-muted flex-shrink-0">Note for {lead.full_name}:</span>
                               <input
@@ -844,17 +850,20 @@ export default function LeadsPage() {
       </main>
 
       {/* ─── Floating Bulk Action Bar ─────────────────────────────────── */}
-      {selected.size > 0 && canBulkAction && (
+      {selected.size > 0 && (canBulkAction || canBulkTelecaller) && (
         <div className="fixed bottom-0 left-0 right-0 z-50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4">
             <div className="bg-elevated border border-border rounded-lg shadow-2xl shadow-black/50 px-5 py-3 flex items-center justify-between gap-4">
               <span className="text-sm text-text">
                 <span className="font-semibold text-accent">{selected.size}</span>{' '}
                 lead{selected.size !== 1 ? 's' : ''} selected
+                {!canBulkAction && (
+                  <span className="text-[11px] text-dim ml-2">(your leads only)</span>
+                )}
               </span>
 
               <div className="flex items-center gap-2 flex-wrap">
-                {/* Bulk Assign */}
+                {/* Bulk Assign — admin only */}
                 {user?.role === 'admin' && (
                   <>
                     <select
