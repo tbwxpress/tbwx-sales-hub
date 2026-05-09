@@ -244,6 +244,20 @@ async function ensureInit(): Promise<Client> {
       );
       CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read, created_at DESC);
 
+      CREATE TABLE IF NOT EXISTS lead_status_changes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lead_row INTEGER NOT NULL,
+        phone TEXT DEFAULT '',
+        old_status TEXT DEFAULT '',
+        new_status TEXT NOT NULL,
+        changed_by TEXT NOT NULL,
+        changed_by_id TEXT DEFAULT '',
+        source TEXT NOT NULL DEFAULT 'manual',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_lsc_changed_by_date ON lead_status_changes(changed_by, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_lsc_lead ON lead_status_changes(lead_row);
+
       CREATE TABLE IF NOT EXISTS meta_capi_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         lead_row INTEGER,
@@ -752,6 +766,73 @@ export async function getNotes(phone: string) {
     args: [norm, phone],
   })
   return serializeRows(result.rows)
+}
+
+// --- Lead status change audit log ---
+// Captures every transition with actor + source so the daily activity tracker
+// can answer "which agent moved which lead through which stage today".
+// Source = 'manual' (user PATCHed) | 'auto-send' (cron set DECK_SENT) |
+// 'webhook' (button auto-classify or REPLIED) | 'cron' (other cron paths).
+
+export async function insertStatusChange(data: {
+  lead_row: number
+  phone?: string
+  old_status?: string
+  new_status: string
+  changed_by: string
+  changed_by_id?: string
+  source?: 'manual' | 'auto-send' | 'webhook' | 'cron'
+}): Promise<number | null> {
+  try {
+    const db = await ensureInit()
+    const r = await db.execute({
+      sql: `INSERT INTO lead_status_changes
+              (lead_row, phone, old_status, new_status, changed_by, changed_by_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        data.lead_row,
+        data.phone ? normalizePhone(data.phone) : '',
+        data.old_status || '',
+        data.new_status,
+        data.changed_by,
+        data.changed_by_id || '',
+        data.source || 'manual',
+      ],
+    })
+    return Number(r.lastInsertRowid)
+  } catch (err) {
+    // Audit logging must never break the main flow
+    console.error('[insertStatusChange] non-critical:', err)
+    return null
+  }
+}
+
+export async function getStatusChangesByAgent(opts: {
+  changed_by: string
+  since: string  // ISO timestamp inclusive
+  until: string  // ISO timestamp exclusive
+}) {
+  const db = await ensureInit()
+  const r = await db.execute({
+    sql: `SELECT id, lead_row, phone, old_status, new_status, source, created_at
+          FROM lead_status_changes
+          WHERE changed_by = ? AND created_at >= ? AND created_at < ?
+          ORDER BY created_at DESC`,
+    args: [opts.changed_by, opts.since, opts.until],
+  })
+  return serializeRows(r.rows)
+}
+
+export async function getStatusChangesForLead(leadRow: number) {
+  const db = await ensureInit()
+  const r = await db.execute({
+    sql: `SELECT id, lead_row, phone, old_status, new_status, changed_by, changed_by_id, source, created_at
+          FROM lead_status_changes
+          WHERE lead_row = ?
+          ORDER BY created_at DESC`,
+    args: [leadRow],
+  })
+  return serializeRows(r.rows)
 }
 
 // --- Tasks/Reminders ---

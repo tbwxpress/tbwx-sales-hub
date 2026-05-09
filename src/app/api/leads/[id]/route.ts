@@ -192,6 +192,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       } catch { /* non-critical */ }
     }
 
+    // Audit-log the status change so /agent-stats Daily Activity can attribute it
+    if (body.lead_status) {
+      try {
+        const leads = await getLeads()
+        const lead = leads.find(l => l.row_number === rowNum)
+        if (lead && lead.lead_status !== body.lead_status) {
+          const { insertStatusChange } = await import('@/lib/db')
+          await insertStatusChange({
+            lead_row: rowNum,
+            phone: lead.phone,
+            old_status: lead.lead_status,
+            new_status: body.lead_status,
+            changed_by: user.name,
+            changed_by_id: user.id,
+            source: 'manual',
+          })
+        }
+      } catch { /* audit log is non-critical */ }
+    }
+
     await updateLead(rowNum, body)
     return NextResponse.json({ success: true })
   } catch (err) {

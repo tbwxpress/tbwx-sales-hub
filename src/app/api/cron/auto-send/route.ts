@@ -180,6 +180,20 @@ async function markContacted(lead: RawLead, waMessageId: string, assignedTo: str
     requestBody: { valueInputOption: 'RAW', data },
   })
 
+  // Audit-log the DECK_SENT transition so daily activity attributes the system action
+  try {
+    const { insertStatusChange } = await import('@/lib/db')
+    await insertStatusChange({
+      lead_row: lead.row_number,
+      phone: lead.phone_formatted || '',
+      old_status: lead.lead_status || 'NEW',
+      new_status: 'DECK_SENT',
+      changed_by: 'auto-send',
+      changed_by_id: '',
+      source: 'auto-send',
+    })
+  } catch { /* audit log non-critical */ }
+
   // Invalidate cache so next getLeads() reads fresh data
   invalidateLeadsCache()
 }

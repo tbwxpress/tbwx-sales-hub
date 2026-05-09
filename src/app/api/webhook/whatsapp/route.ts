@@ -183,15 +183,26 @@ export async function POST(req: NextRequest) {
               const { updateLead } = await import('@/lib/sheets')
               const contact = await getContact(phone)
 
+              const { insertStatusChange } = await import('@/lib/db')
+              const { getLeadByRow } = await import('@/lib/sheets')
+
               if (POSITIVE_BUTTONS.includes(buttonText)) {
                 // Lead is interested — mark HOT, pause drip, alert agent
                 if (contact?.lead_row) {
+                  const prev = await getLeadByRow(Number(contact.lead_row))
                   await updateLead(Number(contact.lead_row), {
                     lead_status: 'HOT',
                     lead_priority: 'HOT',
                     next_followup: new Date().toISOString().split('T')[0],
                     notes: `[Auto] Lead tapped "${buttonText}" on follow-up — marked HOT`,
                   })
+                  if (prev && prev.lead_status !== 'HOT') {
+                    await insertStatusChange({
+                      lead_row: Number(contact.lead_row), phone,
+                      old_status: prev.lead_status || '', new_status: 'HOT',
+                      changed_by: 'System (Webhook)', source: 'webhook',
+                    })
+                  }
                 }
                 await upsertDripState(phone, {
                   paused_at: new Date().toISOString(),
@@ -210,11 +221,19 @@ export async function POST(req: NextRequest) {
                 const followup30 = new Date()
                 followup30.setDate(followup30.getDate() + 30)
                 if (contact?.lead_row) {
+                  const prev = await getLeadByRow(Number(contact.lead_row))
                   await updateLead(Number(contact.lead_row), {
                     lead_status: 'DELAYED',
                     next_followup: followup30.toISOString().split('T')[0],
                     notes: `[Auto] Lead tapped "${buttonText}" — delayed 30 days`,
                   })
+                  if (prev && prev.lead_status !== 'DELAYED') {
+                    await insertStatusChange({
+                      lead_row: Number(contact.lead_row), phone,
+                      old_status: prev.lead_status || '', new_status: 'DELAYED',
+                      changed_by: 'System (Webhook)', source: 'webhook',
+                    })
+                  }
                 }
                 await upsertDripState(phone, {
                   paused_at: new Date().toISOString(),
@@ -225,10 +244,18 @@ export async function POST(req: NextRequest) {
               } else if (OPTOUT_BUTTONS.includes(buttonText)) {
                 // Lead opted out — mark LOST, permanently stop all messaging
                 if (contact?.lead_row) {
+                  const prev = await getLeadByRow(Number(contact.lead_row))
                   await updateLead(Number(contact.lead_row), {
                     lead_status: 'LOST',
                     notes: `[Auto] Lead tapped "${buttonText}" — opted out, no further messages`,
                   })
+                  if (prev && prev.lead_status !== 'LOST') {
+                    await insertStatusChange({
+                      lead_row: Number(contact.lead_row), phone,
+                      old_status: prev.lead_status || '', new_status: 'LOST',
+                      changed_by: 'System (Webhook)', source: 'webhook',
+                    })
+                  }
                 }
                 await upsertDripState(phone, {
                   enabled: false,
@@ -271,6 +298,21 @@ export async function POST(req: NextRequest) {
                 updateFields.lead_status = 'REPLIED'
               }
               await updateLead(Number(contact.lead_row), updateFields)
+
+              // Audit-log the REPLIED transition (only if we actually changed it)
+              if (shouldUpdateStatus && lead && lead.lead_status !== 'REPLIED') {
+                try {
+                  const { insertStatusChange } = await import('@/lib/db')
+                  await insertStatusChange({
+                    lead_row: Number(contact.lead_row),
+                    phone,
+                    old_status: lead.lead_status || '',
+                    new_status: 'REPLIED',
+                    changed_by: 'System (Webhook)',
+                    source: 'webhook',
+                  })
+                } catch { /* non-critical */ }
+              }
 
               // Notify the lead's owner (assigned agent) that a reply came in
               if (lead?.assigned_to) {

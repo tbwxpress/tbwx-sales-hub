@@ -200,6 +200,27 @@ export default function AgentStatsPage() {
     auto_queue: { enabled: boolean; user_id: string; statuses: string[] };
   } | null>(null)
 
+  // Daily Activity tracker
+  const [activityDate, setActivityDate] = useState<string>(() => {
+    const istNow = new Date(Date.now() + 330 * 60 * 1000)
+    return istNow.toISOString().split('T')[0]
+  })
+  const [activity, setActivity] = useState<{
+    date: string;
+    agents: Array<{
+      user_id: string; name: string; email: string; role: string;
+      type: 'closer' | 'telecaller' | 'admin' | 'none';
+      active: boolean; leads_touched: number;
+      actions: { manual_messages: number; calls_logged: number; notes_added: number; status_changes: number; reassignments_performed: number };
+      status_progressions: Record<string, number>;
+      touched_leads: Array<{ lead_row: number | null; phone: string; name: string; current_status: string; actions: string[] }>;
+    }>;
+    totals: { leads_touched: number; manual_messages: number; calls_logged: number; notes_added: number; status_changes: number; reassignments_performed: number };
+    warnings: string[];
+  } | null>(null)
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [expandedAgent, setExpandedAgent] = useState<string | null>(null)
+
   // ─── Auth Check ──────────────────────────────────────────────────────────
 
   const fetchAuth = useCallback(async () => {
@@ -251,6 +272,22 @@ export default function AgentStatsPage() {
       setError('Failed to load data')
     }
   }, [])
+
+  // ─── Daily Activity fetcher ──────────────────────────────────────────────
+
+  const fetchActivity = useCallback(async (date: string) => {
+    setActivityLoading(true)
+    try {
+      const res = await fetch(`/api/analytics/agent-activity?date=${encodeURIComponent(date)}`)
+      const data = await res.json()
+      if (data.success) setActivity(data.data)
+    } catch { /* silent */ }
+    setActivityLoading(false)
+  }, [])
+
+  useEffect(() => {
+    fetchActivity(activityDate)
+  }, [activityDate, fetchActivity])
 
   // ─── Init ────────────────────────────────────────────────────────────────
 
@@ -368,6 +405,176 @@ export default function AgentStatsPage() {
             </div>
           ))}
         </div>
+
+        {/* ─── Daily Activity Tracker ─────────────────────────────────── */}
+        <section className="bg-card border border-border rounded-xl p-4 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-base font-bold text-text">Daily Activity</h2>
+              <p className="text-xs text-dim mt-0.5">
+                Active actions only — manual messages, calls, notes, status changes, reassignments by each agent.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="date"
+                value={activityDate}
+                onChange={e => setActivityDate(e.target.value)}
+                max={new Date(Date.now() + 330 * 60 * 1000).toISOString().split('T')[0]}
+                className="bg-elevated border border-border rounded-md px-2 py-1 text-xs text-text focus:outline-none focus:border-accent/50"
+              />
+              {[
+                { label: 'Today', off: 0 },
+                { label: 'Yesterday', off: 1 },
+                { label: 'Last 7d', off: 7 },
+              ].map(c => (
+                <button
+                  key={c.label}
+                  onClick={() => {
+                    const istNow = new Date(Date.now() + 330 * 60 * 1000)
+                    if (c.off === 7) {
+                      // For "Last 7d" we just jump back 7 — simple proxy; full date-range UI is Phase 2
+                      const t = new Date(istNow.getTime() - 7 * 24 * 60 * 60 * 1000)
+                      setActivityDate(t.toISOString().split('T')[0])
+                    } else {
+                      const t = new Date(istNow.getTime() - c.off * 24 * 60 * 60 * 1000)
+                      setActivityDate(t.toISOString().split('T')[0])
+                    }
+                  }}
+                  className="text-[11px] px-2 py-1 rounded-md border border-border hover:border-accent/50 text-muted transition-colors"
+                >
+                  {c.label}
+                </button>
+              ))}
+              <button
+                onClick={() => fetchActivity(activityDate)}
+                disabled={activityLoading}
+                className="text-[11px] px-2 py-1 rounded-md text-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
+              >
+                {activityLoading ? 'Loading…' : 'Refresh'}
+              </button>
+            </div>
+          </div>
+
+          {/* Warnings */}
+          {activity?.warnings && activity.warnings.length > 0 && (
+            <div className="mb-4 space-y-1.5">
+              {activity.warnings.map((w, i) => (
+                <div
+                  key={i}
+                  className="text-xs px-3 py-2 rounded-md flex items-start gap-2"
+                  style={{ background: 'color-mix(in srgb, var(--color-danger) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-danger) 25%, transparent)', color: 'var(--color-danger)' }}
+                >
+                  <span>⚠️</span>
+                  <span>{w}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Org totals strip */}
+          {activity && (
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4 text-center">
+              {[
+                { label: 'Leads touched', v: activity.totals.leads_touched },
+                { label: 'Messages', v: activity.totals.manual_messages },
+                { label: 'Calls', v: activity.totals.calls_logged },
+                { label: 'Notes', v: activity.totals.notes_added },
+                { label: 'Status moves', v: activity.totals.status_changes },
+                { label: 'Reassigns', v: activity.totals.reassignments_performed },
+              ].map(s => (
+                <div key={s.label} className="bg-elevated rounded-md py-2">
+                  <p className="text-[9px] text-dim uppercase tracking-wider">{s.label}</p>
+                  <p className="text-lg font-bold text-text mt-0.5">{s.v}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Per-agent cards */}
+          {activity && activity.agents.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {activity.agents.filter(a => a.active).map(a => {
+                const isGhost = a.type === 'closer' && a.leads_touched === 0
+                const isExpanded = expandedAgent === a.user_id
+                const totalActions = a.actions.manual_messages + a.actions.calls_logged + a.actions.notes_added + a.actions.status_changes + a.actions.reassignments_performed
+                return (
+                  <div
+                    key={a.user_id || a.name}
+                    className="rounded-lg p-3 transition-colors"
+                    style={{
+                      background: 'var(--color-elevated)',
+                      border: `1px solid ${isGhost ? 'color-mix(in srgb, var(--color-danger) 40%, transparent)' : totalActions > 0 ? 'color-mix(in srgb, var(--color-success) 30%, transparent)' : 'var(--color-border)'}`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-text truncate">{a.name}</p>
+                        <p className="text-[10px] text-dim mt-0.5 capitalize">{a.type}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-2xl font-bold ${isGhost ? 'text-danger' : totalActions > 0 ? 'text-success' : 'text-dim'}`}>{a.leads_touched}</p>
+                        <p className="text-[9px] text-dim uppercase tracking-wider">leads touched</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] py-2 border-t border-border">
+                      <div className="flex items-center justify-between">
+                        <span className="text-dim">💬 Messages</span><span className="text-text font-medium">{a.actions.manual_messages}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-dim">📞 Calls</span><span className="text-text font-medium">{a.actions.calls_logged}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-dim">📝 Notes</span><span className="text-text font-medium">{a.actions.notes_added}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-dim">🔄 Statuses</span><span className="text-text font-medium">{a.actions.status_changes}</span>
+                      </div>
+                      {a.actions.reassignments_performed > 0 && (
+                        <div className="flex items-center justify-between col-span-2">
+                          <span className="text-dim">🔀 Reassigns</span><span className="text-text font-medium">{a.actions.reassignments_performed}</span>
+                        </div>
+                      )}
+                    </div>
+                    {Object.keys(a.status_progressions).length > 0 && (
+                      <div className="text-[10px] text-dim mt-2 flex flex-wrap gap-1">
+                        {Object.entries(a.status_progressions).map(([k, v]) => (
+                          <span key={k} className="px-1.5 py-0.5 rounded bg-card text-muted">
+                            {k.replace(/^to_/, '→ ')}: <span className="text-text font-medium">{v}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {a.touched_leads.length > 0 && (
+                      <button
+                        onClick={() => setExpandedAgent(isExpanded ? null : a.user_id)}
+                        className="text-[11px] text-accent hover:underline mt-2"
+                      >
+                        {isExpanded ? 'Hide' : `View ${a.touched_leads.length} touched lead${a.touched_leads.length === 1 ? '' : 's'}`}
+                      </button>
+                    )}
+                    {isExpanded && (
+                      <div className="mt-2 pt-2 border-t border-border space-y-1 max-h-64 overflow-y-auto">
+                        {a.touched_leads.map((l, i) => (
+                          <div key={i} className="text-[11px] flex items-center gap-2 hover:bg-card rounded px-1 py-0.5">
+                            <span className="text-dim font-mono w-12 shrink-0">{l.lead_row || '—'}</span>
+                            <a href={l.lead_row ? `/leads/${l.lead_row}` : '#'} className="text-accent hover:underline truncate flex-1">{l.name}</a>
+                            <span className="text-dim text-[10px]">{l.current_status}</span>
+                            <span className="text-[10px]">{l.actions.map(x => x === 'msg' ? '💬' : x === 'call' ? '📞' : x === 'note' ? '📝' : x === 'status' ? '🔄' : x === 'reassign' ? '🔀' : '·').join('')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : activityLoading ? (
+            <p className="text-xs text-dim text-center py-6">Loading…</p>
+          ) : (
+            <p className="text-xs text-dim text-center py-6">No activity for this date.</p>
+          )}
+        </section>
 
         {/* ─── Overall Conversion Rate ────────────────────────────────── */}
         <div className="bg-card border border-border rounded-lg px-5 py-4 mb-6 flex items-center gap-4">
