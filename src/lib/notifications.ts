@@ -106,10 +106,27 @@ export async function markAllNotificationsRead(userId: string): Promise<number> 
 }
 
 // Best-effort wrapper used inside webhook / cron paths — never throws.
+// Also fires Web Push (Wave C) when the user has a registered subscription.
 export async function notifyQuiet(input: Parameters<typeof insertNotification>[0]): Promise<void> {
   try {
     await insertNotification(input)
   } catch (err) {
     console.error('[notifyQuiet] insert failed (non-critical):', err)
+  }
+  try {
+    const { sendPushTo } = await import('./push')
+    const url = input.ref_lead_row
+      ? `/leads/${input.ref_lead_row}`
+      : input.ref_phone
+        ? `/inbox?phone=${encodeURIComponent(input.ref_phone)}`
+        : '/today'
+    await sendPushTo(input.user_id, {
+      title: input.title,
+      body: input.body ?? '',
+      url,
+      tag: `tbwx-${input.type}-${input.ref_lead_row ?? input.ref_phone ?? 'general'}`,
+    })
+  } catch (err) {
+    console.error('[notifyQuiet] push failed (non-critical):', err)
   }
 }

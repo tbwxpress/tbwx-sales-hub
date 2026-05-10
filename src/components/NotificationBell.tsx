@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
+import PushToggle from './PushToggle'
 
 interface Notification {
   id: number
@@ -132,10 +133,11 @@ export default function NotificationBell() {
             )}
           </div>
 
-          <div className="px-4 py-2 border-t border-border">
+          <div className="px-4 py-2 border-t border-border flex items-center justify-between gap-2">
             <Link href="/today" onClick={() => setOpen(false)} className="text-xs text-accent hover:underline">
               Open Today &rarr;
             </Link>
+            <PushToggle compact />
           </div>
         </div>
       )}

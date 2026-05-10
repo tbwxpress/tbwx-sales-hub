@@ -291,6 +291,18 @@ async function ensureInit(): Promise<Client> {
         created_at TEXT DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_commission_payments_closer ON commission_payments(closer_user_id, paid);
+
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        user_agent TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        last_used_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
     `)
 
     // Additive migrations (try-catch for existing DBs)
@@ -1349,4 +1361,67 @@ export async function getAllAgreements(): Promise<Record<string, unknown>[]> {
   const db = await ensureInit()
   const result = await db.execute('SELECT * FROM agreements ORDER BY created_at DESC')
   return result.rows.map(serializeRow)
+}
+
+// ─── Push Subscriptions (Wave C) ─────────────────────────────────────────
+
+export interface PushSubscriptionRow {
+  id: number
+  user_id: string
+  endpoint: string
+  p256dh: string
+  auth: string
+  user_agent: string
+  created_at: string
+  last_used_at: string | null
+}
+
+export async function upsertPushSubscription(input: {
+  user_id: string
+  endpoint: string
+  p256dh: string
+  auth: string
+  user_agent?: string
+}): Promise<void> {
+  const db = await ensureInit()
+  await db.execute({
+    sql: `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(endpoint) DO UPDATE SET
+            user_id = excluded.user_id,
+            p256dh = excluded.p256dh,
+            auth = excluded.auth,
+            user_agent = excluded.user_agent,
+            last_used_at = datetime('now')`,
+    args: [input.user_id, input.endpoint, input.p256dh, input.auth, input.user_agent ?? ''],
+  })
+}
+
+export async function deletePushSubscription(endpoint: string, userId?: string): Promise<void> {
+  const db = await ensureInit()
+  if (userId) {
+    await db.execute({ sql: 'DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?', args: [endpoint, userId] })
+  } else {
+    await db.execute({ sql: 'DELETE FROM push_subscriptions WHERE endpoint = ?', args: [endpoint] })
+  }
+}
+
+export async function getPushSubscriptionsForUser(userId: string): Promise<PushSubscriptionRow[]> {
+  const db = await ensureInit()
+  const r = await db.execute({ sql: 'SELECT * FROM push_subscriptions WHERE user_id = ?', args: [userId] })
+  return r.rows.map(row => ({
+    id: Number(row.id),
+    user_id: String(row.user_id),
+    endpoint: String(row.endpoint),
+    p256dh: String(row.p256dh),
+    auth: String(row.auth),
+    user_agent: String(row.user_agent || ''),
+    created_at: String(row.created_at),
+    last_used_at: row.last_used_at ? String(row.last_used_at) : null,
+  }))
+}
+
+export async function touchPushSubscription(endpoint: string): Promise<void> {
+  const db = await ensureInit()
+  await db.execute({ sql: "UPDATE push_subscriptions SET last_used_at = datetime('now') WHERE endpoint = ?", args: [endpoint] })
 }

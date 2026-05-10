@@ -15,6 +15,11 @@ const PUBLIC_PATHS = [
   '/api/cron/cleanup-media',
   '/api/cron/meta-audience-sync',
   '/api/cron/meta-daily-report',
+  // Public key is safe to expose; the SW fetches it before login on cold start.
+  '/api/push/vapid-public-key',
+  // Service worker file itself
+  '/sw.js',
+  '/manifest.webmanifest',
 ]
 
 export async function middleware(req: NextRequest) {
