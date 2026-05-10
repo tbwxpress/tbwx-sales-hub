@@ -615,8 +615,8 @@ export default function LeadDetailPage() {
   return (
     <div className="min-h-screen bg-bg text-text">
       {/* Top bar */}
-      <div className="border-b border-border bg-card px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="border-b border-border bg-card px-4 md:px-6 py-3 flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 md:gap-4 flex-wrap min-w-0">
           <button
             onClick={() => router.push('/dashboard')}
             className="text-dim hover:text-text transition-colors text-sm flex items-center gap-1"
@@ -626,8 +626,8 @@ export default function LeadDetailPage() {
             </svg>
             Dashboard
           </button>
-          <div className="w-px h-5 bg-border" />
-          <h1 className="text-lg font-semibold">{lead.full_name}</h1>
+          <div className="hidden md:block w-px h-5 bg-border" />
+          <h1 className="text-base md:text-lg font-semibold truncate max-w-[60vw] md:max-w-none">{lead.full_name}</h1>
           <span className="text-xs px-2 py-0.5 rounded border" style={STATUS_COLORS[lead.lead_status] ? { background: STATUS_COLORS[lead.lead_status].bg, color: STATUS_COLORS[lead.lead_status].text, borderColor: STATUS_COLORS[lead.lead_status].border } : { background: 'var(--color-elevated)', color: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
             {lead.lead_status}
           </span>
@@ -639,19 +639,19 @@ export default function LeadDetailPage() {
           <span>Lead #{lead.row_number}</span>
           {lead.created_time && (
             <>
-              <span className="text-border-light">|</span>
-              <span>Created {new Date(lead.created_time).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              <span className="text-border-light hidden sm:inline">|</span>
+              <span className="hidden sm:inline">Created {new Date(lead.created_time).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
             </>
           )}
         </div>
       </div>
 
       {/* Main layout */}
-      <div className="flex h-[calc(100vh-57px)]">
+      <div className="flex flex-col md:flex-row md:h-[calc(100vh-57px)]">
 
         {/* LEFT SIDEBAR */}
-        <div className="w-1/3 min-w-[340px] max-w-[440px] border-r border-border overflow-y-auto bg-bg">
-          <div className="p-5 space-y-5">
+        <div className="w-full md:w-1/3 md:min-w-[340px] md:max-w-[440px] border-b md:border-b-0 md:border-r border-border md:overflow-y-auto bg-bg">
+          <div className="p-4 md:p-5 space-y-4 md:space-y-5">
 
             {/* Lead Info Card */}
             <div className="bg-card rounded-lg border border-border p-4 space-y-3">
@@ -1097,10 +1097,10 @@ export default function LeadDetailPage() {
         </div>
 
         {/* RIGHT PANEL - CHAT */}
-        <div className="flex-1 flex flex-col bg-bg">
+        <div className="flex-1 flex flex-col bg-bg min-h-[60vh] md:min-h-0">
 
           {/* Chat header */}
-          <div className="border-b border-border bg-card px-5 py-3 flex items-center justify-between">
+          <div className="border-b border-border bg-card px-4 md:px-5 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-green-600/20 flex items-center justify-center">
                 <svg className="w-4 h-4 text-green-500" viewBox="0 0 24 24" fill="currentColor">
@@ -1123,7 +1123,7 @@ export default function LeadDetailPage() {
           </div>
 
           {/* Messages area */}
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-1">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 md:px-5 py-4 space-y-1 max-h-[60vh] md:max-h-none">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-dim">
                 <svg className="w-12 h-12 mb-3 text-border" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1153,7 +1153,7 @@ export default function LeadDetailPage() {
                       )}
                       <div className={`flex ${isSent ? 'justify-end' : 'justify-start'} mb-1`}>
                         <div
-                          className={`relative max-w-[70%] rounded-lg px-3 py-2 ${
+                          className={`relative max-w-[85%] md:max-w-[70%] rounded-lg px-3 py-2 ${
                             isSent
                               ? 'bg-wa-sent text-zinc-100 rounded-tr-none'
                               : 'bg-wa-received text-text rounded-tl-none'
@@ -1212,16 +1212,16 @@ export default function LeadDetailPage() {
 
           {/* 24-hour window warning + template dropdown */}
           {outsideWindow && (
-            <div className="px-5 py-2 bg-amber-500/5 border-t border-amber-500/20">
-              <div className="flex items-center justify-between">
+            <div className="px-4 md:px-5 py-2 bg-amber-500/5 border-t border-amber-500/20">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <p className="text-xs text-amber-400/80">
                   This lead has not messaged in the last 24 hours. You can only send approved templates.
                 </p>
-                <div className="relative" ref={templateDropdownRef}>
+                <div className="relative w-full sm:w-auto" ref={templateDropdownRef}>
                   <button
                     onClick={() => setShowTemplateDropdown(!showTemplateDropdown)}
                     disabled={sending}
-                    className="bg-green-600 hover:bg-green-500 text-white text-xs font-medium px-3 py-1.5 rounded-md transition-colors disabled:opacity-50 whitespace-nowrap"
+                    className="w-full sm:w-auto bg-green-600 hover:bg-green-500 text-white text-xs font-medium px-3 py-1.5 rounded-md transition-colors disabled:opacity-50 whitespace-nowrap"
                   >
                     {sending ? 'Sending...' : 'Send Template'}
                   </button>
@@ -1245,7 +1245,7 @@ export default function LeadDetailPage() {
           )}
 
           {/* Message input area */}
-          <div className="border-t border-border bg-card px-4 py-3">
+          <div className="border-t border-border bg-card px-3 md:px-4 py-3 sticky bottom-0">
             <div className="flex items-end gap-2">
               {/* Quick Replies button */}
               <div className="relative" ref={qrDropdownRef}>

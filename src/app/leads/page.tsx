@@ -565,8 +565,162 @@ export default function LeadsPage() {
           </span>
         </div>
 
-        {/* ─── Lead Table ─────────────────────────────────────────────── */}
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
+        {/* ─── Mobile Card List (<md) ─────────────────────────────────── */}
+        <div className="md:hidden space-y-2">
+          {leads.length === 0 ? (
+            <div className="bg-card border border-border rounded-lg px-4 py-12 text-center">
+              <div className="flex flex-col items-center gap-3">
+                <svg className="w-10 h-10 text-dim/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                </svg>
+                <div>
+                  <p className="text-muted text-sm font-medium">
+                    {search || statusFilter || assignedFilter
+                      ? 'No leads match your filters'
+                      : 'No leads yet'}
+                  </p>
+                  <p className="text-dim text-xs mt-1">
+                    {search || statusFilter || assignedFilter
+                      ? 'Try adjusting your search or clearing filters.'
+                      : 'New leads will appear here as they come in.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            leads.map((lead) => {
+              const statusColor = STATUS_COLORS[lead.lead_status] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
+              const followup = followupLabel(lead.next_followup)
+              const isChecked = selected.has(lead.row_number)
+              return (
+                <div
+                  key={lead.row_number}
+                  onClick={() => router.push(`/leads/${lead.row_number}`)}
+                  className="bg-card border rounded-lg p-3 active:bg-elevated/50 transition-colors cursor-pointer relative"
+                  style={{ borderColor: statusColor.border }}
+                >
+                  {/* Checkbox top-right */}
+                  {showCheckboxColumn && (
+                    <label
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleSelect(lead.row_number)}
+                        className="rounded border-border accent-accent w-4 h-4"
+                      />
+                    </label>
+                  )}
+
+                  {/* Top row: Name + score */}
+                  <div className={`flex items-start gap-2 ${showCheckboxColumn ? 'pr-9' : ''}`}>
+                    <div className="flex-1 min-w-0">
+                      <Link
+                        href={`/leads/${lead.row_number}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-accent hover:text-accent-hover font-medium text-sm block truncate"
+                      >
+                        {lead.full_name || 'Unknown'}
+                      </Link>
+                      <p className="text-[11px] text-dim mt-0.5 truncate">
+                        <span className="font-mono">{lead.phone}</span>
+                        {lead.city && <> · {lead.city}{lead.state ? `, ${lead.state}` : ''}</>}
+                      </p>
+                    </div>
+                    {lead.lead_score !== undefined && (
+                      <span
+                        className="inline-flex items-center justify-center w-7 h-7 rounded-full text-[11px] font-bold flex-shrink-0"
+                        style={{
+                          backgroundColor: scoreBg(lead.lead_score),
+                          color: scoreColor(lead.lead_score),
+                          border: `1px solid ${scoreBorder(lead.lead_score)}`,
+                        }}
+                        title={`Lead Score: ${lead.lead_score}/100`}
+                      >
+                        {lead.lead_score}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Status pill row */}
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <span
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded border"
+                      style={{
+                        backgroundColor: statusColor.bg,
+                        color: statusColor.text,
+                        borderColor: statusColor.border,
+                      }}
+                    >
+                      {STATUS_LABELS[lead.lead_status] || lead.lead_status}
+                    </span>
+                    {lead.lead_priority && (
+                      <span
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded border"
+                        style={(() => {
+                          const pc = PRIORITY_COLORS[lead.lead_priority] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
+                          return { backgroundColor: pc.bg, color: pc.text, borderColor: pc.border }
+                        })()}
+                      >
+                        {lead.lead_priority}
+                      </span>
+                    )}
+                    {followup.text !== '-' && (
+                      <span className={`text-[10px] font-medium ${followup.urgent ? 'text-danger' : 'text-muted'}`}>
+                        {followup.text}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Last discussion preview */}
+                  {lead.last_discussion && (() => {
+                    const ld = lead.last_discussion
+                    const icon = ld.source === 'note' ? '📝'
+                      : ld.source === 'call' ? '📞'
+                      : ld.source === 'message_in' ? '💬←'
+                      : '💬→'
+                    const snippet = ld.text.length > 90 ? ld.text.slice(0, 87) + '…' : ld.text
+                    return (
+                      <p className="text-[11px] text-dim mt-2 italic line-clamp-2">
+                        <span className="not-italic mr-1">{icon}</span>
+                        {snippet}
+                      </p>
+                    )
+                  })()}
+
+                  {/* Assigned + telecaller footer */}
+                  <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-border/40">
+                    <span className="text-[10px] text-dim truncate">
+                      {lead.assigned_to ? (
+                        <>Assigned: <span className="text-muted">{lead.assigned_to}</span></>
+                      ) : (
+                        <span className="text-accent/50 italic">Unassigned</span>
+                      )}
+                    </span>
+                    {lead.phone && (
+                      <Link
+                        href={`/inbox?phone=${lead.phone}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 text-[10px] text-dim hover:text-green-400 transition-colors px-2 py-1 rounded hover:bg-green-400/10 flex-shrink-0"
+                        title="Open in Inbox"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                        </svg>
+                        Inbox
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* ─── Lead Table (≥md) ───────────────────────────────────────── */}
+        <div className="hidden md:block bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

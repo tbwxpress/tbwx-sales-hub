@@ -126,8 +126,10 @@ export default function InboxPage() {
   const [savingReminder, setSavingReminder] = useState(false)
   // Browser notifications
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
-  // Mobile sidebar toggle
+  // Mobile sidebar toggle (controls list↔thread on <md)
   const [showSidebar, setShowSidebar] = useState(true)
+  // Mobile right-side context drawer (slide-in lead details on <md). Desktop ignores this.
+  const [contextDrawerOpen, setContextDrawerOpen] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollRef = useRef<NodeJS.Timeout | null>(null)
@@ -154,6 +156,7 @@ export default function InboxPage() {
           setActivePhone(null)
           setActiveContact(null)
           setMessages([])
+          setContextDrawerOpen(false)
         }
       }
     }
@@ -927,8 +930,9 @@ export default function InboxPage() {
               <div className="flex items-center gap-3 px-4 py-3 border-b border-border glass-nav">
                 {/* Back button (mobile) */}
                 <button
-                  onClick={() => { setShowSidebar(true); setActivePhone(null); setActiveContact(null); setMessages([]) }}
+                  onClick={() => { setShowSidebar(true); setActivePhone(null); setActiveContact(null); setMessages([]); setContextDrawerOpen(false) }}
                   className="md:hidden text-muted hover:text-text flex-shrink-0"
+                  aria-label="Back to conversation list"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -997,9 +1001,16 @@ export default function InboxPage() {
                     <span className="hidden sm:inline">Remind</span>
                   </button>
 
-                  {/* Lead details toggle */}
+                  {/* Lead details toggle — desktop toggles inline panel; mobile opens right drawer */}
                   <button
-                    onClick={() => setShowLeadDetails(!showLeadDetails)}
+                    onClick={() => {
+                      // On mobile, open the slide-in drawer; on desktop, toggle the inline panel
+                      if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+                        setContextDrawerOpen(true)
+                      } else {
+                        setShowLeadDetails(!showLeadDetails)
+                      }
+                    }}
                     className={`text-[10px] px-2 py-1 rounded transition-colors font-medium flex items-center gap-1 ${
                       showLeadDetails ? 'bg-accent/20 text-accent' : 'bg-elevated hover:bg-border text-muted'
                     }`}
@@ -1013,9 +1024,9 @@ export default function InboxPage() {
                 </div>
               </div>
 
-              {/* Lead Details Panel (collapsible) */}
+              {/* Lead Details Panel (collapsible) — desktop only; mobile uses slide-in drawer below */}
               {showLeadDetails && activeContact && (
-                <div className="border-b border-border glass-nav px-4 py-3">
+                <div className="hidden md:block border-b border-border glass-nav px-4 py-3">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div>
                       <span className="text-dim block text-[10px] uppercase tracking-wider">Name</span>
@@ -1379,8 +1390,8 @@ export default function InboxPage() {
                 </div>
               )}
 
-              {/* Message Input */}
-              <form onSubmit={handleSend} className="border-t border-border glass-nav px-3 py-2.5 flex items-center gap-2">
+              {/* Message Input — sticky to bottom of thread on mobile */}
+              <form onSubmit={handleSend} className="sticky bottom-0 border-t border-border glass-nav px-3 py-2.5 flex items-center gap-2 flex-shrink-0">
                 {/* Hidden file input */}
                 <input
                   ref={fileInputRef}
@@ -1521,6 +1532,163 @@ export default function InboxPage() {
           )}
         </div>
       </div>
+
+      {/* ─── Mobile Lead Context Drawer (slide-in from right, <md only) ── */}
+      {activeContact && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={() => setContextDrawerOpen(false)}
+            className={`md:hidden fixed inset-0 z-40 bg-black/50 transition-opacity duration-200 ${
+              contextDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            }`}
+            aria-hidden="true"
+          />
+          {/* Drawer */}
+          <aside
+            className={`md:hidden fixed top-0 right-0 z-50 h-full w-[88vw] max-w-[360px] bg-card border-l border-border shadow-2xl transition-transform duration-200 ease-out flex flex-col ${
+              contextDrawerOpen ? 'translate-x-0' : 'translate-x-full'
+            }`}
+            role="dialog"
+            aria-label="Lead details"
+            aria-modal="true"
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
+              <span className="text-sm font-semibold text-text">Lead details</span>
+              <button
+                onClick={() => setContextDrawerOpen(false)}
+                className="text-dim hover:text-text"
+                aria-label="Close lead details"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-3">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-dim block text-[10px] uppercase tracking-wider">Name</span>
+                  <span className="text-text font-medium">{activeContact.name || 'Unknown'}</span>
+                </div>
+                <div>
+                  <span className="text-dim block text-[10px] uppercase tracking-wider">Phone</span>
+                  <span className="text-text font-medium">+{activeContact.phone}</span>
+                </div>
+                <div>
+                  <span className="text-dim block text-[10px] uppercase tracking-wider">City</span>
+                  <span className="text-text font-medium">{leadInfo?.city || activeContact.city || 'N/A'}{leadInfo?.state ? `, ${leadInfo.state}` : ''}</span>
+                </div>
+                <div>
+                  <span className="text-dim block text-[10px] uppercase tracking-wider">Type</span>
+                  <span className="text-text font-medium">{activeContact.is_lead ? 'Lead' : 'Contact'}</span>
+                </div>
+              </div>
+
+              {leadInfo && (
+                <div className="grid grid-cols-2 gap-3 text-xs mt-4 pt-3 border-t border-border/50">
+                  <div>
+                    <span className="text-dim block text-[10px] uppercase tracking-wider mb-1">Status</span>
+                    <Select value={leadInfo.lead_status} onValueChange={v => v && updateLeadFromInbox('lead_status', v)} disabled={updatingLead}>
+                      <SelectTrigger className="h-7 text-[11px]" style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+                        {['NEW','DECK_SENT','REPLIED','NO_RESPONSE','CALL_DONE_INTERESTED','HOT','FINAL_NEGOTIATION','CONVERTED','DELAYED','LOST'].map(s => (
+                          <SelectItem key={s} value={s} className="text-[11px]">{s.replace('_', ' ')}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <span className="text-dim block text-[10px] uppercase tracking-wider mb-1">Priority</span>
+                    <Select value={leadInfo.lead_priority || '__none__'} onValueChange={v => v && updateLeadFromInbox('lead_priority', v === '__none__' ? '' : v)} disabled={updatingLead}>
+                      <SelectTrigger className="h-7 text-[11px]" style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+                        <SelectItem value="__none__" className="text-[11px]">—</SelectItem>
+                        {['HOT','WARM','COLD'].map(p => (
+                          <SelectItem key={p} value={p} className="text-[11px]">{p}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <span className="text-dim block text-[10px] uppercase tracking-wider">Assigned</span>
+                    <span className="text-text font-medium">{leadInfo.assigned_to || 'Unassigned'}</span>
+                  </div>
+                  <div>
+                    <span className="text-dim block text-[10px] uppercase tracking-wider">Score</span>
+                    <span className="text-text font-medium">{leadInfo.lead_score ?? '—'}</span>
+                    {leadInfo.next_followup && (
+                      <span className="text-dim block text-[9px] mt-0.5">Follow-up: {new Date(leadInfo.next_followup).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {callLogs.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-border/50">
+                  <span className="text-[10px] text-dim uppercase tracking-wider block mb-2">Recent Calls</span>
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                    {callLogs.slice(0, 5).map(log => (
+                      <div key={log.id} className="flex items-center gap-2 text-[11px] flex-wrap">
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                          log.outcome === 'answered' || log.outcome === 'interested' ? 'bg-success/15 text-success' :
+                          log.outcome === 'no_answer' || log.outcome === 'busy' ? 'bg-warning/15 text-warning' :
+                          'bg-elevated text-muted'
+                        }`}>
+                          {log.outcome.replace(/_/g, ' ')}
+                        </span>
+                        {log.duration && <span className="text-dim">{log.duration}</span>}
+                        <span className="text-dim">{log.logged_by}</span>
+                        {log.notes && <span className="text-muted truncate flex-1 min-w-0">{log.notes}</span>}
+                        <span className="text-dim flex-shrink-0">{formatTime(log.created_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 pt-3 border-t border-border/50">
+                <span className="text-[10px] text-dim uppercase tracking-wider block mb-2">Notes</span>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    value={newNote}
+                    onChange={e => setNewNote(e.target.value)}
+                    placeholder="Add a note..."
+                    className="flex-1 min-w-0 bg-elevated border border-border rounded-lg px-2.5 py-1.5 text-xs text-text placeholder-dim focus:outline-none focus:border-accent/50"
+                    onKeyDown={e => { if (e.key === 'Enter') handleSaveNote() }}
+                  />
+                  <button
+                    onClick={handleSaveNote}
+                    disabled={savingNote || !newNote.trim()}
+                    className="text-[10px] bg-accent/20 hover:bg-accent/30 text-accent px-2.5 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50 flex-shrink-0"
+                  >
+                    {savingNote ? '...' : 'Add'}
+                  </button>
+                </div>
+                {leadNotes.length > 0 ? (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto border-l-2 border-accent/20 pl-3">
+                    {leadNotes.slice(0, 10).map(n => (
+                      <div key={n.id} className="text-[11px] flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-dim">{formatTime(n.created_at)}</span>
+                          <span className="text-muted">{n.created_by}</span>
+                        </div>
+                        <span className="text-text">{n.note}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-dim">No notes yet</p>
+                )}
+              </div>
+            </div>
+          </aside>
+        </>
+      )}
 
       {/* ─── Forward Media Modal ──────────────────────────────────────── */}
       {forwardSrc && (

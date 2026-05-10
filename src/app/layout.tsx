@@ -4,6 +4,7 @@ import { BRAND } from '@/config/client'
 import CommandPalette from '@/components/CommandPalette'
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
+import Script from 'next/script';
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -22,12 +23,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
         <meta name="theme-color" content={process.env.NEXT_PUBLIC_THEME_COLOR || '#1a1209'} />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
         {/* Restore saved theme before paint to prevent flash */}
         <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem('theme');if(t){var cl=document.documentElement.classList;cl.remove('dark','light');cl.add(t)}}catch(e){}` }} />
       </head>
       <body className="min-h-screen antialiased transition-colors duration-200">
         <CommandPalette />
         {children}
+        <Script id="sw-register" strategy="afterInteractive">{`
+          if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+              navigator.serviceWorker.register('/sw.js').catch(() => {});
+            });
+          }
+        `}</Script>
       </body>
     </html>
   )
