@@ -1391,7 +1391,7 @@ export default function InboxPage() {
               )}
 
               {/* Message Input — sticky to bottom of thread on mobile */}
-              <form onSubmit={handleSend} className="sticky bottom-0 border-t border-border glass-nav px-3 py-2.5 flex items-center gap-2 flex-shrink-0">
+              <form onSubmit={handleSend} className="sticky bottom-0 border-t border-border glass-nav px-3 py-2.5 flex items-center gap-2 flex-shrink-0 safe-bottom">
                 {/* Hidden file input */}
                 <input
                   ref={fileInputRef}

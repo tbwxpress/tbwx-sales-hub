@@ -45,14 +45,14 @@ export default function FollowUpsPage() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl p-4 border" style={{ background: 'var(--color-card)', borderColor: overdue.length > 0 ? 'rgba(239,68,68,0.25)' : 'var(--color-border)', borderLeft: overdue.length > 0 ? '3px solid var(--color-danger)' : undefined }}>
-              <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: overdue.length > 0 ? 'var(--color-danger)' : 'var(--color-muted)' }}>Overdue</div>
+              <div className="text-xs sm:text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: overdue.length > 0 ? 'var(--color-danger)' : 'var(--color-muted)' }}>Overdue</div>
               <div className="text-3xl font-extrabold leading-none" style={{ color: overdue.length > 0 ? 'var(--color-danger)' : 'var(--color-dim)' }}>{overdue.length}</div>
-              <div className="text-[10px] mt-1" style={{ color: 'var(--color-dim)' }}>{overdue.length === 0 ? 'all caught up!' : 'need immediate attention'}</div>
+              <div className="text-xs sm:text-[10px] mt-1" style={{ color: 'var(--color-dim)' }}>{overdue.length === 0 ? 'all caught up!' : 'need immediate attention'}</div>
             </div>
             <div className="rounded-xl p-4 border" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
-              <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-muted)' }}>Upcoming</div>
+              <div className="text-xs sm:text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-muted)' }}>Upcoming</div>
               <div className="text-3xl font-extrabold leading-none" style={{ color: 'var(--color-accent)' }}>{upcoming.length}</div>
-              <div className="text-[10px] mt-1" style={{ color: 'var(--color-dim)' }}>scheduled ahead</div>
+              <div className="text-xs sm:text-[10px] mt-1" style={{ color: 'var(--color-dim)' }}>scheduled ahead</div>
             </div>
           </div>
         </div>
@@ -81,39 +81,41 @@ export default function FollowUpsPage() {
                 </div>
               ) : (
                 <div className="bg-card border border-danger/20 rounded-xl overflow-hidden glow-danger">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-elevated/30 text-left">
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Lead</th>
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Phone</th>
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">City</th>
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Assigned</th>
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Overdue By</th>
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {overdue.map(lead => (
-                        <tr key={lead.row_number} className="table-row-hover">
-                          <td className="px-4 py-3 font-medium text-text">{lead.full_name}</td>
-                          <td className="px-4 py-3 text-muted font-mono text-xs">{lead.phone}</td>
-                          <td className="px-4 py-3 text-muted text-xs">{lead.city}</td>
-                          <td className="px-4 py-3 text-muted text-xs">{lead.assigned_to || <span className="italic text-dim">Unassigned</span>}</td>
-                          <td className="px-4 py-3">
-                            <span className="text-danger font-semibold text-xs">{Math.abs(daysFromNow(lead.next_followup))} days</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <Link
-                              href={`/leads/${lead.row_number}`}
-                              className="bg-accent/10 text-accent text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-accent/20 hover:glow-accent-sm transition-colors inline-block"
-                            >
-                              Follow Up
-                            </Link>
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[520px]">
+                      <thead>
+                        <tr className="border-b border-border bg-elevated/30 text-left">
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Lead</th>
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Phone</th>
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">City</th>
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Assigned</th>
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Overdue By</th>
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider"></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {overdue.map(lead => (
+                          <tr key={lead.row_number} className="table-row-hover">
+                            <td className="px-4 py-3 font-medium text-text">{lead.full_name}</td>
+                            <td className="px-4 py-3 text-muted font-mono text-xs">{lead.phone}</td>
+                            <td className="px-4 py-3 text-muted text-xs">{lead.city}</td>
+                            <td className="px-4 py-3 text-muted text-xs">{lead.assigned_to || <span className="italic text-dim">Unassigned</span>}</td>
+                            <td className="px-4 py-3">
+                              <span className="text-danger font-semibold text-xs">{Math.abs(daysFromNow(lead.next_followup))} days</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Link
+                                href={`/leads/${lead.row_number}`}
+                                className="bg-accent/10 text-accent text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-accent/20 hover:glow-accent-sm transition-colors inline-block"
+                              >
+                                Follow Up
+                              </Link>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
@@ -136,41 +138,43 @@ export default function FollowUpsPage() {
                 </div>
               ) : (
                 <div className="bg-card border border-border rounded-xl overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-elevated/30 text-left">
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Lead</th>
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Phone</th>
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">City</th>
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Assigned</th>
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Due In</th>
-                        <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {upcoming.map(lead => (
-                        <tr key={lead.row_number} className="table-row-hover">
-                          <td className="px-4 py-3 font-medium text-text">{lead.full_name}</td>
-                          <td className="px-4 py-3 text-muted font-mono text-xs">{lead.phone}</td>
-                          <td className="px-4 py-3 text-muted text-xs">{lead.city}</td>
-                          <td className="px-4 py-3 text-muted text-xs">{lead.assigned_to || <span className="italic text-dim">Unassigned</span>}</td>
-                          <td className="px-4 py-3">
-                            <span className="text-accent font-medium text-xs">
-                              {daysFromNow(lead.next_followup) === 0 ? 'Today' : `${daysFromNow(lead.next_followup)} days`}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <Link
-                              href={`/leads/${lead.row_number}`}
-                              className="text-dim hover:text-accent text-xs transition-colors"
-                            >
-                              View
-                            </Link>
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[520px]">
+                      <thead>
+                        <tr className="border-b border-border bg-elevated/30 text-left">
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Lead</th>
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Phone</th>
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">City</th>
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Assigned</th>
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider">Due In</th>
+                          <th className="px-4 py-3 text-[10px] font-semibold text-dim uppercase tracking-wider"></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {upcoming.map(lead => (
+                          <tr key={lead.row_number} className="table-row-hover">
+                            <td className="px-4 py-3 font-medium text-text">{lead.full_name}</td>
+                            <td className="px-4 py-3 text-muted font-mono text-xs">{lead.phone}</td>
+                            <td className="px-4 py-3 text-muted text-xs">{lead.city}</td>
+                            <td className="px-4 py-3 text-muted text-xs">{lead.assigned_to || <span className="italic text-dim">Unassigned</span>}</td>
+                            <td className="px-4 py-3">
+                              <span className="text-accent font-medium text-xs">
+                                {daysFromNow(lead.next_followup) === 0 ? 'Today' : `${daysFromNow(lead.next_followup)} days`}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Link
+                                href={`/leads/${lead.row_number}`}
+                                className="text-dim hover:text-accent text-xs transition-colors"
+                              >
+                                View
+                              </Link>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>

@@ -1245,7 +1245,7 @@ export default function LeadDetailPage() {
           )}
 
           {/* Message input area */}
-          <div className="border-t border-border bg-card px-3 md:px-4 py-3 sticky bottom-0">
+          <div className="border-t border-border bg-card px-3 md:px-4 py-3 sticky bottom-0 safe-bottom">
             <div className="flex items-end gap-2">
               {/* Quick Replies button */}
               <div className="relative" ref={qrDropdownRef}>

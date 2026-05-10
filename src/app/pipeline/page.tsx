@@ -289,7 +289,7 @@ export default function PipelinePage() {
               </select>
             )}
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <div className="rounded-xl p-4 border" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
               <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-muted)' }}>Total Leads</div>
               <div className="text-3xl font-extrabold leading-none" style={{ color: 'var(--color-accent)' }}>{totalLeads}</div>

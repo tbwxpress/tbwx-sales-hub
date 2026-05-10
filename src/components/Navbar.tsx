@@ -125,7 +125,7 @@ export default function Navbar() {
       style={{
         background: 'linear-gradient(90deg, var(--color-bg) 0%, var(--color-card) 50%, var(--color-bg) 100%)',
         borderColor: 'rgba(212,175,55,0.15)',
-        height: '54px',
+        height: 'clamp(54px, 56px, 58px)',
       }}
       ref={menuRef}
     >
@@ -300,11 +300,12 @@ export default function Navbar() {
             <Image src={brandLogo} alt={brandShort} width={28} height={28} className="rounded-md" />
             <span className="text-sm font-bold" style={{ color: 'var(--color-accent)' }}>Sales Hub</span>
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <NotificationBell />
             <ThemeToggle />
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="flex items-center justify-center w-8 h-8 rounded-md transition-colors duration-200"
+              className="flex items-center justify-center w-10 h-10 rounded-md transition-colors duration-200"
               style={{ color: 'var(--color-muted)' }}
               aria-label="Toggle menu"
             >
