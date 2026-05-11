@@ -8,6 +8,7 @@ const REACTIVATION_TEMPLATES = {
   d0: 'franchise_reactivation_d0',
   d5: 'franchise_reactivation_d5',
   d7: 'franchise_reactivation_d7',
+  optin: 'franchise_reengagement_optin',
 } as const
 
 type TemplateKey = keyof typeof REACTIVATION_TEMPLATES
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { template?: string; dryRun?: boolean; limit?: number; onlyFailed?: boolean; includeLost?: boolean; statuses?: string[] }
+  let body: { template?: string; dryRun?: boolean; limit?: number; onlyFailed?: boolean; includeLost?: boolean; statuses?: string[]; failedFor?: string }
   try {
     body = await req.json()
   } catch {
@@ -66,6 +67,12 @@ export async function POST(req: NextRequest) {
   const onlyFailed = body.onlyFailed === true
   const includeLost = body.includeLost === true
 
+  // When sending opt-in, the failure set we care about is from a marketing
+  // template (e.g. d0), not the opt-in template itself. failedFor lets the
+  // caller target the failures of a different template than the one being sent.
+  const failedForKey = (body.failedFor as TemplateKey) || templateKey
+  const failedForTemplate = REACTIVATION_TEMPLATES[failedForKey] || templateName
+
   // Explicit status allowlist takes priority over excluded-set logic.
   // Use this to target specific cohorts e.g. { statuses: ["LOST","DELAYED"] }.
   const statusAllowlist = Array.isArray(body.statuses) && body.statuses.length
@@ -82,7 +89,7 @@ export async function POST(req: NextRequest) {
     const [leads, optedOut, failedPhones] = await Promise.all([
       getLeads(),
       getOptedOutPhones(),
-      onlyFailed ? getFailedPhonesForTemplate(templateName) : Promise.resolve(new Set<string>()),
+      onlyFailed ? getFailedPhonesForTemplate(failedForTemplate) : Promise.resolve(new Set<string>()),
     ])
 
     const skipped = { no_phone: 0, bad_date: 0, post_may: 0, excluded_status: 0, not_in_allowlist: 0, opted_out: 0, duplicate: 0, not_in_failed_set: 0 }
