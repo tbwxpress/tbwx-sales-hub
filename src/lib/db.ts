@@ -314,6 +314,8 @@ async function ensureInit(): Promise<Client> {
     try { await db.execute("ALTER TABLE messages ADD COLUMN media_mime TEXT DEFAULT ''") } catch { /* column may already exist */ }
     try { await db.execute("ALTER TABLE messages ADD COLUMN media_filename TEXT DEFAULT ''") } catch { /* column may already exist */ }
     try { await db.execute("ALTER TABLE messages ADD COLUMN media_path TEXT DEFAULT ''") } catch { /* column may already exist */ }
+    try { await db.execute("ALTER TABLE messages ADD COLUMN error_code TEXT DEFAULT ''") } catch { /* column may already exist */ }
+    try { await db.execute("ALTER TABLE messages ADD COLUMN error_message TEXT DEFAULT ''") } catch { /* column may already exist */ }
 
     _initialized = true
   }
@@ -535,12 +537,24 @@ export async function searchMessages(query: string) {
   return serializeRows(result.rows)
 }
 
-export async function updateMessageStatus(waMessageId: string, status: string) {
+export async function updateMessageStatus(
+  waMessageId: string,
+  status: string,
+  errorCode?: string,
+  errorMessage?: string,
+) {
   const db = await ensureInit()
-  await db.execute({
-    sql: 'UPDATE messages SET status = ? WHERE wa_message_id = ?',
-    args: [status, waMessageId],
-  })
+  if (errorCode || errorMessage) {
+    await db.execute({
+      sql: 'UPDATE messages SET status = ?, error_code = ?, error_message = ? WHERE wa_message_id = ?',
+      args: [status, errorCode || '', errorMessage || '', waMessageId],
+    })
+  } else {
+    await db.execute({
+      sql: 'UPDATE messages SET status = ? WHERE wa_message_id = ?',
+      args: [status, waMessageId],
+    })
+  }
 }
 
 /**
@@ -1146,6 +1160,35 @@ export async function getVoiceAgentCallBySid(callSid: string) {
     args: [callSid],
   })
   return result.rows[0] ? serializeRow(result.rows[0]) : null
+}
+
+// --- Phones that received a given template but the latest delivery was failed ---
+// Used to retry only the leads where Meta dropped delivery for a campaign batch.
+export async function getFailedPhonesForTemplate(templateName: string): Promise<Set<string>> {
+  try {
+    const db = await ensureInit()
+    // For each phone that has any row with this template, take the latest one.
+    // If that latest row is status='failed', include it.
+    const result = await db.execute({
+      sql: `
+        SELECT phone, status FROM messages m1
+        WHERE template_used = ?
+          AND timestamp = (
+            SELECT MAX(timestamp) FROM messages m2
+            WHERE m2.phone = m1.phone AND m2.template_used = ?
+          )
+      `,
+      args: [templateName, templateName],
+    })
+    return new Set(
+      result.rows
+        .filter(r => String(r.status) === 'failed')
+        .map(r => normalizePhone(String(r.phone))),
+    )
+  } catch (err) {
+    console.error('[getFailedPhonesForTemplate] non-critical:', err)
+    return new Set()
+  }
 }
 
 // --- Opted-out lookup (used to exclude leads who tapped Not Interested) ---

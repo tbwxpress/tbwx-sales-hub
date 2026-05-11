@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getLeads, logSentMessage } from '@/lib/sheets'
-import { getOptedOutPhones, insertMessage, normalizePhone, upsertContact } from '@/lib/db'
+import { getOptedOutPhones, insertMessage, normalizePhone, upsertContact, getFailedPhonesForTemplate } from '@/lib/db'
 import { sendTemplate } from '@/lib/whatsapp'
 import { apiError } from '@/lib/api-error'
 
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { template?: string; dryRun?: boolean; limit?: number }
+  let body: { template?: string; dryRun?: boolean; limit?: number; onlyFailed?: boolean }
   try {
     body = await req.json()
   } catch {
@@ -63,11 +63,16 @@ export async function POST(req: NextRequest) {
   const templateName = REACTIVATION_TEMPLATES[templateKey]
   const dryRun = body.dryRun !== false
   const limit = typeof body.limit === 'number' && body.limit > 0 ? body.limit : Infinity
+  const onlyFailed = body.onlyFailed === true
 
   try {
-    const [leads, optedOut] = await Promise.all([getLeads(), getOptedOutPhones()])
+    const [leads, optedOut, failedPhones] = await Promise.all([
+      getLeads(),
+      getOptedOutPhones(),
+      onlyFailed ? getFailedPhonesForTemplate(templateName) : Promise.resolve(new Set<string>()),
+    ])
 
-    const skipped = { no_phone: 0, bad_date: 0, post_may: 0, excluded_status: 0, opted_out: 0, duplicate: 0 }
+    const skipped = { no_phone: 0, bad_date: 0, post_may: 0, excluded_status: 0, opted_out: 0, duplicate: 0, not_in_failed_set: 0 }
     const eligible: { phone: string; name: string; row: number; status: string }[] = []
     const seenPhones = new Set<string>()
 
@@ -82,6 +87,7 @@ export async function POST(req: NextRequest) {
       if (EXCLUDED_STATUSES.has(lead.lead_status)) { skipped.excluded_status++; continue }
       if (optedOut.has(phoneNorm)) { skipped.opted_out++; continue }
       if (seenPhones.has(phoneNorm)) { skipped.duplicate++; continue }
+      if (onlyFailed && !failedPhones.has(phoneNorm)) { skipped.not_in_failed_set++; continue }
 
       seenPhones.add(phoneNorm)
       eligible.push({

@@ -423,11 +423,17 @@ export async function POST(req: NextRequest) {
         }
 
         // Handle message status updates (delivered, read, etc.)
+        // Capture error details on failed deliveries for debugging.
         const statuses = value.statuses || []
         for (const status of statuses) {
-          if (status.id) {
-            await updateMessageStatus(status.id, status.status || '')
+          if (!status.id) continue
+          const err = Array.isArray(status.errors) && status.errors.length ? status.errors[0] : null
+          const errCode = err?.code != null ? String(err.code) : ''
+          const errTitle = err?.title || err?.message || err?.error_data?.details || ''
+          if (status.status === 'failed' && (errCode || errTitle)) {
+            console.error(`[Webhook] msg ${status.id} failed: code=${errCode} reason="${errTitle}"`)
           }
+          await updateMessageStatus(status.id, status.status || '', errCode, errTitle)
         }
       }
     }
