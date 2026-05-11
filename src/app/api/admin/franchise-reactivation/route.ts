@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { template?: string; dryRun?: boolean; limit?: number; onlyFailed?: boolean; includeLost?: boolean }
+  let body: { template?: string; dryRun?: boolean; limit?: number; onlyFailed?: boolean; includeLost?: boolean; statuses?: string[] }
   try {
     body = await req.json()
   } catch {
@@ -66,9 +66,14 @@ export async function POST(req: NextRequest) {
   const onlyFailed = body.onlyFailed === true
   const includeLost = body.includeLost === true
 
-  // When includeLost is set, we still exclude CONVERTED + ARCHIVED — those are
-  // explicit "do not contact" states (sold or filed away), unlike LOST which
-  // often just means the prospect went cold and is fair to re-engage.
+  // Explicit status allowlist takes priority over excluded-set logic.
+  // Use this to target specific cohorts e.g. { statuses: ["LOST","DELAYED"] }.
+  const statusAllowlist = Array.isArray(body.statuses) && body.statuses.length
+    ? new Set(body.statuses.map(s => String(s).toUpperCase()))
+    : null
+
+  // When includeLost is set (and no allowlist), we still exclude CONVERTED +
+  // ARCHIVED — those are explicit "do not contact" states.
   const effectiveExcluded = includeLost
     ? new Set(['CONVERTED', 'ARCHIVED'])
     : EXCLUDED_STATUSES
@@ -80,7 +85,7 @@ export async function POST(req: NextRequest) {
       onlyFailed ? getFailedPhonesForTemplate(templateName) : Promise.resolve(new Set<string>()),
     ])
 
-    const skipped = { no_phone: 0, bad_date: 0, post_may: 0, excluded_status: 0, opted_out: 0, duplicate: 0, not_in_failed_set: 0 }
+    const skipped = { no_phone: 0, bad_date: 0, post_may: 0, excluded_status: 0, not_in_allowlist: 0, opted_out: 0, duplicate: 0, not_in_failed_set: 0 }
     const eligible: { phone: string; name: string; row: number; status: string }[] = []
     const seenPhones = new Set<string>()
 
@@ -92,7 +97,11 @@ export async function POST(req: NextRequest) {
       if (ts === null) { skipped.bad_date++; continue }
       if (ts >= PRE_MAY_CUTOFF) { skipped.post_may++; continue }
 
-      if (effectiveExcluded.has(lead.lead_status)) { skipped.excluded_status++; continue }
+      if (statusAllowlist) {
+        if (!statusAllowlist.has(lead.lead_status)) { skipped.not_in_allowlist++; continue }
+      } else if (effectiveExcluded.has(lead.lead_status)) {
+        skipped.excluded_status++; continue
+      }
       if (optedOut.has(phoneNorm)) { skipped.opted_out++; continue }
       if (seenPhones.has(phoneNorm)) { skipped.duplicate++; continue }
       if (onlyFailed && !failedPhones.has(phoneNorm)) { skipped.not_in_failed_set++; continue }
