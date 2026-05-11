@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { template?: string; dryRun?: boolean; limit?: number; onlyFailed?: boolean }
+  let body: { template?: string; dryRun?: boolean; limit?: number; onlyFailed?: boolean; includeLost?: boolean }
   try {
     body = await req.json()
   } catch {
@@ -64,6 +64,14 @@ export async function POST(req: NextRequest) {
   const dryRun = body.dryRun !== false
   const limit = typeof body.limit === 'number' && body.limit > 0 ? body.limit : Infinity
   const onlyFailed = body.onlyFailed === true
+  const includeLost = body.includeLost === true
+
+  // When includeLost is set, we still exclude CONVERTED + ARCHIVED — those are
+  // explicit "do not contact" states (sold or filed away), unlike LOST which
+  // often just means the prospect went cold and is fair to re-engage.
+  const effectiveExcluded = includeLost
+    ? new Set(['CONVERTED', 'ARCHIVED'])
+    : EXCLUDED_STATUSES
 
   try {
     const [leads, optedOut, failedPhones] = await Promise.all([
@@ -84,7 +92,7 @@ export async function POST(req: NextRequest) {
       if (ts === null) { skipped.bad_date++; continue }
       if (ts >= PRE_MAY_CUTOFF) { skipped.post_may++; continue }
 
-      if (EXCLUDED_STATUSES.has(lead.lead_status)) { skipped.excluded_status++; continue }
+      if (effectiveExcluded.has(lead.lead_status)) { skipped.excluded_status++; continue }
       if (optedOut.has(phoneNorm)) { skipped.opted_out++; continue }
       if (seenPhones.has(phoneNorm)) { skipped.duplicate++; continue }
       if (onlyFailed && !failedPhones.has(phoneNorm)) { skipped.not_in_failed_set++; continue }
