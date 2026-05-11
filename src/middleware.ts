@@ -15,6 +15,9 @@ const PUBLIC_PATHS = [
   '/api/cron/cleanup-media',
   '/api/cron/meta-audience-sync',
   '/api/cron/meta-daily-report',
+  '/api/cron/franchise-reactivation',
+  // Reactivation admin endpoint — enforces CRON_SECRET bearer auth itself
+  '/api/admin/franchise-reactivation',
   // Public key is safe to expose; the SW fetches it before login on cold start.
   '/api/push/vapid-public-key',
   // Service worker file itself
