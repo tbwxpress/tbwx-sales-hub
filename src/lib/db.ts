@@ -537,6 +537,27 @@ export async function searchMessages(query: string) {
   return serializeRows(result.rows)
 }
 
+// Search received/sent messages whose text contains any of the keywords.
+// Used by the opt-out backfill to find STOP/unsubscribe replies retroactively.
+export async function getMessagesContainingText(
+  direction: 'sent' | 'received',
+  keywords: string[],
+): Promise<Array<{ phone: string; text: string; timestamp: string }>> {
+  if (!keywords.length) return []
+  const db = await ensureInit()
+  const likeClauses = keywords.map(() => 'LOWER(text) LIKE ?').join(' OR ')
+  const args: string[] = [direction, ...keywords.map(k => `%${k.toLowerCase()}%`)]
+  const result = await db.execute({
+    sql: `SELECT phone, text, timestamp FROM messages WHERE direction = ? AND (${likeClauses}) ORDER BY timestamp ASC`,
+    args,
+  })
+  return result.rows.map(r => ({
+    phone: String(r.phone || ''),
+    text: String(r.text || ''),
+    timestamp: String(r.timestamp || ''),
+  }))
+}
+
 export async function updateMessageStatus(
   waMessageId: string,
   status: string,

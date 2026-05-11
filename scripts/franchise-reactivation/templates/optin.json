@@ -1,0 +1,21 @@
+{
+  "name": "franchise_reengagement_optin",
+  "language": "en",
+  "category": "UTILITY",
+  "components": [
+    {
+      "type": "BODY",
+      "text": "Hi {{1}}, this is TBWX.\n\nWe're updating our franchise enquiry contact list. To keep receiving updates on your enquiry, please reply YES.\n\nReply STOP to be removed.\n\n— Team TBWX",
+      "example": {
+        "body_text": [["Rohit"]]
+      }
+    },
+    {
+      "type": "BUTTONS",
+      "buttons": [
+        {"type": "QUICK_REPLY", "text": "YES, keep me updated"},
+        {"type": "QUICK_REPLY", "text": "STOP"}
+      ]
+    }
+  ]
+}
