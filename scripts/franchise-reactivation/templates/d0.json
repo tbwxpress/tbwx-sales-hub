@@ -1,0 +1,32 @@
+{
+  "name": "franchise_reactivation_d0",
+  "language": "en",
+  "category": "MARKETING",
+  "components": [
+    {
+      "type": "HEADER",
+      "format": "TEXT",
+      "text": "7 Days Left — Old Price Closing 18th May"
+    },
+    {
+      "type": "BODY",
+      "text": "Hi {{1}}, this is TBWX 🧇\n\nYou'd enquired with us earlier about our franchise — wanted to reach out before our pricing changes.\n\n*Our old price of ₹1.5 Lakhs + GST is closing on 18th May.* After that, it moves to our new standard slab (₹4–7 Lakhs).\n\nIf you were on the fence earlier, this is the moment to revisit:\n\n✅ Most franchise-friendly model in India\n✅ 100+ sqft, 2–4 staff\n✅ 8–12 month ROI\n✅ 40+ outlets already operational\n✅ Full setup, training & supply chain handled by us\n\n7 days left to lock the old price. Reply YES and our team will share the agreement today.",
+      "example": {
+        "body_text": [["Rohit"]]
+      }
+    },
+    {
+      "type": "FOOTER",
+      "text": "Reply STOP to opt out."
+    },
+    {
+      "type": "BUTTONS",
+      "buttons": [
+        {"type": "QUICK_REPLY", "text": "YES, lock my price"},
+        {"type": "QUICK_REPLY", "text": "Call me back"},
+        {"type": "QUICK_REPLY", "text": "STOP"},
+        {"type": "URL", "text": "See outlets", "url": "https://tbwxpress.com/outlets"}
+      ]
+    }
+  ]
+}

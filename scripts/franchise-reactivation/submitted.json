@@ -1,0 +1,36 @@
+[
+  {
+    "template_file": "d0.json",
+    "template_name": "franchise_reactivation_d0",
+    "ok": true,
+    "status": 200,
+    "body": {
+      "id": "1639785947271916",
+      "status": "PENDING",
+      "category": "MARKETING"
+    }
+  },
+  {
+    "template_file": "d5.json",
+    "template_name": "franchise_reactivation_d5",
+    "ok": true,
+    "status": 200,
+    "note": "Initial request timed out client-side but confirmed live on Meta via GET /message_templates",
+    "body": {
+      "id": "1708062490185782",
+      "status": "PENDING",
+      "category": "MARKETING"
+    }
+  },
+  {
+    "template_file": "d7.json",
+    "template_name": "franchise_reactivation_d7",
+    "ok": true,
+    "status": 200,
+    "body": {
+      "id": "832800206540209",
+      "status": "PENDING",
+      "category": "MARKETING"
+    }
+  }
+]

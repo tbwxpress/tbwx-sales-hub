@@ -8,9 +8,17 @@ import { notifyQuiet } from '@/lib/notifications'
 import { getUsers } from '@/lib/users'
 
 // Button response classification for follow-up templates
-const POSITIVE_BUTTONS = ['yes, tell me more', "yes, let's talk", "i'm interested"]
+const POSITIVE_BUTTONS = [
+  'yes, tell me more', "yes, let's talk", "i'm interested",
+  // franchise_reactivation_d0/d5/d7
+  'yes, lock my price', 'call me back',
+]
 const DELAY_BUTTONS = ['not right now', 'maybe later']
-const OPTOUT_BUTTONS = ['not interested', 'stop messages']
+const OPTOUT_BUTTONS = [
+  'not interested', 'stop messages',
+  // franchise_reactivation_d0/d5/d7
+  'stop',
+]
 
 // WhatsApp webhook verification (GET)
 export async function GET(req: NextRequest) {

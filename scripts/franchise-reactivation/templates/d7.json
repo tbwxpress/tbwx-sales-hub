@@ -1,0 +1,32 @@
+{
+  "name": "franchise_reactivation_d7",
+  "language": "en",
+  "category": "MARKETING",
+  "components": [
+    {
+      "type": "HEADER",
+      "format": "TEXT",
+      "text": "Final Call — TBWX Franchise"
+    },
+    {
+      "type": "BODY",
+      "text": "Hi {{1}}, this is your last reminder from TBWX 🧇\n\nThe old franchise price of *₹1.5 Lakhs + GST* closes *tomorrow, 18th May at midnight*.\n\nAfter tomorrow:\n❌ Price moves to ₹4–7 Lakhs\n❌ No extensions, no exceptions\n\nIf you want to lock in at the old price, today is the day.\n\nReply YES now and we'll get your agreement out within hours.",
+      "example": {
+        "body_text": [["Rohit"]]
+      }
+    },
+    {
+      "type": "FOOTER",
+      "text": "Closes midnight 18th May. Reply STOP to opt out."
+    },
+    {
+      "type": "BUTTONS",
+      "buttons": [
+        {"type": "QUICK_REPLY", "text": "YES, lock my price"},
+        {"type": "QUICK_REPLY", "text": "Call me back"},
+        {"type": "QUICK_REPLY", "text": "STOP"},
+        {"type": "URL", "text": "See outlets", "url": "https://tbwxpress.com/outlets"}
+      ]
+    }
+  ]
+}

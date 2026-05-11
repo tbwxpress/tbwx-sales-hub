@@ -1,0 +1,32 @@
+{
+  "name": "franchise_reactivation_d5",
+  "language": "en",
+  "category": "MARKETING",
+  "components": [
+    {
+      "type": "HEADER",
+      "format": "TEXT",
+      "text": "Only 3 Days Left — TBWX Franchise"
+    },
+    {
+      "type": "BODY",
+      "text": "Hi {{1}}, quick reminder from TBWX 🧇\n\nThe old franchise price of *₹1.5 Lakhs + GST* closes on *18th May*. Just 3 days left.\n\nAfter 18th, pricing moves to ₹4–7 Lakhs standard slab — no exceptions.\n\n40+ outlets already running. 8–12 month ROI. 100+ sqft is enough.\n\nIf you've been thinking about it, this is the window.\n\nReply YES and our team will share the agreement today.",
+      "example": {
+        "body_text": [["Rohit"]]
+      }
+    },
+    {
+      "type": "FOOTER",
+      "text": "Closing 18th May. Reply STOP to opt out."
+    },
+    {
+      "type": "BUTTONS",
+      "buttons": [
+        {"type": "QUICK_REPLY", "text": "YES, lock my price"},
+        {"type": "QUICK_REPLY", "text": "Call me back"},
+        {"type": "QUICK_REPLY", "text": "STOP"},
+        {"type": "URL", "text": "See outlets", "url": "https://tbwxpress.com/outlets"}
+      ]
+    }
+  ]
+}
