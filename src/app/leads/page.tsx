@@ -195,14 +195,15 @@ export default function LeadsPage() {
     }
   }, [search, statusFilter, assignedFilter, sortBy])
 
-  const fetchAgents = useCallback(async (currentUser: SessionUser) => {
-    if (currentUser.role === 'admin') {
-      try {
-        const res = await fetch('/api/users')
-        const data = await res.json()
-        if (data.success) setAgents(data.data.filter((u: { active: boolean }) => u.active))
-      } catch { /* non-critical */ }
-    }
+  const fetchAgents = useCallback(async (_currentUser: SessionUser) => {
+    // Every authed user fetches the active-user roster — non-admins need
+    // it to see telecallers in the bulk-route dropdown. The /api/users
+    // endpoint strips password_hash for all callers.
+    try {
+      const res = await fetch('/api/users')
+      const data = await res.json()
+      if (data.success) setAgents(data.data.filter((u: { active: boolean }) => u.active))
+    } catch { /* non-critical */ }
   }, [])
 
   useEffect(() => {
@@ -1005,7 +1006,7 @@ export default function LeadsPage() {
 
       {/* ─── Floating Bulk Action Bar ─────────────────────────────────── */}
       {selected.size > 0 && (canBulkAction || canBulkTelecaller) && (
-        <div className="fixed bottom-0 left-0 right-0 z-50">
+        <div className="fixed bottom-0 left-0 right-0 z-50 safe-bottom">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4">
             <div className="bg-elevated border border-border rounded-lg shadow-2xl shadow-black/50 px-5 py-3 flex items-center justify-between gap-4">
               <span className="text-sm text-text">
