@@ -33,6 +33,9 @@ interface Lead {
   next_followup: string
   lead_score?: number
   last_discussion?: LastDiscussion | null
+  telecaller_user_id?: string
+  telecaller_name?: string
+  telecaller_assigned_at?: string
 }
 
 interface SessionUser {
@@ -118,6 +121,8 @@ export default function LeadsPage() {
   const [search, setSearch] = useState(() => getInitialParam('q'))
   const [statusFilter, setStatusFilter] = useState(() => getInitialParam('status'))
   const [assignedFilter, setAssignedFilter] = useState(() => getInitialParam('assigned'))
+  // Telecaller filter — '' = all, '__NONE__' = no telecaller assigned, else telecaller user_id
+  const [telecallerFilter, setTelecallerFilter] = useState(() => getInitialParam('tc'))
   const [sortBy, setSortBy] = useState(() => getInitialParam('sort', 'score'))
 
   // Sync filters to URL (without full page reload)
@@ -126,11 +131,12 @@ export default function LeadsPage() {
     if (search) params.set('q', search)
     if (statusFilter) params.set('status', statusFilter)
     if (assignedFilter) params.set('assigned', assignedFilter)
+    if (telecallerFilter) params.set('tc', telecallerFilter)
     if (sortBy && sortBy !== 'score') params.set('sort', sortBy)
     const qs = params.toString()
     const newUrl = qs ? `/leads?${qs}` : '/leads'
     window.history.replaceState(null, '', newUrl)
-  }, [search, statusFilter, assignedFilter, sortBy])
+  }, [search, statusFilter, assignedFilter, telecallerFilter, sortBy])
 
   // Selection (admin/can_assign only)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -186,6 +192,11 @@ export default function LeadsPage() {
             new Date(l.next_followup) < now
           )
         }
+        if (telecallerFilter === '__NONE__') {
+          filtered = filtered.filter((l: Lead) => !l.telecaller_user_id)
+        } else if (telecallerFilter) {
+          filtered = filtered.filter((l: Lead) => l.telecaller_user_id === telecallerFilter)
+        }
         setLeads(filtered)
       } else {
         setError(data.error || 'Failed to load leads')
@@ -193,7 +204,7 @@ export default function LeadsPage() {
     } catch {
       setError('Failed to load leads')
     }
-  }, [search, statusFilter, assignedFilter, sortBy])
+  }, [search, statusFilter, assignedFilter, telecallerFilter, sortBy])
 
   const fetchAgents = useCallback(async (_currentUser: SessionUser) => {
     // Every authed user fetches the active-user roster — non-admins need
@@ -222,7 +233,7 @@ export default function LeadsPage() {
   useEffect(() => {
     if (!user) return
     fetchLeads()
-  }, [search, statusFilter, assignedFilter, sortBy, fetchLeads, user])
+  }, [search, statusFilter, assignedFilter, telecallerFilter, sortBy, fetchLeads, user])
 
   // ─── Keyboard Shortcuts ──────────────────────────────────────────────────
 
@@ -246,6 +257,7 @@ export default function LeadsPage() {
     setSearch('')
     setStatusFilter('')
     setAssignedFilter('')
+    setTelecallerFilter('')
     setSortBy('score')
   }
 
@@ -541,6 +553,22 @@ export default function LeadsPage() {
             </select>
           )}
 
+          {/* Telecaller Filter (admin only) — see who's working what */}
+          {user?.role === 'admin' && agents.some(a => a.is_telecaller) && (
+            <select
+              value={telecallerFilter}
+              onChange={e => setTelecallerFilter(e.target.value)}
+              className="bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+              title="Filter by telecaller"
+            >
+              <option value="">All Telecallers</option>
+              <option value="__NONE__">— No telecaller —</option>
+              {agents.filter(a => a.is_telecaller).map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          )}
+
           {/* Sort */}
           <select
             value={sortBy}
@@ -554,7 +582,7 @@ export default function LeadsPage() {
           </select>
 
           {/* Clear Filters */}
-          {(search || statusFilter || assignedFilter || sortBy !== 'score') && (
+          {(search || statusFilter || assignedFilter || telecallerFilter || sortBy !== 'score') && (
             <button onClick={clearFilters} className="text-sm text-dim hover:text-text transition-colors">
               Clear filters
             </button>
@@ -576,12 +604,12 @@ export default function LeadsPage() {
                 </svg>
                 <div>
                   <p className="text-muted text-sm font-medium">
-                    {search || statusFilter || assignedFilter
+                    {search || statusFilter || assignedFilter || telecallerFilter
                       ? 'No leads match your filters'
                       : 'No leads yet'}
                   </p>
                   <p className="text-dim text-xs mt-1">
-                    {search || statusFilter || assignedFilter
+                    {search || statusFilter || assignedFilter || telecallerFilter
                       ? 'Try adjusting your search or clearing filters.'
                       : 'New leads will appear here as they come in.'}
                   </p>
@@ -693,11 +721,24 @@ export default function LeadsPage() {
 
                   {/* Assigned + telecaller footer */}
                   <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-border/40">
-                    <span className="text-[10px] text-dim truncate">
+                    <span className="text-[10px] text-dim truncate flex items-center gap-1.5 flex-wrap">
                       {lead.assigned_to ? (
-                        <>Assigned: <span className="text-muted">{lead.assigned_to}</span></>
+                        <span>Assigned: <span className="text-muted">{lead.assigned_to}</span></span>
                       ) : (
                         <span className="text-accent/50 italic">Unassigned</span>
+                      )}
+                      {lead.telecaller_name && (
+                        <span
+                          className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                          style={{
+                            background: 'var(--color-accent-soft)',
+                            color: 'var(--color-accent)',
+                            border: '1px solid var(--color-accent)',
+                          }}
+                          title="Telecaller working this lead"
+                        >
+                          📞 {lead.telecaller_name}
+                        </span>
                       )}
                     </span>
                     {lead.phone && (
@@ -744,6 +785,9 @@ export default function LeadsPage() {
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Status</th>
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Priority</th>
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Assigned</th>
+                  {user?.role === 'admin' && (
+                    <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Telecaller</th>
+                  )}
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Follow-up</th>
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Added</th>
                   <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider w-20">Actions</th>
@@ -753,7 +797,7 @@ export default function LeadsPage() {
                 {leads.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={showCheckboxColumn ? 12 : 11}
+                      colSpan={(showCheckboxColumn ? 12 : 11) + (user?.role === 'admin' ? 1 : 0)}
                       className="px-3 py-16 text-center"
                     >
                       <div className="flex flex-col items-center gap-3">
@@ -762,12 +806,12 @@ export default function LeadsPage() {
                         </svg>
                         <div>
                           <p className="text-muted text-sm font-medium">
-                            {search || statusFilter || assignedFilter
+                            {search || statusFilter || assignedFilter || telecallerFilter
                               ? 'No leads match your filters'
                               : 'No leads yet'}
                           </p>
                           <p className="text-dim text-xs mt-1">
-                            {search || statusFilter || assignedFilter
+                            {search || statusFilter || assignedFilter || telecallerFilter
                               ? 'Try adjusting your search or clearing filters.'
                               : 'New leads will appear here as they come in.'}
                           </p>
@@ -900,6 +944,27 @@ export default function LeadsPage() {
                           )}
                         </td>
 
+                        {/* Telecaller (admin only) */}
+                        {user?.role === 'admin' && (
+                          <td className="px-3 py-2.5 text-body text-xs">
+                            {lead.telecaller_name ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium"
+                                style={{
+                                  background: 'var(--color-accent-soft)',
+                                  color: 'var(--color-accent)',
+                                  border: '1px solid var(--color-accent)',
+                                }}
+                                title={lead.telecaller_assigned_at ? `Assigned ${timeAgo(lead.telecaller_assigned_at)}` : ''}
+                              >
+                                📞 {lead.telecaller_name}
+                              </span>
+                            ) : (
+                              <span className="text-dim text-[11px]">—</span>
+                            )}
+                          </td>
+                        )}
+
                         {/* Follow-up */}
                         <td className="px-3 py-2.5">
                           {followup.text !== '-' ? (
@@ -965,7 +1030,7 @@ export default function LeadsPage() {
                       {/* Inline quick note input */}
                       {quickNotePhone === lead.phone && (
                         <tr className="bg-accent/5">
-                          <td colSpan={showCheckboxColumn ? 12 : 11} className="px-3 py-2">
+                          <td colSpan={(showCheckboxColumn ? 12 : 11) + (user?.role === 'admin' ? 1 : 0)} className="px-3 py-2">
                             <div className="flex items-center gap-2 max-w-2xl">
                               <span className="text-xs text-muted flex-shrink-0">Note for {lead.full_name}:</span>
                               <input
