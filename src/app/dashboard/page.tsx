@@ -402,6 +402,12 @@ export default function DashboardPage() {
   // Stale Leads
   const [staleOpen, setStaleOpen] = useState(false)
 
+  // Pending delegation requests (to me)
+  const [pendingDelegations, setPendingDelegations] = useState<Array<{
+    id: number; lead_row: number; from_agent_name: string; to_agent_name: string; message: string; created_at: string
+  }>>([])
+  const [respondingDelegation, setRespondingDelegation] = useState<number | null>(null)
+
   // WA Backfill
   const [backfilling, setBackfilling] = useState(false)
   const [backfillResult, setBackfillResult] = useState<{
@@ -500,6 +506,14 @@ export default function DashboardPage() {
     }
   }, [])
 
+  const fetchPendingDelegations = useCallback(async () => {
+    try {
+      const res = await fetch('/api/delegations?to_me=true&status=pending')
+      const data = await res.json()
+      if (data.success) setPendingDelegations(data.data || [])
+    } catch { /* non-critical */ }
+  }, [])
+
   const fetchWaStats = useCallback(async () => {
     try {
       const res = await fetch('/api/leads/auto-message-stats')
@@ -519,7 +533,7 @@ export default function DashboardPage() {
       setLoading(true)
       const currentUser = await fetchUser()
       if (currentUser) {
-        await Promise.all([fetchStats(), fetchLeads(), fetchAgents(currentUser), fetchTasks(), fetchWaStats()])
+        await Promise.all([fetchStats(), fetchLeads(), fetchAgents(currentUser), fetchTasks(), fetchWaStats(), fetchPendingDelegations()])
       }
       setLoading(false)
     }
@@ -814,6 +828,80 @@ export default function DashboardPage() {
             <button onClick={() => setError('')} className="text-danger hover:text-red-300 ml-4">
               Dismiss
             </button>
+          </div>
+        )}
+
+        {/* ─── Pending Delegation Requests Widget ─────────────────────── */}
+        {pendingDelegations.length > 0 && (
+          <div className="mb-4 bg-card border border-border rounded-lg px-5 py-4">
+            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-dim mb-3 flex items-center gap-2">
+              <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+              </svg>
+              Help Requested ({pendingDelegations.length})
+            </h3>
+            <ul className="space-y-2">
+              {pendingDelegations.map(d => (
+                <li key={d.id} className="flex items-center gap-3 text-sm">
+                  <span className="flex-1 text-muted">
+                    <span className="font-medium text-text">{d.from_agent_name}</span> is asking you to help on{' '}
+                    <Link href={`/leads/${d.lead_row}`} className="text-accent hover:underline">Lead #{d.lead_row}</Link>
+                    {d.message ? <span className="text-dim text-xs ml-1">— {d.message}</span> : null}
+                  </span>
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      disabled={respondingDelegation === d.id}
+                      onClick={async () => {
+                        setRespondingDelegation(d.id)
+                        try {
+                          const res = await fetch(`/api/delegations/${d.id}/respond`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'accept' }),
+                          })
+                          const json = await res.json()
+                          if (json.success) {
+                            setPendingDelegations(prev => prev.filter(x => x.id !== d.id))
+                            setToast('Accepted - lead is now in your list')
+                          } else {
+                            setError(json.error || 'Failed')
+                          }
+                        } catch { setError('Failed to respond') }
+                        setRespondingDelegation(null)
+                      }}
+                      className="text-xs px-3 py-1.5 rounded font-medium transition-colors disabled:opacity-50"
+                      style={{ background: 'var(--color-accent)', color: '#1a1209' }}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      disabled={respondingDelegation === d.id}
+                      onClick={async () => {
+                        setRespondingDelegation(d.id)
+                        try {
+                          const res = await fetch(`/api/delegations/${d.id}/respond`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'decline' }),
+                          })
+                          const json = await res.json()
+                          if (json.success) {
+                            setPendingDelegations(prev => prev.filter(x => x.id !== d.id))
+                            setToast('Declined')
+                          } else {
+                            setError(json.error || 'Failed')
+                          }
+                        } catch { setError('Failed to respond') }
+                        setRespondingDelegation(null)
+                      }}
+                      className="text-xs px-3 py-1.5 rounded border border-border text-muted hover:text-danger transition-colors disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 

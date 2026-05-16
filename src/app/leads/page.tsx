@@ -36,6 +36,8 @@ interface Lead {
   telecaller_user_id?: string
   telecaller_name?: string
   telecaller_assigned_at?: string
+  is_delegated_to_me?: boolean
+  active_delegation?: { from_agent_name: string; to_agent_name: string; expires_at: string | null; id: number } | null
 }
 
 interface SessionUser {
@@ -727,6 +729,15 @@ export default function LeadsPage() {
                       ) : (
                         <span className="text-accent/50 italic">Unassigned</span>
                       )}
+                      {lead.is_delegated_to_me && (
+                        <span
+                          className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                          style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)' }}
+                          title="You are supporting this lead"
+                        >
+                          Supporting
+                        </span>
+                      )}
                       {lead.telecaller_name && (
                         <span
                           className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
@@ -939,9 +950,18 @@ export default function LeadsPage() {
 
                         {/* Assigned */}
                         <td className="px-3 py-2.5 text-body text-xs">
-                          {lead.assigned_to || (
-                            <span className="text-accent/50 italic">Unassigned</span>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{lead.assigned_to || <span className="text-accent/50 italic">Unassigned</span>}</span>
+                            {lead.is_delegated_to_me && (
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)' }}
+                                title="You are supporting this lead"
+                              >
+                                Supporting
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Telecaller (admin only) */}
