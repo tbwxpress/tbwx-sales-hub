@@ -5,7 +5,7 @@ import { getLeads, getLeadStats, createLead } from '@/lib/sheets'
 import { computeLeadScore } from '@/lib/scoring'
 import { STATUS_MIGRATION } from '@/config/client'
 import { getTelecallerVisibleLeadRows, getAllAssignments } from '@/lib/telecaller'
-import { getOptedOutPhones, getLastDiscussionByPhone, normalizePhone } from '@/lib/db'
+import { getOptedOutPhones, getLastDiscussionByPhone, normalizePhone, upsertContact } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   try {
@@ -190,6 +190,19 @@ export async function POST(req: NextRequest) {
       notes: body.notes || '',
       source: body.source || 'Manual Entry',
     })
+
+    // Upsert contact row so notes + calls work for manually-added leads
+    // (organic leads get this via /api/inbox/sync; manual leads bypass that path)
+    try {
+      await upsertContact(phone, {
+        name: body.full_name,
+        is_lead: true,
+        lead_row: rowNumber,
+        city: body.city || undefined,
+      })
+    } catch (contactErr) {
+      console.error('[leads POST] contact upsert failed (non-critical):', contactErr)
+    }
 
     return NextResponse.json({ success: true, data: { row_number: rowNumber } })
   } catch (err) {
