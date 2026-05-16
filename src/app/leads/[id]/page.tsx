@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import type { Lead, Message, QuickReply, ApiResponse } from '@/lib/types'
+import type { Lead, Message, QuickReply, ApiResponse, PaymentFollowup } from '@/lib/types'
 import VoiceAgentCard from '@/components/VoiceAgentCard'
 import AgreementForm from '@/components/AgreementForm'
 import LogCallModal from '@/components/LogCallModal'
@@ -152,6 +152,66 @@ function getDeliveryIcon(status: string) {
     case 'failed': return '\u2717'
     default: return ''
   }
+}
+
+// ─── Lead Payment Followups Card ─────────────────────────────────────────────
+
+function LeadPaymentFollowupsCard({ lead_row }: { lead_row: number }) {
+  const [followups, setFollowups] = useState<PaymentFollowup[]>([])
+
+  useEffect(() => {
+    fetch(`/api/payment-followups?lead_row=${lead_row}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          const forLead = (d.data as PaymentFollowup[]).filter(f => f.lead_row === lead_row)
+          setFollowups(forLead)
+        }
+      })
+      .catch(() => {})
+  }, [lead_row])
+
+  if (followups.length === 0) return null
+
+  const statusColor: Record<string, string> = {
+    pending: 'var(--color-muted)',
+    in_progress: 'var(--color-accent)',
+    partially_cleared: '#f59e0b',
+    cleared: 'var(--color-success)',
+    blocked: 'var(--color-danger)',
+  }
+  const statusLabel: Record<string, string> = {
+    pending: 'Pending', in_progress: 'In Progress',
+    partially_cleared: 'Partial', cleared: 'Cleared', blocked: 'Blocked',
+  }
+
+  return (
+    <div className="bg-card rounded-lg border border-border p-4">
+      <h2 className="text-xs font-semibold text-dim uppercase tracking-wide mb-3 flex items-center gap-2">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5} style={{ color: 'var(--color-accent)' }}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+        </svg>
+        Payment Followups
+      </h2>
+      <div className="space-y-2">
+        {followups.map(f => (
+          <div key={f.id} className="flex items-center justify-between text-xs gap-2">
+            <span className="font-medium truncate" style={{ color: 'var(--color-text)' }}>{f.franchise_name}</span>
+            <span style={{ color: 'var(--color-muted)' }}>{f.currency}{f.amount.toLocaleString('en-IN')}</span>
+            <span
+              className="px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0"
+              style={{ background: `color-mix(in srgb, ${statusColor[f.status] ?? 'var(--color-muted)'} 15%, transparent)`, color: statusColor[f.status] ?? 'var(--color-muted)' }}
+            >
+              {statusLabel[f.status] ?? f.status}
+            </span>
+          </div>
+        ))}
+      </div>
+      <a href="/payment-followups" className="block mt-3 text-[10px] hover:underline" style={{ color: 'var(--color-accent)' }}>
+        View all followups →
+      </a>
+    </div>
+  )
 }
 
 export default function LeadDetailPage() {
@@ -1239,6 +1299,9 @@ export default function LeadDetailPage() {
               {/* Notes — timestamped, from DB */}
               <LeadNotes phone={lead.phone} />
             </div>
+
+            {/* Payment Followups */}
+            <LeadPaymentFollowupsCard lead_row={lead.row_number} />
 
             {/* Activity Log */}
             <ActivityLog lead_row={lead.row_number} phone={lead.phone} />

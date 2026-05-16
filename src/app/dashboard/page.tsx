@@ -408,6 +408,12 @@ export default function DashboardPage() {
   }>>([])
   const [respondingDelegation, setRespondingDelegation] = useState<number | null>(null)
 
+  // Payment followups widget
+  const [paymentFollowups, setPaymentFollowups] = useState<Array<{
+    id: number; franchise_name: string; amount: number; currency: string; due_date: string | null; status: string; assigned_to_name: string
+  }>>([])
+  const [pfAdminCounts, setPfAdminCounts] = useState<Record<string, number>>({})
+
   // WA Backfill
   const [backfilling, setBackfilling] = useState(false)
   const [backfillResult, setBackfillResult] = useState<{
@@ -514,6 +520,25 @@ export default function DashboardPage() {
     } catch { /* non-critical */ }
   }, [])
 
+  const fetchPaymentFollowups = useCallback(async (currentUser: SessionUser) => {
+    try {
+      const res = await fetch('/api/payment-followups')
+      const data = await res.json()
+      if (!data.success) return
+      const items = data.data || []
+      if (currentUser.role === 'admin') {
+        const counts: Record<string, number> = {}
+        for (const f of items) {
+          counts[f.status] = (counts[f.status] || 0) + 1
+        }
+        setPfAdminCounts(counts)
+      } else {
+        const active = items.filter((f: { status: string }) => f.status !== 'cleared')
+        setPaymentFollowups(active.slice(0, 5))
+      }
+    } catch { /* non-critical */ }
+  }, [])
+
   const fetchWaStats = useCallback(async () => {
     try {
       const res = await fetch('/api/leads/auto-message-stats')
@@ -533,7 +558,7 @@ export default function DashboardPage() {
       setLoading(true)
       const currentUser = await fetchUser()
       if (currentUser) {
-        await Promise.all([fetchStats(), fetchLeads(), fetchAgents(currentUser), fetchTasks(), fetchWaStats(), fetchPendingDelegations()])
+        await Promise.all([fetchStats(), fetchLeads(), fetchAgents(currentUser), fetchTasks(), fetchWaStats(), fetchPendingDelegations(), fetchPaymentFollowups(currentUser)])
       }
       setLoading(false)
     }
@@ -901,6 +926,65 @@ export default function DashboardPage() {
                   </div>
                 </li>
               ))}
+            </ul>
+          </div>
+        )}
+
+        {/* ─── Payment Followups Widget ───────────────────────────────── */}
+        {user?.role === 'admin' && Object.keys(pfAdminCounts).length > 0 && (
+          <div className="mb-4 bg-card border border-border rounded-lg px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[10px] font-semibold uppercase tracking-wider text-dim flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5} style={{ color: 'var(--color-accent)' }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                </svg>
+                Payment Followups
+              </h3>
+              <Link href="/payment-followups" className="text-xs transition-colors" style={{ color: 'var(--color-accent)' }}>View all →</Link>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {[
+                { key: 'pending', label: 'Pending', color: 'var(--color-muted)' },
+                { key: 'in_progress', label: 'In Progress', color: 'var(--color-accent)' },
+                { key: 'partially_cleared', label: 'Partial', color: '#f59e0b' },
+                { key: 'blocked', label: 'Blocked', color: 'var(--color-danger)' },
+                { key: 'cleared', label: 'Cleared', color: 'var(--color-success)' },
+              ].filter(s => pfAdminCounts[s.key]).map(s => (
+                <div key={s.key} className="flex items-center gap-1.5">
+                  <span className="text-xl font-extrabold leading-none" style={{ color: s.color }}>{pfAdminCounts[s.key]}</span>
+                  <span className="text-[10px]" style={{ color: 'var(--color-dim)' }}>{s.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {user?.role !== 'admin' && paymentFollowups.length > 0 && (
+          <div className="mb-4 bg-card border border-border rounded-lg px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[10px] font-semibold uppercase tracking-wider text-dim flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5} style={{ color: 'var(--color-accent)' }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                </svg>
+                My Payment Followups ({paymentFollowups.length})
+              </h3>
+              <Link href="/payment-followups" className="text-xs transition-colors" style={{ color: 'var(--color-accent)' }}>View all →</Link>
+            </div>
+            <ul className="space-y-2">
+              {paymentFollowups.map(f => {
+                const isOverdue = f.due_date && f.status !== 'cleared' && new Date(f.due_date) < new Date()
+                return (
+                  <li key={f.id} className="flex items-center justify-between text-sm gap-3">
+                    <span className="font-medium truncate" style={{ color: 'var(--color-text)' }}>{f.franchise_name}</span>
+                    <span className="shrink-0" style={{ color: 'var(--color-muted)' }}>{f.currency}{f.amount.toLocaleString('en-IN')}</span>
+                    {f.due_date && (
+                      <span className="text-xs shrink-0" style={{ color: isOverdue ? 'var(--color-danger)' : 'var(--color-dim)' }}>
+                        {isOverdue ? '! ' : ''}{new Date(f.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </div>
         )}
