@@ -16,6 +16,7 @@ const PUBLIC_PATHS = [
   '/api/cron/meta-audience-sync',
   '/api/cron/meta-daily-report',
   '/api/cron/franchise-reactivation',
+  '/api/cron/expire-delegations',
   // Reactivation admin endpoint — enforces CRON_SECRET bearer auth itself
   '/api/admin/franchise-reactivation',
   // Public key is safe to expose; the SW fetches it before login on cold start.
