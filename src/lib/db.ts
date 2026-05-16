@@ -1566,3 +1566,40 @@ export async function touchPushSubscription(endpoint: string): Promise<void> {
   const db = await ensureInit()
   await db.execute({ sql: "UPDATE push_subscriptions SET last_used_at = datetime('now') WHERE endpoint = ?", args: [endpoint] })
 }
+
+// --- Admin cross-lead activity helpers ---
+
+export async function getStatusChangesForAllLeads(days: number, filters?: { changed_by_id?: string }) {
+  const db = await ensureInit()
+  const cutoff = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 19)
+  const conditions: string[] = ['created_at >= ?']
+  const args: (string | number)[] = [cutoff]
+
+  if (filters?.changed_by_id) {
+    conditions.push('changed_by_id = ?')
+    args.push(filters.changed_by_id)
+  }
+
+  const result = await db.execute({
+    sql: `SELECT * FROM lead_status_changes WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 500`,
+    args,
+  })
+  return serializeRows(result.rows)
+}
+
+export async function getAssignmentHistoryRecent(days: number, filters?: { assigned_by_id?: string }) {
+  const db = await ensureInit()
+  const cutoff = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 19)
+  const conditions: string[] = ['created_at >= ?']
+  const args: (string | number)[] = [cutoff]
+
+  // assignment_log stores assigned_by as name, not id — filter by name not possible without join
+  // agent_id filter skipped here; admin UI filters by name via the edits/status tables
+  void filters // suppress unused warning
+
+  const result = await db.execute({
+    sql: `SELECT * FROM assignment_log WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 500`,
+    args,
+  })
+  return serializeRows(result.rows)
+}
