@@ -69,6 +69,16 @@ export default function AdminPage() {
   const [editErr, setEditErr] = useState('')
   const [formError, setFormError] = useState('')
 
+  // Bulk delegate state
+  const [bulkFromAgent, setBulkFromAgent] = useState('')
+  const [bulkToAgent, setBulkToAgent] = useState('')
+  const [bulkExpires, setBulkExpires] = useState('')
+  const [bulkEligibleLeads, setBulkEligibleLeads] = useState<Array<{ row_number: number; full_name: string; lead_status: string }>>([])
+  const [bulkSelected, setBulkSelected] = useState<Set<number>>(new Set())
+  const [bulkSearching, setBulkSearching] = useState(false)
+  const [bulkDelegating, setBulkDelegating] = useState(false)
+  const [bulkMsg, setBulkMsg] = useState('')
+
   // Voice agent settings
   const [autoCallEnabled, setAutoCallEnabled] = useState(false)
   const [togglingAutoCall, setTogglingAutoCall] = useState(false)
@@ -621,6 +631,148 @@ export default function AdminPage() {
             ))}
           </div>
         )}
+
+        {/* Bulk Delegate */}
+        <div className="mt-8 mb-6">
+          <h2 className="text-lg font-bold text-text mb-1">Bulk Delegate</h2>
+          <p className="text-sm text-dim mb-4">Cover an agent&apos;s leads while they&apos;re on leave. Creates active delegations instantly (no approval needed).</p>
+          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted block mb-1">From Agent (on leave)</label>
+                <select
+                  value={bulkFromAgent}
+                  onChange={e => { setBulkFromAgent(e.target.value); setBulkEligibleLeads([]); setBulkSelected(new Set()); setBulkMsg('') }}
+                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+                >
+                  <option value="">Select agent...</option>
+                  {users.filter(u => u.role === 'agent' && u.active).map(u => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted block mb-1">To Agent (covering)</label>
+                <select
+                  value={bulkToAgent}
+                  onChange={e => { setBulkToAgent(e.target.value); setBulkMsg('') }}
+                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+                >
+                  <option value="">Select agent...</option>
+                  {users.filter(u => u.role === 'agent' && u.active && u.id !== bulkFromAgent).map(u => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted block mb-1">Until (optional)</label>
+                <input
+                  type="date"
+                  value={bulkExpires}
+                  onChange={e => setBulkExpires(e.target.value)}
+                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+                />
+              </div>
+            </div>
+            <button
+              disabled={!bulkFromAgent || bulkSearching}
+              onClick={async () => {
+                setBulkSearching(true)
+                setBulkMsg('')
+                try {
+                  const fromUser = users.find(u => u.id === bulkFromAgent)
+                  const res = await fetch(`/api/leads?assigned=${encodeURIComponent(fromUser?.name || '')}`)
+                  const data = await res.json()
+                  if (data.success) {
+                    const eligible = data.data.filter((l: { lead_status: string }) =>
+                      !['CONVERTED', 'LOST', 'ARCHIVED'].includes(l.lead_status)
+                    )
+                    setBulkEligibleLeads(eligible)
+                    setBulkSelected(new Set(eligible.map((l: { row_number: number }) => l.row_number)))
+                  }
+                } catch { setBulkMsg('Failed to fetch leads') }
+                setBulkSearching(false)
+              }}
+              className="text-xs px-4 py-2 rounded-lg border border-border bg-elevated hover:bg-border text-muted transition-colors disabled:opacity-50"
+            >
+              {bulkSearching ? 'Loading...' : 'Show Eligible Leads'}
+            </button>
+
+            {bulkEligibleLeads.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-dim">{bulkSelected.size} of {bulkEligibleLeads.length} selected</span>
+                  <button
+                    onClick={() => setBulkSelected(
+                      bulkSelected.size === bulkEligibleLeads.length
+                        ? new Set()
+                        : new Set(bulkEligibleLeads.map(l => l.row_number))
+                    )}
+                    className="text-xs text-accent hover:text-accent-hover transition-colors"
+                  >
+                    {bulkSelected.size === bulkEligibleLeads.length ? 'Deselect all' : 'Select all'}
+                  </button>
+                </div>
+                <div className="max-h-48 overflow-y-auto border border-border rounded-lg divide-y divide-border/50">
+                  {bulkEligibleLeads.map(l => (
+                    <label key={l.row_number} className="flex items-center gap-3 px-3 py-2 hover:bg-elevated/50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={bulkSelected.has(l.row_number)}
+                        onChange={e => {
+                          const next = new Set(bulkSelected)
+                          e.target.checked ? next.add(l.row_number) : next.delete(l.row_number)
+                          setBulkSelected(next)
+                        }}
+                        className="accent-accent"
+                      />
+                      <span className="text-xs text-text flex-1">#{l.row_number} {l.full_name}</span>
+                      <span className="text-[10px] text-dim">{l.lead_status}</span>
+                    </label>
+                  ))}
+                </div>
+                <button
+                  disabled={bulkSelected.size === 0 || !bulkToAgent || bulkDelegating}
+                  onClick={async () => {
+                    setBulkDelegating(true)
+                    setBulkMsg('')
+                    try {
+                      const res = await fetch('/api/admin/delegations/bulk', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          lead_rows: Array.from(bulkSelected),
+                          from_agent_id: bulkFromAgent,
+                          to_agent_id: bulkToAgent,
+                          expires_at: bulkExpires || undefined,
+                        }),
+                      })
+                      const data = await res.json()
+                      if (data.success) {
+                        setBulkMsg(`${data.data.created} delegation(s) created`)
+                        setBulkEligibleLeads([])
+                        setBulkSelected(new Set())
+                        setBulkFromAgent('')
+                        setBulkToAgent('')
+                        setBulkExpires('')
+                      } else {
+                        setBulkMsg(data.error || 'Failed')
+                      }
+                    } catch { setBulkMsg('Failed to delegate') }
+                    setBulkDelegating(false)
+                  }}
+                  className="w-full py-2 rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
+                  style={{ background: 'var(--color-accent)', color: '#1a1209' }}
+                >
+                  {bulkDelegating ? 'Creating...' : `Delegate ${bulkSelected.size} lead(s)`}
+                </button>
+                {bulkMsg && (
+                  <p className="text-xs text-center" style={{ color: bulkMsg.includes('created') ? 'var(--color-success)' : 'var(--color-danger)' }}>{bulkMsg}</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Meta Ads Dashboard */}
         <div className="mt-8 mb-6">
