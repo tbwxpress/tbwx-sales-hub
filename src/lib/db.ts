@@ -303,6 +303,20 @@ async function ensureInit(): Promise<Client> {
         last_used_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
+
+      CREATE TABLE IF NOT EXISTS lead_edits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lead_row INTEGER NOT NULL,
+        phone TEXT DEFAULT '',
+        field_name TEXT NOT NULL,
+        old_value TEXT DEFAULT '',
+        new_value TEXT DEFAULT '',
+        changed_by TEXT NOT NULL,
+        changed_by_id TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_lead_edits_row ON lead_edits(lead_row);
+      CREATE INDEX IF NOT EXISTS idx_lead_edits_changed_by_date ON lead_edits(changed_by, created_at DESC);
     `)
 
     // Additive migrations (try-catch for existing DBs)
@@ -1096,6 +1110,69 @@ export async function getAssignmentHistory(leadRow: number) {
   const result = await db.execute({
     sql: 'SELECT * FROM assignment_log WHERE lead_row = ? ORDER BY created_at DESC',
     args: [leadRow],
+  })
+  return serializeRows(result.rows)
+}
+
+// --- Lead Edits Audit Log ---
+
+export async function insertLeadEdit(opts: {
+  lead_row: number
+  phone: string
+  field_name: string
+  old_value: string
+  new_value: string
+  changed_by: string
+  changed_by_id: string
+}): Promise<void> {
+  try {
+    const db = await ensureInit()
+    await db.execute({
+      sql: `INSERT INTO lead_edits (lead_row, phone, field_name, old_value, new_value, changed_by, changed_by_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        opts.lead_row,
+        opts.phone ? normalizePhone(opts.phone) : '',
+        opts.field_name,
+        opts.old_value ?? '',
+        opts.new_value ?? '',
+        opts.changed_by,
+        opts.changed_by_id,
+      ],
+    })
+  } catch (err) {
+    // Audit logging must never break the main flow
+    console.error('[insertLeadEdit] non-critical:', err)
+  }
+}
+
+export async function getLeadEdits(leadRow: number, limit = 50) {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `SELECT * FROM lead_edits WHERE lead_row = ? ORDER BY created_at DESC LIMIT ?`,
+    args: [leadRow, limit],
+  })
+  return serializeRows(result.rows)
+}
+
+export async function getRecentLeadEdits(days: number, filters?: { changed_by_id?: string; field_name?: string }) {
+  const db = await ensureInit()
+  const cutoff = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 19)
+  const conditions: string[] = ['created_at >= ?']
+  const args: (string | number)[] = [cutoff]
+
+  if (filters?.changed_by_id) {
+    conditions.push('changed_by_id = ?')
+    args.push(filters.changed_by_id)
+  }
+  if (filters?.field_name) {
+    conditions.push('field_name = ?')
+    args.push(filters.field_name)
+  }
+
+  const result = await db.execute({
+    sql: `SELECT * FROM lead_edits WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 500`,
+    args,
   })
   return serializeRows(result.rows)
 }

@@ -2,7 +2,7 @@ import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, getLeadByRow, updateLead, clearLeadRow } from '@/lib/sheets'
-import { logAssignment, recordLeadClose } from '@/lib/db'
+import { logAssignment, recordLeadClose, insertLeadEdit } from '@/lib/db'
 import { LEAD_STATUSES } from '@/config/client'
 import { computeLeadScore } from '@/lib/scoring'
 
@@ -232,6 +232,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             changed_by_id: user.id,
             source: 'manual',
           })
+        }
+      } catch { /* audit log is non-critical */ }
+    }
+
+    // Audit-log field-level changes (skip fields already audited by dedicated tables)
+    const SKIP_AUDIT_FIELDS = new Set(['lead_status', 'assigned_to'])
+    const AUDITED_FIELDS = [
+      'full_name', 'email', 'city', 'state', 'model_interest',
+      'lead_priority', 'next_followup', 'attempted_contact',
+      'first_call_date', 'wa_message_id', 'notes',
+    ]
+    const fieldsToAudit = Object.keys(body).filter(
+      k => !SKIP_AUDIT_FIELDS.has(k) && AUDITED_FIELDS.includes(k)
+    )
+    if (fieldsToAudit.length > 0) {
+      try {
+        // Reuse the lead already fetched for assignment/status logic above if available,
+        // otherwise fetch fresh. getLeads() is small (<5000 rows) — acceptable for v1.
+        const leads = await getLeads()
+        const currentLead = leads.find(l => l.row_number === rowNum)
+        if (currentLead) {
+          for (const field of fieldsToAudit) {
+            const oldVal = String(currentLead[field as keyof typeof currentLead] ?? '')
+            const newVal = String(body[field] ?? '')
+            if (oldVal !== newVal) {
+              await insertLeadEdit({
+                lead_row: rowNum,
+                phone: currentLead.phone || '',
+                field_name: field,
+                old_value: oldVal,
+                new_value: newVal,
+                changed_by: user.name ?? user.email,
+                changed_by_id: user.id,
+              })
+            }
+          }
         }
       } catch { /* audit log is non-critical */ }
     }
