@@ -174,6 +174,15 @@ export default function LeadDetailPage() {
   // Assignment history
   const [assignHistory, setAssignHistory] = useState<{ from_agent: string; to_agent: string; assigned_by: string; created_at: string }[]>([])
 
+  // Delegation state
+  const [activeDelegation, setActiveDelegation] = useState<{ id: number; from_agent_name: string; to_agent_name: string; expires_at: string | null } | null>(null)
+  const [showDelegateModal, setShowDelegateModal] = useState(false)
+  const [delegateToId, setDelegateToId] = useState('')
+  const [delegateMessage, setDelegateMessage] = useState('')
+  const [delegateExpires, setDelegateExpires] = useState('')
+  const [delegating, setDelegating] = useState(false)
+  const [endingDelegation, setEndingDelegation] = useState(false)
+
   // Lead score
   const [leadScore, setLeadScore] = useState<number | null>(null)
 
@@ -433,10 +442,68 @@ export default function LeadDetailPage() {
     load()
   }, [fetchLead, fetchMessages, fetchUsers, fetchQuickReplies, fetchAutoMsgStatus, fetchAssignHistory, fetchTelecallerAssignment])
 
+  // Fetch active delegation for this lead
+  const fetchActiveDelegation = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/leads/${id}/delegations`)
+      const json = await res.json()
+      if (json.success && json.data) {
+        const active = (json.data as Array<{ id: number; status: string; from_agent_name: string; to_agent_name: string; expires_at: string | null }>)
+          .find(d => d.status === 'active') || null
+        setActiveDelegation(active ? { id: active.id, from_agent_name: active.from_agent_name, to_agent_name: active.to_agent_name, expires_at: active.expires_at } : null)
+      }
+    } catch { /* silent */ }
+  }, [id])
+
+  // Delegate lead handler
+  const handleDelegate = async () => {
+    if (!delegateToId) return
+    setDelegating(true)
+    try {
+      const res = await fetch(`/api/leads/${id}/delegate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to_agent_id: delegateToId, message: delegateMessage, expires_at: delegateExpires || undefined }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setToast('Help requested')
+        setShowDelegateModal(false)
+        setDelegateToId('')
+        setDelegateMessage('')
+        setDelegateExpires('')
+        await fetchActiveDelegation()
+      } else {
+        setToast(json.error || 'Failed to delegate')
+      }
+    } catch { setToast('Failed to delegate') }
+    setDelegating(false)
+  }
+
+  // End delegation handler
+  const handleEndDelegation = async () => {
+    if (!activeDelegation) return
+    setEndingDelegation(true)
+    try {
+      const res = await fetch(`/api/delegations/${activeDelegation.id}/end`, { method: 'POST' })
+      const json = await res.json()
+      if (json.success) {
+        setToast('Delegation ended')
+        setActiveDelegation(null)
+      } else {
+        setToast(json.error || 'Failed to end delegation')
+      }
+    } catch { setToast('Failed to end delegation') }
+    setEndingDelegation(false)
+  }
+
   // Fetch drip state when lead is loaded
   useEffect(() => {
     if (lead?.phone) fetchDripState()
   }, [lead?.phone, fetchDripState])
+
+  // Fetch active delegation on mount
+  useEffect(() => { fetchActiveDelegation() }, [fetchActiveDelegation])
 
   // Fetch session user (for admin detection)
   useEffect(() => {
@@ -1064,6 +1131,95 @@ export default function LeadDetailPage() {
                   </div>
                 )}
               </div>
+
+              {/* Delegation Banner */}
+              {activeDelegation && (
+                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md text-xs" style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)' }}>
+                  <span style={{ color: 'var(--color-accent)' }}>
+                    {activeDelegation.to_agent_name} is supporting
+                    {activeDelegation.expires_at ? ` until ${activeDelegation.expires_at.slice(0, 10)}` : ''}
+                  </span>
+                  <button
+                    onClick={handleEndDelegation}
+                    disabled={endingDelegation}
+                    className="text-[11px] font-medium text-dim hover:text-danger transition-colors disabled:opacity-50"
+                  >
+                    End early
+                  </button>
+                </div>
+              )}
+
+              {/* Ask for Help button */}
+              {!activeDelegation && (
+                <button
+                  onClick={() => setShowDelegateModal(true)}
+                  className="w-full text-xs font-medium py-2 px-3 rounded-md border border-border bg-elevated hover:bg-border transition-colors text-muted flex items-center justify-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                  </svg>
+                  Ask for Help
+                </button>
+              )}
+
+              {/* Delegate Modal */}
+              {showDelegateModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+                  <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm space-y-4 shadow-2xl">
+                    <h3 className="text-sm font-semibold text-text">Ask for Help</h3>
+                    <div>
+                      <label className="text-xs text-dim block mb-1">Agent to support</label>
+                      <select
+                        value={delegateToId}
+                        onChange={e => setDelegateToId(e.target.value)}
+                        className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+                      >
+                        <option value="">Select agent...</option>
+                        {users
+                          .filter(u => u.role !== 'telecaller' && u.active !== false)
+                          .map(u => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-dim block mb-1">Until (optional)</label>
+                      <input
+                        type="date"
+                        value={delegateExpires}
+                        onChange={e => setDelegateExpires(e.target.value)}
+                        className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-dim block mb-1">Note (optional)</label>
+                      <textarea
+                        value={delegateMessage}
+                        onChange={e => setDelegateMessage(e.target.value)}
+                        rows={2}
+                        placeholder="Any context for the supporting agent..."
+                        className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50 resize-none"
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setShowDelegateModal(false)}
+                        className="text-xs px-3 py-2 rounded-md border border-border text-muted hover:text-text transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleDelegate}
+                        disabled={!delegateToId || delegating}
+                        className="text-xs px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50"
+                        style={{ background: 'var(--color-accent)', color: '#1a1209' }}
+                      >
+                        {delegating ? 'Sending...' : 'Send Request'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Follow-up date picker */}
               <div>

@@ -121,7 +121,16 @@ export default function InboxPage() {
   // Mobile right-side context drawer (slide-in lead details on <md). Desktop ignores this.
   const [contextDrawerOpen, setContextDrawerOpen] = useState(false)
   // Session user — needed to check can_edit_leads permission
-  const [sessionUser, setSessionUser] = useState<{ role: string; can_edit_leads?: boolean } | null>(null)
+  const [sessionUser, setSessionUser] = useState<{ id: string; role: string; can_edit_leads?: boolean } | null>(null)
+  // Inbox delegation state
+  const [inboxActiveDelegation, setInboxActiveDelegation] = useState<{ id: number; from_agent_name: string; to_agent_name: string; expires_at: string | null } | null>(null)
+  const [showInboxDelegateModal, setShowInboxDelegateModal] = useState(false)
+  const [inboxDelegateToId, setInboxDelegateToId] = useState('')
+  const [inboxDelegateMessage, setInboxDelegateMessage] = useState('')
+  const [inboxDelegateExpires, setInboxDelegateExpires] = useState('')
+  const [inboxDelegating, setInboxDelegating] = useState(false)
+  const [inboxEndingDelegation, setInboxEndingDelegation] = useState(false)
+  const [inboxAgents, setInboxAgents] = useState<{ id: string; name: string; role: string; active: boolean }[]>([])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollRef = useRef<NodeJS.Timeout | null>(null)
@@ -233,6 +242,10 @@ export default function InboxPage() {
       .then(r => r.json())
       .then(d => { if (d.success) setSessionUser(d.data) })
       .catch(() => {})
+    fetch('/api/users')
+      .then(r => r.json())
+      .then(d => { if (d.success) setInboxAgents(d.data.filter((u: { active: boolean }) => u.active)) })
+      .catch(() => {})
     fetch('/api/quick-replies')
       .then(r => r.json())
       .then(d => { if (d.success) setQuickReplies(d.data) })
@@ -314,13 +327,60 @@ export default function InboxPage() {
       .then(r => r.json())
       .then(d => { if (d.success) setLeadNotes(d.data) })
       .catch(() => {})
-    // Fetch lead info if this is a lead
+    // Fetch lead info + active delegation if this is a lead
+    setInboxActiveDelegation(null)
     if (contact.is_lead && contact.lead_row) {
       fetch(`/api/leads/${contact.lead_row}`)
         .then(r => r.json())
         .then(d => { if (d.success) setLeadInfo(d.data) })
         .catch(() => {})
+      fetch(`/api/leads/${contact.lead_row}/delegations`)
+        .then(r => r.json())
+        .then(d => {
+          if (d.success && d.data) {
+            const active = d.data.find((del: { status: string }) => del.status === 'active') || null
+            setInboxActiveDelegation(active ? { id: active.id, from_agent_name: active.from_agent_name, to_agent_name: active.to_agent_name, expires_at: active.expires_at } : null)
+          }
+        })
+        .catch(() => {})
     }
+  }
+
+  // Inbox delegation handlers
+  async function handleInboxDelegate() {
+    if (!inboxDelegateToId || !activeContact?.lead_row) return
+    setInboxDelegating(true)
+    try {
+      const res = await fetch(`/api/leads/${activeContact.lead_row}/delegate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to_agent_id: inboxDelegateToId, message: inboxDelegateMessage, expires_at: inboxDelegateExpires || undefined }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setToast('Help requested')
+        setShowInboxDelegateModal(false)
+        setInboxDelegateToId('')
+        setInboxDelegateMessage('')
+        setInboxDelegateExpires('')
+        setInboxActiveDelegation({ id: json.data.id, from_agent_name: json.data.from_agent_name, to_agent_name: json.data.to_agent_name, expires_at: json.data.expires_at })
+      } else {
+        setToast(json.error || 'Failed to delegate')
+      }
+    } catch { setToast('Failed to delegate') }
+    setInboxDelegating(false)
+  }
+
+  async function handleInboxEndDelegation() {
+    if (!inboxActiveDelegation) return
+    setInboxEndingDelegation(true)
+    try {
+      const res = await fetch(`/api/delegations/${inboxActiveDelegation.id}/end`, { method: 'POST' })
+      const json = await res.json()
+      if (json.success) { setToast('Delegation ended'); setInboxActiveDelegation(null) }
+      else setToast(json.error || 'Failed to end delegation')
+    } catch { setToast('Failed to end delegation') }
+    setInboxEndingDelegation(false)
   }
 
   // Update lead field from inbox
@@ -1028,6 +1088,21 @@ export default function InboxPage() {
                       <div>
                         <span className="text-dim block text-[10px] uppercase tracking-wider">Assigned</span>
                         <span className="text-text font-medium">{leadInfo.assigned_to || 'Unassigned'}</span>
+                      </div>
+                      <div className="col-span-2 sm:col-span-4">
+                        {inboxActiveDelegation ? (
+                          <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded text-[11px]" style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)' }}>
+                            <span style={{ color: 'var(--color-accent)' }}>
+                              {inboxActiveDelegation.to_agent_name} supporting{inboxActiveDelegation.expires_at ? ` until ${inboxActiveDelegation.expires_at.slice(0, 10)}` : ''}
+                            </span>
+                            <button onClick={handleInboxEndDelegation} disabled={inboxEndingDelegation} className="text-[10px] text-dim hover:text-danger transition-colors disabled:opacity-50">End</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setShowInboxDelegateModal(true)} className="text-[11px] px-2.5 py-1 rounded border border-border bg-elevated hover:bg-border text-muted transition-colors flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
+                            Ask for Help
+                          </button>
+                        )}
                       </div>
                       <div>
                         <span className="text-dim block text-[10px] uppercase tracking-wider">Score</span>
@@ -1749,6 +1824,65 @@ export default function InboxPage() {
                 className="bg-accent hover:bg-accent-hover disabled:opacity-50 text-[#1a1209] text-sm font-semibold px-4 py-1.5 rounded-md transition-colors"
               >
                 {forwarding ? 'Sending…' : 'Forward'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inbox Delegate Modal */}
+      {showInboxDelegateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm space-y-4 shadow-2xl">
+            <h3 className="text-sm font-semibold text-text">Ask for Help</h3>
+            <div>
+              <label className="text-xs text-dim block mb-1">Agent to support</label>
+              <select
+                value={inboxDelegateToId}
+                onChange={e => setInboxDelegateToId(e.target.value)}
+                className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+              >
+                <option value="">Select agent...</option>
+                {inboxAgents
+                  .filter(u => u.role !== 'telecaller' && u.active)
+                  .map(u => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-dim block mb-1">Until (optional)</label>
+              <input
+                type="date"
+                value={inboxDelegateExpires}
+                onChange={e => setInboxDelegateExpires(e.target.value)}
+                className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-dim block mb-1">Note (optional)</label>
+              <textarea
+                value={inboxDelegateMessage}
+                onChange={e => setInboxDelegateMessage(e.target.value)}
+                rows={2}
+                placeholder="Any context for the supporting agent..."
+                className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50 resize-none"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowInboxDelegateModal(false)}
+                className="text-xs px-3 py-2 rounded-md border border-border text-muted hover:text-text transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleInboxDelegate}
+                disabled={!inboxDelegateToId || inboxDelegating}
+                className="text-xs px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50"
+                style={{ background: 'var(--color-accent)', color: '#1a1209' }}
+              >
+                {inboxDelegating ? 'Sending...' : 'Send Request'}
               </button>
             </div>
           </div>

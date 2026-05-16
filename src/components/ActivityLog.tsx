@@ -39,7 +39,21 @@ interface AssignmentEntry {
   created_at: string
 }
 
-type ActivityKind = 'edit' | 'status' | 'assignment'
+interface DelegationEntry {
+  id: number
+  lead_row: number
+  from_agent_name: string
+  to_agent_name: string
+  status: string
+  message: string
+  expires_at: string | null
+  created_at: string
+  responded_at: string | null
+  ended_at: string | null
+  ended_by: string
+}
+
+type ActivityKind = 'edit' | 'status' | 'assignment' | 'delegation'
 
 interface ActivityItem {
   id: string
@@ -65,14 +79,58 @@ const FIELD_LABELS: Record<string, string> = {
   notes: 'Notes',
 }
 
+function mergeDelegations(delegations: DelegationEntry[]): ActivityItem[] {
+  const items: ActivityItem[] = []
+  for (const d of delegations) {
+    // Request created
+    items.push({
+      id: `deleg-created-${d.id}`,
+      kind: 'delegation',
+      created_at: d.created_at,
+      actor: d.from_agent_name,
+      description: `${d.from_agent_name} requested support from ${d.to_agent_name}${d.expires_at ? ` until ${d.expires_at.slice(0, 10)}` : ''}`,
+    })
+    // Response
+    if (d.responded_at && (d.status === 'active' || d.status === 'declined')) {
+      items.push({
+        id: `deleg-responded-${d.id}`,
+        kind: 'delegation',
+        created_at: d.responded_at,
+        actor: d.to_agent_name,
+        description: d.status === 'active'
+          ? `${d.to_agent_name} accepted the support request`
+          : `${d.to_agent_name} declined the support request`,
+      })
+    }
+    // Ended
+    if (d.ended_at && d.status === 'ended') {
+      const endedByLabel = d.ended_by === 'system-cron' ? 'System' : d.ended_by
+      items.push({
+        id: `deleg-ended-${d.id}`,
+        kind: 'delegation',
+        created_at: d.ended_at,
+        actor: endedByLabel,
+        description: d.ended_by === 'system-cron'
+          ? `Delegation auto-ended (expired ${d.expires_at ? d.expires_at.slice(0, 10) : ''})`
+          : `${endedByLabel} ended the delegation`,
+      })
+    }
+  }
+  return items
+}
+
 function mergeActivity(
   edits: LeadEdit[],
   statusChanges: StatusChange[],
-  assignments: AssignmentEntry[]
+  assignments: AssignmentEntry[],
+  delegations: DelegationEntry[] = []
 ): ActivityItem[] {
   const items: ActivityItem[] = []
 
-  for (const e of edits) {
+  // Filter out delegation field edits — we render them via delegation entries instead
+  const nonDelegEdits = edits.filter(e => e.field_name !== 'delegation')
+
+  for (const e of nonDelegEdits) {
     const label = FIELD_LABELS[e.field_name] || e.field_name
     const oldDisplay = e.old_value || '(empty)'
     const newDisplay = e.new_value || '(empty)'
@@ -108,6 +166,9 @@ function mergeActivity(
     })
   }
 
+  // Add delegation timeline entries
+  items.push(...mergeDelegations(delegations))
+
   // Newest first
   items.sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
   return items
@@ -130,6 +191,13 @@ function KindIcon({ kind }: { kind: ActivityKind }) {
       </svg>
     )
   }
+  if (kind === 'delegation') {
+    return (
+      <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+      </svg>
+    )
+  }
   // edit
   return (
     <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -141,6 +209,7 @@ function KindIcon({ kind }: { kind: ActivityKind }) {
 function iconColor(kind: ActivityKind): string {
   if (kind === 'status') return 'text-accent'
   if (kind === 'assignment') return 'text-blue-400'
+  if (kind === 'delegation') return 'text-purple-400'
   return 'text-dim'
 }
 
@@ -156,13 +225,18 @@ export default function ActivityLog({ lead_row }: { lead_row: number; phone: str
   const fetchActivity = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/leads/${lead_row}/activity`)
-      const json = await res.json()
-      if (json.success && json.data) {
+      const [actRes, delRes] = await Promise.all([
+        fetch(`/api/leads/${lead_row}/activity`),
+        fetch(`/api/leads/${lead_row}/delegations`),
+      ])
+      const actJson = await actRes.json()
+      const delJson = await delRes.json()
+      if (actJson.success && actJson.data) {
         const merged = mergeActivity(
-          json.data.edits ?? [],
-          json.data.status_changes ?? [],
-          json.data.assignments ?? []
+          actJson.data.edits ?? [],
+          actJson.data.status_changes ?? [],
+          actJson.data.assignments ?? [],
+          delJson.success ? (delJson.data ?? []) : []
         )
         setItems(merged)
       }
