@@ -5,7 +5,7 @@ import { getLeads, getLeadStats, createLead } from '@/lib/sheets'
 import { computeLeadScore } from '@/lib/scoring'
 import { STATUS_MIGRATION } from '@/config/client'
 import { getTelecallerVisibleLeadRows, getAllAssignments } from '@/lib/telecaller'
-import { getOptedOutPhones, getLastDiscussionByPhone, normalizePhone, upsertContact } from '@/lib/db'
+import { getOptedOutPhones, getLastDiscussionByPhone, normalizePhone, upsertContact, getActiveDelegationsFor, getActiveDelegationForLead } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   try {
@@ -74,8 +74,14 @@ export async function GET(req: NextRequest) {
       })
       leads = leads.filter(l => visibleRows.has(l.row_number))
     } else if (session!.role === 'agent') {
-      // Closer / regular agent: see assigned leads + unassigned (if can_assign)
-      leads = leads.filter(l => l.assigned_to === session!.name || (session!.can_assign && !l.assigned_to))
+      // Closer / regular agent: see assigned leads + unassigned (if can_assign) + delegated to me
+      const activeDelegations = await getActiveDelegationsFor(session!.id)
+      const delegatedRows = new Set(activeDelegations.map(d => d.lead_row))
+      leads = leads.filter(l =>
+        l.assigned_to === session!.name ||
+        (session!.can_assign && !l.assigned_to) ||
+        delegatedRows.has(l.row_number)
+      )
     }
 
     // Attach telecaller_assignment metadata so agents can see who's working their leads,
@@ -110,12 +116,59 @@ export async function GET(req: NextRequest) {
     // Last-discussion lookup (notes / calls / inbound msgs, excluding auto-sent)
     const lastDiscussionByPhone = await getLastDiscussionByPhone()
 
-    // Attach computed scores + telecaller assignment metadata + last discussion
+    // Active delegations for current agent (for metadata attachment)
+    let agentActiveDelegationsByRow = new Map<number, { from_agent_name: string; to_agent_name: string; expires_at: string | null; id: number }>()
+    if (session!.role === 'agent') {
+      const activeDelegations = await getActiveDelegationsFor(session!.id)
+      agentActiveDelegationsByRow = new Map(
+        activeDelegations.map(d => [d.lead_row, {
+          from_agent_name: d.from_agent_name,
+          to_agent_name: d.to_agent_name,
+          expires_at: d.expires_at,
+          id: d.id,
+        }])
+      )
+    }
+
+    // Per-lead active delegation (for all leads visible to admin)
+    const leadDelegationCache = new Map<number, Awaited<ReturnType<typeof getActiveDelegationForLead>>>()
+    if (session!.role === 'admin') {
+      // Fetch active delegation for each lead in batch — one query per lead is acceptable at this scale
+      await Promise.all(leads.map(async l => {
+        const d = await getActiveDelegationForLead(l.row_number)
+        leadDelegationCache.set(l.row_number, d)
+      }))
+    }
+
+    // Attach computed scores + telecaller assignment metadata + last discussion + delegation metadata
     const scoredLeads = leads.map(l => {
       const tc = tcByRow.get(l.row_number)
       const tcUser = tc ? userById.get(tc.telecaller_user_id) : null
       const normPhone = normalizePhone(String(l.phone || ''))
       const last = lastDiscussionByPhone.get(normPhone)
+
+      // Delegation metadata
+      let is_delegated_to_me = false
+      let active_delegation: { from_agent_name: string; to_agent_name: string; expires_at: string | null; id: number } | null = null
+
+      if (session!.role === 'agent') {
+        const delInfo = agentActiveDelegationsByRow.get(l.row_number)
+        if (delInfo && l.assigned_to !== session!.name) {
+          is_delegated_to_me = true
+          active_delegation = delInfo
+        }
+      } else if (session!.role === 'admin') {
+        const d = leadDelegationCache.get(l.row_number)
+        if (d) {
+          active_delegation = {
+            from_agent_name: d.from_agent_name,
+            to_agent_name: d.to_agent_name,
+            expires_at: d.expires_at,
+            id: d.id,
+          }
+        }
+      }
+
       return {
         ...l,
         lead_score: computeLeadScore(l),
@@ -123,6 +176,8 @@ export async function GET(req: NextRequest) {
         telecaller_name: tcUser?.name || '',
         telecaller_assigned_at: tc?.assigned_at || '',
         last_discussion: last || null,
+        is_delegated_to_me,
+        active_delegation,
       }
     })
 
