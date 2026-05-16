@@ -13,6 +13,7 @@ import { SUGGESTED_REPLIES } from '@/config/suggested-replies'
 import LogCallModal from '@/components/LogCallModal'
 import CallHistory from '@/components/CallHistory'
 import VoiceAgentCard from '@/components/VoiceAgentCard'
+import ActivityLog from '@/components/ActivityLog'
 
 interface Contact {
   phone: string
@@ -1085,6 +1086,11 @@ export default function InboxPage() {
                       <p className="text-[10px] text-dim">No notes yet</p>
                     )}
                   </div>
+                  {activeContact?.is_lead && activeContact.lead_row && (
+                    <div className="mt-3">
+                      <ActivityLog lead_row={activeContact.lead_row} phone={activeContact.phone} />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1639,6 +1645,11 @@ export default function InboxPage() {
                   <p className="text-[10px] text-dim">No notes yet</p>
                 )}
               </div>
+              {activeContact?.is_lead && activeContact.lead_row && (
+                <div className="mt-3">
+                  <ActivityLog lead_row={activeContact.lead_row} phone={activeContact.phone} />
+                </div>
+              )}
             </div>
           </aside>
         </>

@@ -7,6 +7,7 @@ import VoiceAgentCard from '@/components/VoiceAgentCard'
 import AgreementForm from '@/components/AgreementForm'
 import LogCallModal from '@/components/LogCallModal'
 import CallHistory from '@/components/CallHistory'
+import ActivityLog from '@/components/ActivityLog'
 import { LEAD_STATUSES, STATUS_LABELS } from '@/config/client'
 import Toast from '@/components/Toast'
 import { formatTime } from '@/lib/format'
@@ -1082,6 +1083,9 @@ export default function LeadDetailPage() {
               {/* Notes — timestamped, from DB */}
               <LeadNotes phone={lead.phone} />
             </div>
+
+            {/* Activity Log */}
+            <ActivityLog lead_row={lead.row_number} phone={lead.phone} />
 
             {/* Action Buttons */}
             {!isTerminal && (
