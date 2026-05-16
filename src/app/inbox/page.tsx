@@ -97,7 +97,7 @@ export default function InboxPage() {
   // Lead details panel
   const [showLeadDetails, setShowLeadDetails] = useState(false)
   // Full lead info from API
-  interface LeadInfo { row_number: number; full_name: string; lead_status: string; lead_priority: string; assigned_to: string; email: string; city: string; state: string; next_followup: string; lead_score?: number }
+  interface LeadInfo { row_number: number; full_name: string; lead_status: string; lead_priority: string; assigned_to: string; email: string; city: string; state: string; model_interest: string; next_followup: string; lead_score?: number }
   const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null)
   const [updatingLead, setUpdatingLead] = useState(false)
   // Call logging
@@ -119,6 +119,8 @@ export default function InboxPage() {
   const [showSidebar, setShowSidebar] = useState(true)
   // Mobile right-side context drawer (slide-in lead details on <md). Desktop ignores this.
   const [contextDrawerOpen, setContextDrawerOpen] = useState(false)
+  // Session user — needed to check can_edit_leads permission
+  const [sessionUser, setSessionUser] = useState<{ role: string; can_edit_leads?: boolean } | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollRef = useRef<NodeJS.Timeout | null>(null)
@@ -224,8 +226,12 @@ export default function InboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notifPermission])
 
-  // Fetch quick replies + templates
+  // Fetch quick replies + templates + session
   useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => { if (d.success) setSessionUser(d.data) })
+      .catch(() => {})
     fetch('/api/quick-replies')
       .then(r => r.json())
       .then(d => { if (d.success) setQuickReplies(d.data) })
@@ -329,7 +335,8 @@ export default function InboxPage() {
       const data = await res.json()
       if (data.success) {
         setLeadInfo(prev => prev ? { ...prev, [field]: value } : null)
-        setToast(`${field === 'lead_status' ? 'Status' : 'Priority'} updated`)
+        const labels: Record<string, string> = { lead_status: 'Status', lead_priority: 'Priority', full_name: 'Name', email: 'Email', city: 'City', state: 'State', model_interest: 'Model interest' }
+        setToast(`${labels[field] || field} updated`)
       } else {
         setToast(data.error || 'Update failed')
       }
@@ -942,24 +949,50 @@ export default function InboxPage() {
               {/* Lead Details Panel (collapsible) — desktop only; mobile uses slide-in drawer below */}
               {showLeadDetails && activeContact && (
                 <div className="hidden md:block border-b border-border glass-nav px-4 py-3">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div>
-                      <span className="text-dim block text-[10px] uppercase tracking-wider">Name</span>
-                      <span className="text-text font-medium">{activeContact.name || 'Unknown'}</span>
-                    </div>
-                    <div>
-                      <span className="text-dim block text-[10px] uppercase tracking-wider">Phone</span>
-                      <span className="text-text font-medium">+{activeContact.phone}</span>
-                    </div>
-                    <div>
-                      <span className="text-dim block text-[10px] uppercase tracking-wider">City</span>
-                      <span className="text-text font-medium">{leadInfo?.city || activeContact.city || 'N/A'}{leadInfo?.state ? `, ${leadInfo.state}` : ''}</span>
-                    </div>
-                    <div>
-                      <span className="text-dim block text-[10px] uppercase tracking-wider">Type</span>
-                      <span className="text-text font-medium">{activeContact.is_lead ? 'Lead' : 'Contact'}</span>
-                    </div>
-                  </div>
+                  {(() => {
+                    const canEdit = leadInfo && (sessionUser?.role === 'admin' || sessionUser?.can_edit_leads === true)
+                    const inlineField = (field: string, currentVal: string) => (
+                      <input
+                        key={field}
+                        defaultValue={currentVal}
+                        onBlur={e => { if (e.target.value !== currentVal) updateLeadFromInbox(field, e.target.value) }}
+                        disabled={updatingLead}
+                        className="w-full bg-elevated border border-border rounded px-1.5 py-0.5 text-xs text-text focus:outline-none focus:border-accent/50 disabled:opacity-50 font-medium"
+                      />
+                    )
+                    return (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                        <div>
+                          <span className="text-dim block text-[10px] uppercase tracking-wider">Name</span>
+                          {canEdit ? inlineField('full_name', leadInfo?.full_name || activeContact.name || '') : <span className="text-text font-medium">{activeContact.name || 'Unknown'}</span>}
+                        </div>
+                        <div>
+                          <span className="text-dim block text-[10px] uppercase tracking-wider">Phone</span>
+                          <span className="text-text font-medium">+{activeContact.phone}</span>
+                        </div>
+                        <div>
+                          <span className="text-dim block text-[10px] uppercase tracking-wider">City</span>
+                          {canEdit ? inlineField('city', leadInfo?.city || activeContact.city || '') : <span className="text-text font-medium">{leadInfo?.city || activeContact.city || 'N/A'}</span>}
+                        </div>
+                        <div>
+                          <span className="text-dim block text-[10px] uppercase tracking-wider">State</span>
+                          {canEdit ? inlineField('state', leadInfo?.state || '') : <span className="text-text font-medium">{leadInfo?.state || 'N/A'}</span>}
+                        </div>
+                        <div>
+                          <span className="text-dim block text-[10px] uppercase tracking-wider">Email</span>
+                          {canEdit ? inlineField('email', leadInfo?.email || '') : <span className="text-text font-medium">{leadInfo?.email || 'N/A'}</span>}
+                        </div>
+                        <div>
+                          <span className="text-dim block text-[10px] uppercase tracking-wider">Model Interest</span>
+                          {canEdit ? inlineField('model_interest', leadInfo?.model_interest || '') : <span className="text-text font-medium">{leadInfo?.model_interest || 'N/A'}</span>}
+                        </div>
+                        <div>
+                          <span className="text-dim block text-[10px] uppercase tracking-wider">Type</span>
+                          <span className="text-text font-medium">{activeContact.is_lead ? 'Lead' : 'Contact'}</span>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   {/* Lead-specific info: Status, Priority, Assigned, Score */}
                   {leadInfo && (
@@ -1471,24 +1504,50 @@ export default function InboxPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-4 py-3">
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <span className="text-dim block text-[10px] uppercase tracking-wider">Name</span>
-                  <span className="text-text font-medium">{activeContact.name || 'Unknown'}</span>
-                </div>
-                <div>
-                  <span className="text-dim block text-[10px] uppercase tracking-wider">Phone</span>
-                  <span className="text-text font-medium">+{activeContact.phone}</span>
-                </div>
-                <div>
-                  <span className="text-dim block text-[10px] uppercase tracking-wider">City</span>
-                  <span className="text-text font-medium">{leadInfo?.city || activeContact.city || 'N/A'}{leadInfo?.state ? `, ${leadInfo.state}` : ''}</span>
-                </div>
-                <div>
-                  <span className="text-dim block text-[10px] uppercase tracking-wider">Type</span>
-                  <span className="text-text font-medium">{activeContact.is_lead ? 'Lead' : 'Contact'}</span>
-                </div>
-              </div>
+              {(() => {
+                const canEdit = leadInfo && (sessionUser?.role === 'admin' || sessionUser?.can_edit_leads === true)
+                const inlineField = (field: string, currentVal: string) => (
+                  <input
+                    key={field}
+                    defaultValue={currentVal}
+                    onBlur={e => { if (e.target.value !== currentVal) updateLeadFromInbox(field, e.target.value) }}
+                    disabled={updatingLead}
+                    className="w-full bg-elevated border border-border rounded px-1.5 py-0.5 text-xs text-text focus:outline-none focus:border-accent/50 disabled:opacity-50 font-medium"
+                  />
+                )
+                return (
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-dim block text-[10px] uppercase tracking-wider">Name</span>
+                      {canEdit ? inlineField('full_name', leadInfo?.full_name || activeContact.name || '') : <span className="text-text font-medium">{activeContact.name || 'Unknown'}</span>}
+                    </div>
+                    <div>
+                      <span className="text-dim block text-[10px] uppercase tracking-wider">Phone</span>
+                      <span className="text-text font-medium">+{activeContact.phone}</span>
+                    </div>
+                    <div>
+                      <span className="text-dim block text-[10px] uppercase tracking-wider">City</span>
+                      {canEdit ? inlineField('city', leadInfo?.city || activeContact.city || '') : <span className="text-text font-medium">{leadInfo?.city || activeContact.city || 'N/A'}</span>}
+                    </div>
+                    <div>
+                      <span className="text-dim block text-[10px] uppercase tracking-wider">State</span>
+                      {canEdit ? inlineField('state', leadInfo?.state || '') : <span className="text-text font-medium">{leadInfo?.state || 'N/A'}</span>}
+                    </div>
+                    <div>
+                      <span className="text-dim block text-[10px] uppercase tracking-wider">Email</span>
+                      {canEdit ? inlineField('email', leadInfo?.email || '') : <span className="text-text font-medium">{leadInfo?.email || 'N/A'}</span>}
+                    </div>
+                    <div>
+                      <span className="text-dim block text-[10px] uppercase tracking-wider">Model Interest</span>
+                      {canEdit ? inlineField('model_interest', leadInfo?.model_interest || '') : <span className="text-text font-medium">{leadInfo?.model_interest || 'N/A'}</span>}
+                    </div>
+                    <div>
+                      <span className="text-dim block text-[10px] uppercase tracking-wider">Type</span>
+                      <span className="text-text font-medium">{activeContact.is_lead ? 'Lead' : 'Contact'}</span>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {leadInfo && (
                 <div className="grid grid-cols-2 gap-3 text-xs mt-4 pt-3 border-t border-border/50">

@@ -130,6 +130,12 @@ export const LEAD_WRITE_COLUMNS: Record<string, string> = {
   assigned_to: 'AA',
   next_followup: 'AB',
   notes: 'AC',
+  // Profile fields — writable only by admin or can_edit_leads users
+  full_name: 'P',
+  email: 'R',
+  city: 'S',
+  state: 'T',
+  model_interest: 'M',
 }
 
 // ─── Lead Statuses ──────────────────────────────────────────────────

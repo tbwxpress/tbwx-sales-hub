@@ -6,6 +6,9 @@ import { logAssignment, recordLeadClose } from '@/lib/db'
 import { LEAD_STATUSES } from '@/config/client'
 import { computeLeadScore } from '@/lib/scoring'
 
+// Fields that require admin or can_edit_leads permission
+const PROFILE_FIELDS = new Set(['full_name', 'email', 'city', 'state', 'model_interest'])
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession()
@@ -60,6 +63,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Only admin or users with can_assign can change assigned_to
     if (body.assigned_to !== undefined && user.role !== 'admin' && !user.can_assign) {
       return NextResponse.json({ success: false, error: 'Not authorized to assign leads' }, { status: 403 })
+    }
+
+    // Profile field edits require admin or can_edit_leads (checked against fresh DB record)
+    const hasProfileField = Object.keys(body).some(k => PROFILE_FIELDS.has(k))
+    if (hasProfileField) {
+      if (user.role !== 'admin') {
+        // Fresh DB lookup — don't trust the JWT claim for this check
+        const { getUserById } = await import('@/lib/users')
+        const freshUser = await getUserById(user.id)
+        if (!freshUser?.can_edit_leads) {
+          return NextResponse.json({ success: false, error: 'Not authorized to edit lead profile fields' }, { status: 403 })
+        }
+      }
+      // Validate: full_name must not be empty if provided
+      if (body.full_name !== undefined && !String(body.full_name).trim()) {
+        return NextResponse.json({ success: false, error: 'Name cannot be empty' }, { status: 400 })
+      }
+      // Validate: email must match basic pattern if provided
+      if (body.email !== undefined && body.email !== '' && !/^\S+@\S+\.\S+$/.test(String(body.email))) {
+        return NextResponse.json({ success: false, error: 'Invalid email address' }, { status: 400 })
+      }
     }
 
     // Validate status if provided

@@ -181,7 +181,7 @@ export default function LeadDetailPage() {
   const [togglingDrip, setTogglingDrip] = useState(false)
 
   // Session user
-  const [sessionUser, setSessionUser] = useState<{ name: string; role: string } | null>(null)
+  const [sessionUser, setSessionUser] = useState<{ name: string; role: string; can_edit_leads?: boolean } | null>(null)
 
   // Log Call modal
   const [showLogCallModal, setShowLogCallModal] = useState(false)
@@ -663,14 +663,61 @@ export default function LeadDetailPage() {
             <div className="bg-card rounded-lg border border-border p-4 space-y-3">
               <h2 className="text-xs font-semibold text-dim uppercase tracking-wide mb-3">Lead Info</h2>
 
-              <InfoRow label="Name" value={lead.full_name} />
-              <InfoRow label="Phone" value={lead.phone} isPhone />
-              <InfoRow label="Email" value={lead.email || '---'} />
-              <InfoRow label="City" value={[lead.city, lead.state].filter(Boolean).join(', ') || '---'} />
-              <InfoRow label="Model Interest" value={lead.model_interest || '---'} />
-              <InfoRow label="Experience" value={lead.experience || '---'} />
-              <InfoRow label="Timeline" value={lead.timeline || '---'} />
-              <InfoRow label="Platform" value={lead.platform || '---'} />
+              {(() => {
+                const canEdit = sessionUser?.role === 'admin' || sessionUser?.can_edit_leads === true
+                const inlineInput = (field: string, value: string) => (
+                  <input
+                    defaultValue={value}
+                    onBlur={e => { if (e.target.value !== value) updateField(field, e.target.value) }}
+                    disabled={savingField === field}
+                    className="w-full bg-elevated border border-border rounded-md px-2 py-1 text-sm text-text focus:outline-none focus:border-accent/50 disabled:opacity-50"
+                  />
+                )
+                return (
+                  <>
+                    {/* Name — editable */}
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xs text-dim w-28 shrink-0 pt-1">Name</span>
+                      {canEdit
+                        ? inlineInput('full_name', lead.full_name)
+                        : <span className="text-sm text-text">{lead.full_name}</span>}
+                    </div>
+                    {/* Phone — always read-only */}
+                    <InfoRow label="Phone" value={lead.phone} isPhone />
+                    {/* Email — editable */}
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xs text-dim w-28 shrink-0 pt-1">Email</span>
+                      {canEdit
+                        ? inlineInput('email', lead.email || '')
+                        : <span className="text-sm text-text">{lead.email || '---'}</span>}
+                    </div>
+                    {/* City — editable */}
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xs text-dim w-28 shrink-0 pt-1">City</span>
+                      {canEdit
+                        ? inlineInput('city', lead.city || '')
+                        : <span className="text-sm text-text">{lead.city || '---'}</span>}
+                    </div>
+                    {/* State — editable */}
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xs text-dim w-28 shrink-0 pt-1">State</span>
+                      {canEdit
+                        ? inlineInput('state', lead.state || '')
+                        : <span className="text-sm text-text">{lead.state || '---'}</span>}
+                    </div>
+                    {/* Model Interest — editable */}
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xs text-dim w-28 shrink-0 pt-1">Model Interest</span>
+                      {canEdit
+                        ? inlineInput('model_interest', lead.model_interest || '')
+                        : <span className="text-sm text-text">{lead.model_interest || '---'}</span>}
+                    </div>
+                    <InfoRow label="Experience" value={lead.experience || '---'} />
+                    <InfoRow label="Timeline" value={lead.timeline || '---'} />
+                    <InfoRow label="Platform" value={lead.platform || '---'} />
+                  </>
+                )
+              })()}
             </div>
 
             {/* Lead Score Card */}
