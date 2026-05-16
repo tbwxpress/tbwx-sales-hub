@@ -105,6 +105,43 @@ export interface Delegation {
   ended_by: string
 }
 
+export type PaymentFollowupStatus = 'pending' | 'in_progress' | 'partially_cleared' | 'cleared' | 'blocked'
+
+export interface PaymentFollowup {
+  id: number
+  lead_row: number | null
+  phone: string
+  franchise_name: string
+  amount: number
+  currency: string
+  due_date: string | null
+  assigned_to_id: string
+  assigned_to_name: string
+  created_by_id: string
+  created_by_name: string
+  status: PaymentFollowupStatus
+  reason: string
+  cleared_at: string | null
+  cleared_by_id: string
+  cleared_amount: number
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PaymentFollowupUpdate {
+  id: number
+  followup_id: number
+  old_status: string
+  new_status: string
+  reason: string
+  amount_change: number
+  note: string
+  updated_by_id: string
+  updated_by_name: string
+  created_at: string
+}
+
 export interface GoogleAdsLead {
   campaign_name?: string
   campaign_id?: string

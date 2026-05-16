@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { createClient, type Client, type Row } from '@libsql/client'
-import type { Delegation } from './types'
+import type { Delegation, PaymentFollowup, PaymentFollowupUpdate, PaymentFollowupStatus } from './types'
 
 // Convert BigInt values to Number so JSON.stringify works
 function serializeRow(row: Row): Record<string, unknown> {
@@ -338,6 +338,46 @@ async function ensureInit(): Promise<Client> {
       CREATE INDEX IF NOT EXISTS idx_delegations_to_status ON lead_delegations(to_agent_id, status);
       CREATE INDEX IF NOT EXISTS idx_delegations_lead_status ON lead_delegations(lead_row, status);
       CREATE INDEX IF NOT EXISTS idx_delegations_expires ON lead_delegations(expires_at) WHERE status='active';
+
+      CREATE TABLE IF NOT EXISTS payment_followups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lead_row INTEGER DEFAULT NULL,
+        phone TEXT DEFAULT '',
+        franchise_name TEXT NOT NULL,
+        amount REAL DEFAULT 0,
+        currency TEXT DEFAULT '₹',
+        due_date TEXT DEFAULT NULL,
+        assigned_to_id TEXT NOT NULL,
+        assigned_to_name TEXT NOT NULL,
+        created_by_id TEXT NOT NULL,
+        created_by_name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        reason TEXT DEFAULT '',
+        cleared_at TEXT DEFAULT NULL,
+        cleared_by_id TEXT DEFAULT '',
+        cleared_amount REAL DEFAULT 0,
+        notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_pf_assigned_status ON payment_followups(assigned_to_id, status);
+      CREATE INDEX IF NOT EXISTS idx_pf_status_due ON payment_followups(status, due_date);
+      CREATE INDEX IF NOT EXISTS idx_pf_lead ON payment_followups(lead_row);
+
+      CREATE TABLE IF NOT EXISTS payment_followup_updates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        followup_id INTEGER NOT NULL,
+        old_status TEXT DEFAULT '',
+        new_status TEXT NOT NULL,
+        reason TEXT DEFAULT '',
+        amount_change REAL DEFAULT 0,
+        note TEXT DEFAULT '',
+        updated_by_id TEXT NOT NULL,
+        updated_by_name TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (followup_id) REFERENCES payment_followups(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_pfu_followup ON payment_followup_updates(followup_id, created_at);
     `)
 
     // Additive migrations (try-catch for existing DBs)
@@ -1793,4 +1833,233 @@ export async function getDelegationById(id: number): Promise<Delegation | null> 
   const result = await db.execute({ sql: 'SELECT * FROM lead_delegations WHERE id = ?', args: [id] })
   if (result.rows.length === 0) return null
   return rowToDelegation(serializeRow(result.rows[0]))
+}
+
+// ─── Payment Followup operations ─────────────────────────────────────────────
+
+function rowToFollowup(row: Record<string, unknown>): PaymentFollowup {
+  return {
+    id: Number(row.id),
+    lead_row: row.lead_row != null ? Number(row.lead_row) : null,
+    phone: String(row.phone ?? ''),
+    franchise_name: String(row.franchise_name ?? ''),
+    amount: Number(row.amount ?? 0),
+    currency: String(row.currency ?? '₹'),
+    due_date: row.due_date != null ? String(row.due_date) : null,
+    assigned_to_id: String(row.assigned_to_id ?? ''),
+    assigned_to_name: String(row.assigned_to_name ?? ''),
+    created_by_id: String(row.created_by_id ?? ''),
+    created_by_name: String(row.created_by_name ?? ''),
+    status: String(row.status ?? 'pending') as PaymentFollowupStatus,
+    reason: String(row.reason ?? ''),
+    cleared_at: row.cleared_at != null ? String(row.cleared_at) : null,
+    cleared_by_id: String(row.cleared_by_id ?? ''),
+    cleared_amount: Number(row.cleared_amount ?? 0),
+    notes: String(row.notes ?? ''),
+    created_at: String(row.created_at ?? ''),
+    updated_at: String(row.updated_at ?? ''),
+  }
+}
+
+function rowToFollowupUpdate(row: Record<string, unknown>): PaymentFollowupUpdate {
+  return {
+    id: Number(row.id),
+    followup_id: Number(row.followup_id),
+    old_status: String(row.old_status ?? ''),
+    new_status: String(row.new_status ?? ''),
+    reason: String(row.reason ?? ''),
+    amount_change: Number(row.amount_change ?? 0),
+    note: String(row.note ?? ''),
+    updated_by_id: String(row.updated_by_id ?? ''),
+    updated_by_name: String(row.updated_by_name ?? ''),
+    created_at: String(row.created_at ?? ''),
+  }
+}
+
+export async function createPaymentFollowup(data: {
+  lead_row?: number | null
+  phone?: string
+  franchise_name: string
+  amount?: number
+  currency?: string
+  due_date?: string | null
+  assigned_to_id: string
+  assigned_to_name: string
+  created_by_id: string
+  created_by_name: string
+  notes?: string
+}): Promise<PaymentFollowup> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `INSERT INTO payment_followups
+            (lead_row, phone, franchise_name, amount, currency, due_date, assigned_to_id, assigned_to_name,
+             created_by_id, created_by_name, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      data.lead_row ?? null,
+      data.phone || '',
+      data.franchise_name,
+      data.amount ?? 0,
+      data.currency ?? '₹',
+      data.due_date ?? null,
+      data.assigned_to_id,
+      data.assigned_to_name,
+      data.created_by_id,
+      data.created_by_name,
+      data.notes || '',
+    ],
+  })
+  const id = Number(result.lastInsertRowid)
+  const row = await db.execute({ sql: 'SELECT * FROM payment_followups WHERE id = ?', args: [id] })
+  return rowToFollowup(serializeRow(row.rows[0]))
+}
+
+export async function updatePaymentFollowup(
+  id: number,
+  updates: Partial<Pick<PaymentFollowup, 'franchise_name' | 'amount' | 'currency' | 'due_date' | 'assigned_to_id' | 'assigned_to_name' | 'status' | 'reason' | 'cleared_at' | 'cleared_by_id' | 'cleared_amount' | 'notes'>>,
+  updated_by: { id: string; name: string },
+): Promise<PaymentFollowup> {
+  const db = await ensureInit()
+
+  // Fetch current row for status diff
+  const existing = await db.execute({ sql: 'SELECT * FROM payment_followups WHERE id = ?', args: [id] })
+  if (existing.rows.length === 0) throw new Error('Payment followup not found')
+  const current = rowToFollowup(serializeRow(existing.rows[0]))
+
+  const setClauses: string[] = ["updated_at = datetime('now')"]
+  const values: (string | number | null)[] = []
+
+  if (updates.franchise_name !== undefined) { setClauses.push('franchise_name = ?'); values.push(updates.franchise_name) }
+  if (updates.amount !== undefined) { setClauses.push('amount = ?'); values.push(updates.amount) }
+  if (updates.currency !== undefined) { setClauses.push('currency = ?'); values.push(updates.currency) }
+  if (updates.due_date !== undefined) { setClauses.push('due_date = ?'); values.push(updates.due_date ?? null) }
+  if (updates.assigned_to_id !== undefined) { setClauses.push('assigned_to_id = ?'); values.push(updates.assigned_to_id) }
+  if (updates.assigned_to_name !== undefined) { setClauses.push('assigned_to_name = ?'); values.push(updates.assigned_to_name) }
+  if (updates.status !== undefined) { setClauses.push('status = ?'); values.push(updates.status) }
+  if (updates.reason !== undefined) { setClauses.push('reason = ?'); values.push(updates.reason) }
+  if (updates.cleared_at !== undefined) { setClauses.push('cleared_at = ?'); values.push(updates.cleared_at ?? null) }
+  if (updates.cleared_by_id !== undefined) { setClauses.push('cleared_by_id = ?'); values.push(updates.cleared_by_id) }
+  if (updates.cleared_amount !== undefined) { setClauses.push('cleared_amount = ?'); values.push(updates.cleared_amount) }
+  if (updates.notes !== undefined) { setClauses.push('notes = ?'); values.push(updates.notes) }
+
+  values.push(id)
+  await db.execute({
+    sql: `UPDATE payment_followups SET ${setClauses.join(', ')} WHERE id = ?`,
+    args: values,
+  })
+
+  // If status changed, log it
+  if (updates.status !== undefined && updates.status !== current.status) {
+    const amountChange = updates.cleared_amount !== undefined ? updates.cleared_amount - current.cleared_amount : 0
+    await db.execute({
+      sql: `INSERT INTO payment_followup_updates
+              (followup_id, old_status, new_status, reason, amount_change, note, updated_by_id, updated_by_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        id,
+        current.status,
+        updates.status,
+        updates.reason ?? '',
+        amountChange,
+        updates.notes ?? '',
+        updated_by.id,
+        updated_by.name,
+      ],
+    })
+  }
+
+  const updated = await db.execute({ sql: 'SELECT * FROM payment_followups WHERE id = ?', args: [id] })
+  return rowToFollowup(serializeRow(updated.rows[0]))
+}
+
+export async function getPaymentFollowupsForAgent(
+  agent_id: string,
+  opts?: { status?: string; includeCleared?: boolean },
+): Promise<PaymentFollowup[]> {
+  const db = await ensureInit()
+  const conditions: string[] = ['assigned_to_id = ?']
+  const args: (string | number)[] = [agent_id]
+
+  if (!opts?.includeCleared) {
+    conditions.push("status != 'cleared'")
+  }
+  if (opts?.status) {
+    conditions.push('status = ?')
+    args.push(opts.status)
+  }
+
+  const result = await db.execute({
+    sql: `SELECT * FROM payment_followups WHERE ${conditions.join(' AND ')}
+          ORDER BY
+            CASE WHEN status IN ('pending','in_progress') THEN 0 ELSE 1 END ASC,
+            due_date ASC NULLS LAST,
+            created_at DESC`,
+    args,
+  })
+  return serializeRows(result.rows).map(rowToFollowup)
+}
+
+export async function getAllPaymentFollowups(opts?: {
+  status?: string
+  agent_id?: string
+  days?: number
+}): Promise<PaymentFollowup[]> {
+  const db = await ensureInit()
+  const conditions: string[] = []
+  const args: (string | number)[] = []
+
+  if (opts?.status) {
+    conditions.push('status = ?')
+    args.push(opts.status)
+  }
+  if (opts?.agent_id) {
+    conditions.push('assigned_to_id = ?')
+    args.push(opts.agent_id)
+  }
+  if (opts?.days) {
+    const cutoff = new Date(Date.now() - opts.days * 86400_000).toISOString().slice(0, 19)
+    conditions.push('created_at >= ?')
+    args.push(cutoff)
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+  const result = await db.execute({
+    sql: `SELECT * FROM payment_followups ${where}
+          ORDER BY
+            CASE WHEN status IN ('pending','in_progress') THEN 0 ELSE 1 END ASC,
+            due_date ASC NULLS LAST,
+            created_at DESC`,
+    args,
+  })
+  return serializeRows(result.rows).map(rowToFollowup)
+}
+
+export async function getPaymentFollowup(id: number): Promise<PaymentFollowup | null> {
+  const db = await ensureInit()
+  const result = await db.execute({ sql: 'SELECT * FROM payment_followups WHERE id = ?', args: [id] })
+  if (result.rows.length === 0) return null
+  return rowToFollowup(serializeRow(result.rows[0]))
+}
+
+export async function getPaymentFollowupUpdates(followup_id: number): Promise<PaymentFollowupUpdate[]> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT * FROM payment_followup_updates WHERE followup_id = ? ORDER BY created_at ASC',
+    args: [followup_id],
+  })
+  return serializeRows(result.rows).map(rowToFollowupUpdate)
+}
+
+export async function deletePaymentFollowup(id: number): Promise<void> {
+  const db = await ensureInit()
+  await db.execute({ sql: 'DELETE FROM payment_followups WHERE id = ?', args: [id] })
+}
+
+export async function getPaymentFollowupsForLead(lead_row: number): Promise<PaymentFollowup[]> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT * FROM payment_followups WHERE lead_row = ? ORDER BY created_at DESC',
+    args: [lead_row],
+  })
+  return serializeRows(result.rows).map(rowToFollowup)
 }
