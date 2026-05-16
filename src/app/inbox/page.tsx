@@ -86,6 +86,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true)
   const [msgLoading, setMsgLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [showUnreadOnly, setShowUnreadOnly] = useState(false)
   const [toast, setToast] = useState('')
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
   const [showQuickReplies, setShowQuickReplies] = useState(false)
@@ -598,12 +599,15 @@ export default function InboxPage() {
   }
 
   // Filtered contacts
-  const filteredContacts = searchQuery
-    ? contacts.filter(c =>
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.phone.includes(searchQuery)
-      )
-    : contacts
+  const filteredContacts = contacts.filter(c => {
+    if (showUnreadOnly && c.unread_count === 0) return false
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      return c.name.toLowerCase().includes(q) || c.phone.includes(searchQuery)
+    }
+    return true
+  })
+  const unreadTotal = contacts.reduce((sum, c) => sum + (c.unread_count || 0), 0)
 
   // 24hr window check
   const lastReceived = messages.filter(m => m.direction === 'received').pop()
@@ -768,6 +772,37 @@ export default function InboxPage() {
                 style={{ background: 'color-mix(in srgb, var(--color-elevated) 60%, transparent)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
               />
             </div>
+            {/* Unread filter toggle */}
+            <button
+              type="button"
+              onClick={() => setShowUnreadOnly(v => !v)}
+              className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors"
+              style={{
+                background: showUnreadOnly ? 'color-mix(in srgb, var(--color-accent) 18%, transparent)' : 'color-mix(in srgb, var(--color-elevated) 60%, transparent)',
+                borderColor: showUnreadOnly ? 'color-mix(in srgb, var(--color-accent) 50%, transparent)' : 'var(--color-border)',
+                color: showUnreadOnly ? 'var(--color-accent)' : 'var(--color-dim)',
+                border: '1px solid',
+              }}
+              title={showUnreadOnly ? 'Show all conversations' : 'Show only conversations with unread messages'}
+            >
+              <span className="flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                {showUnreadOnly ? 'Showing unread only' : 'Unread only'}
+              </span>
+              {unreadTotal > 0 && (
+                <span
+                  className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                  style={{
+                    background: showUnreadOnly ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-accent) 25%, transparent)',
+                    color: showUnreadOnly ? 'var(--color-bg)' : 'var(--color-accent)',
+                  }}
+                >
+                  {unreadTotal > 99 ? '99+' : unreadTotal}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* New Chat Dialog */}
