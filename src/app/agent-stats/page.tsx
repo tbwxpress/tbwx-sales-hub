@@ -53,8 +53,8 @@ interface AgentMetrics {
 
 // ─── WA Token Countdown ─────────────────────────────────────────────────────
 
-const WA_TOKEN_SET_DATE = new Date('2026-03-18')
-const WA_TOKEN_EXPIRY_DAYS = 60
+const WA_TOKEN_SET_DATE = new Date('2026-04-29')
+const WA_TOKEN_EXPIRY_DAYS = 90
 
 function WATokenCountdown() {
   const now = new Date()
