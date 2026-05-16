@@ -8,6 +8,7 @@ export interface User {
   password_hash: string
   role: UserRole
   can_assign: boolean
+  can_edit_leads: boolean
   active: boolean
   in_lead_pool: boolean
   is_closer: boolean
@@ -21,6 +22,7 @@ export interface SessionUser {
   email: string
   role: UserRole
   can_assign: boolean
+  can_edit_leads?: boolean
   is_telecaller?: boolean
 }
 

@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
       password_hash: hashed,
       role: role || 'agent',
       can_assign: can_assign || false,
+      can_edit_leads: false,
       active: true,
       in_lead_pool: in_lead_pool || false,
       is_closer: is_closer || false,
@@ -56,7 +57,7 @@ export async function PATCH(req: NextRequest) {
     const user = requireAuth(session)
     requireAdmin(user)
 
-    const { user_id, name, email, password, can_assign, active, role, in_lead_pool, is_closer, is_telecaller, lead_pool_paused } = await req.json()
+    const { user_id, name, email, password, can_assign, can_edit_leads, active, role, in_lead_pool, is_closer, is_telecaller, lead_pool_paused } = await req.json()
     if (!user_id) {
       return NextResponse.json({ success: false, error: 'User ID required' }, { status: 400 })
     }
@@ -120,6 +121,7 @@ export async function PATCH(req: NextRequest) {
     if (emailToWrite !== undefined) updates.email = emailToWrite
     if (passwordHashToWrite !== undefined) updates.password_hash = passwordHashToWrite
     if (can_assign !== undefined) updates.can_assign = can_assign
+    if (can_edit_leads !== undefined) updates.can_edit_leads = can_edit_leads
     if (active !== undefined) updates.active = active
     if (role !== undefined) updates.role = role
     if (in_lead_pool !== undefined) updates.in_lead_pool = in_lead_pool

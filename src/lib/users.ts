@@ -38,6 +38,7 @@ async function ensureTable(): Promise<void> {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'agent' CHECK(role IN ('admin', 'agent')),
       can_assign INTEGER NOT NULL DEFAULT 0,
+      can_edit_leads INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1,
       in_lead_pool INTEGER NOT NULL DEFAULT 0,
       is_closer INTEGER NOT NULL DEFAULT 0,
@@ -64,6 +65,9 @@ async function ensureTable(): Promise<void> {
   if (!colNames.has('lead_pool_paused')) {
     await db.execute('ALTER TABLE users ADD COLUMN lead_pool_paused INTEGER NOT NULL DEFAULT 0')
   }
+  if (!colNames.has('can_edit_leads')) {
+    await db.execute('ALTER TABLE users ADD COLUMN can_edit_leads INTEGER NOT NULL DEFAULT 0')
+  }
 
   _tableReady = true
 }
@@ -79,6 +83,7 @@ export async function getUsers(): Promise<User[]> {
     password_hash: String(row.password_hash),
     role: String(row.role) as User['role'],
     can_assign: Boolean(row.can_assign),
+    can_edit_leads: Boolean(row.can_edit_leads),
     active: Boolean(row.active),
     in_lead_pool: Boolean(row.in_lead_pool),
     is_closer: Boolean(row.is_closer),
@@ -103,6 +108,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
     password_hash: String(row.password_hash),
     role: String(row.role) as User['role'],
     can_assign: Boolean(row.can_assign),
+    can_edit_leads: Boolean(row.can_edit_leads),
     active: Boolean(row.active),
     in_lead_pool: Boolean(row.in_lead_pool),
     is_closer: Boolean(row.is_closer),
@@ -116,8 +122,8 @@ export async function createUser(user: Omit<User, 'id'>): Promise<string> {
   const db = getClient()
   const id = `u_${Date.now()}`
   await db.execute({
-    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, active, in_lead_pool, is_closer, is_telecaller, lead_pool_paused)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, can_edit_leads, active, in_lead_pool, is_closer, is_telecaller, lead_pool_paused)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       id,
       user.name,
@@ -125,6 +131,7 @@ export async function createUser(user: Omit<User, 'id'>): Promise<string> {
       user.password_hash,
       user.role,
       user.can_assign ? 1 : 0,
+      user.can_edit_leads ? 1 : 0,
       user.active ? 1 : 0,
       user.in_lead_pool ? 1 : 0,
       user.is_closer ? 1 : 0,
@@ -148,6 +155,7 @@ export async function getUserById(userId: string): Promise<User | null> {
     password_hash: String(row.password_hash),
     role: String(row.role) as User['role'],
     can_assign: Boolean(row.can_assign),
+    can_edit_leads: Boolean(row.can_edit_leads),
     active: Boolean(row.active),
     in_lead_pool: Boolean(row.in_lead_pool),
     is_closer: Boolean(row.is_closer),
@@ -179,6 +187,7 @@ export async function updateUser(userId: string, fields: Partial<User>): Promise
   if (fields.password_hash !== undefined) { updates.push('password_hash = ?'); values.push(fields.password_hash) }
   if (fields.role !== undefined) { updates.push('role = ?'); values.push(fields.role) }
   if (fields.can_assign !== undefined) { updates.push('can_assign = ?'); values.push(fields.can_assign ? 1 : 0) }
+  if (fields.can_edit_leads !== undefined) { updates.push('can_edit_leads = ?'); values.push(fields.can_edit_leads ? 1 : 0) }
   if (fields.active !== undefined) { updates.push('active = ?'); values.push(fields.active ? 1 : 0) }
   if (fields.in_lead_pool !== undefined) { updates.push('in_lead_pool = ?'); values.push(fields.in_lead_pool ? 1 : 0) }
   if (fields.is_closer !== undefined) { updates.push('is_closer = ?'); values.push(fields.is_closer ? 1 : 0) }

@@ -8,7 +8,7 @@ import MetaAdsDashboard from '@/components/MetaAdsDashboard'
 
 interface User {
   id: string; name: string; email: string; role: string;
-  can_assign: boolean; active: boolean; in_lead_pool: boolean; is_closer: boolean; is_telecaller: boolean; lead_pool_paused: boolean
+  can_assign: boolean; can_edit_leads: boolean; active: boolean; in_lead_pool: boolean; is_closer: boolean; is_telecaller: boolean; lead_pool_paused: boolean
 }
 
 type AgentType = 'closer' | 'telecaller' | 'none'
@@ -239,7 +239,7 @@ export default function AdminPage() {
     }
   }
 
-  async function toggleField(userId: string, field: 'can_assign' | 'active' | 'in_lead_pool' | 'is_closer' | 'is_telecaller' | 'lead_pool_paused', currentValue: boolean) {
+  async function toggleField(userId: string, field: 'can_assign' | 'can_edit_leads' | 'active' | 'in_lead_pool' | 'is_closer' | 'is_telecaller' | 'lead_pool_paused', currentValue: boolean) {
     await fetch('/api/users', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -568,6 +568,15 @@ export default function AdminPage() {
                       className={`w-10 h-5 rounded-full transition-colors relative ${u.can_assign ? 'bg-accent' : 'bg-border'}`}
                     >
                       <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${u.can_assign ? 'left-5' : 'left-0.5'}`} />
+                    </button>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When on, this user can edit lead contact details (name, email, city, state, model interest)">
+                    <span>Can Edit Leads</span>
+                    <button
+                      onClick={() => toggleField(u.id, 'can_edit_leads', u.can_edit_leads)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${u.can_edit_leads ? 'bg-accent' : 'bg-border'}`}
+                    >
+                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${u.can_edit_leads ? 'left-5' : 'left-0.5'}`} />
                     </button>
                   </label>
                   <label className="flex items-center gap-2 text-xs text-dim cursor-pointer">
