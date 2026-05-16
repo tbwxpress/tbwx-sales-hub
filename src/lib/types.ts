@@ -88,6 +88,23 @@ export interface ApiResponse<T = unknown> {
   error?: string
 }
 
+export interface Delegation {
+  id: number
+  lead_row: number
+  phone: string
+  from_agent_id: string
+  from_agent_name: string
+  to_agent_id: string
+  to_agent_name: string
+  status: 'pending' | 'active' | 'declined' | 'ended'
+  message: string
+  expires_at: string | null
+  created_at: string
+  responded_at: string | null
+  ended_at: string | null
+  ended_by: string
+}
+
 export interface GoogleAdsLead {
   campaign_name?: string
   campaign_id?: string

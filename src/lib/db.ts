@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { createClient, type Client, type Row } from '@libsql/client'
+import type { Delegation } from './types'
 
 // Convert BigInt values to Number so JSON.stringify works
 function serializeRow(row: Row): Record<string, unknown> {
@@ -317,6 +318,26 @@ async function ensureInit(): Promise<Client> {
       );
       CREATE INDEX IF NOT EXISTS idx_lead_edits_row ON lead_edits(lead_row);
       CREATE INDEX IF NOT EXISTS idx_lead_edits_changed_by_date ON lead_edits(changed_by, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS lead_delegations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lead_row INTEGER NOT NULL,
+        phone TEXT DEFAULT '',
+        from_agent_id TEXT NOT NULL,
+        from_agent_name TEXT NOT NULL,
+        to_agent_id TEXT NOT NULL,
+        to_agent_name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        message TEXT DEFAULT '',
+        expires_at TEXT DEFAULT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        responded_at TEXT DEFAULT NULL,
+        ended_at TEXT DEFAULT NULL,
+        ended_by TEXT DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS idx_delegations_to_status ON lead_delegations(to_agent_id, status);
+      CREATE INDEX IF NOT EXISTS idx_delegations_lead_status ON lead_delegations(lead_row, status);
+      CREATE INDEX IF NOT EXISTS idx_delegations_expires ON lead_delegations(expires_at) WHERE status='active';
     `)
 
     // Additive migrations (try-catch for existing DBs)
@@ -1602,4 +1623,174 @@ export async function getAssignmentHistoryRecent(days: number, filters?: { assig
     args,
   })
   return serializeRows(result.rows)
+}
+
+// --- Lead Delegation helpers ---
+
+function rowToDelegation(row: Record<string, unknown>): Delegation {
+  return {
+    id: Number(row.id),
+    lead_row: Number(row.lead_row),
+    phone: String(row.phone || ''),
+    from_agent_id: String(row.from_agent_id || ''),
+    from_agent_name: String(row.from_agent_name || ''),
+    to_agent_id: String(row.to_agent_id || ''),
+    to_agent_name: String(row.to_agent_name || ''),
+    status: String(row.status || 'pending') as Delegation['status'],
+    message: String(row.message || ''),
+    expires_at: row.expires_at ? String(row.expires_at) : null,
+    created_at: String(row.created_at || ''),
+    responded_at: row.responded_at ? String(row.responded_at) : null,
+    ended_at: row.ended_at ? String(row.ended_at) : null,
+    ended_by: String(row.ended_by || ''),
+  }
+}
+
+export async function createDelegation(opts: {
+  lead_row: number
+  phone: string
+  from_agent_id: string
+  from_agent_name: string
+  to_agent_id: string
+  to_agent_name: string
+  message?: string
+  expires_at?: string
+  auto_accept?: boolean
+}): Promise<Delegation> {
+  const db = await ensureInit()
+  const status = opts.auto_accept ? 'active' : 'pending'
+  const result = await db.execute({
+    sql: `INSERT INTO lead_delegations
+            (lead_row, phone, from_agent_id, from_agent_name, to_agent_id, to_agent_name, status, message, expires_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      opts.lead_row,
+      opts.phone || '',
+      opts.from_agent_id,
+      opts.from_agent_name,
+      opts.to_agent_id,
+      opts.to_agent_name,
+      status,
+      opts.message || '',
+      opts.expires_at || null,
+    ],
+  })
+  const id = Number(result.lastInsertRowid)
+  const row = await db.execute({ sql: 'SELECT * FROM lead_delegations WHERE id = ?', args: [id] })
+  return rowToDelegation(serializeRow(row.rows[0]))
+}
+
+export async function getPendingDelegationsFor(to_agent_id: string): Promise<Delegation[]> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `SELECT * FROM lead_delegations WHERE to_agent_id = ? AND status = 'pending' ORDER BY created_at DESC`,
+    args: [to_agent_id],
+  })
+  return serializeRows(result.rows).map(rowToDelegation)
+}
+
+export async function getActiveDelegationsFor(to_agent_id: string): Promise<Delegation[]> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `SELECT * FROM lead_delegations WHERE to_agent_id = ? AND status = 'active' ORDER BY created_at DESC`,
+    args: [to_agent_id],
+  })
+  return serializeRows(result.rows).map(rowToDelegation)
+}
+
+export async function getActiveDelegationForLead(lead_row: number): Promise<Delegation | null> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `SELECT * FROM lead_delegations WHERE lead_row = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
+    args: [lead_row],
+  })
+  if (result.rows.length === 0) return null
+  return rowToDelegation(serializeRow(result.rows[0]))
+}
+
+export async function getDelegationsForLead(lead_row: number): Promise<Delegation[]> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `SELECT * FROM lead_delegations WHERE lead_row = ? ORDER BY created_at ASC`,
+    args: [lead_row],
+  })
+  return serializeRows(result.rows).map(rowToDelegation)
+}
+
+export async function respondToDelegation(
+  id: number,
+  action: 'accept' | 'decline',
+  responder_id: string,
+): Promise<void> {
+  const db = await ensureInit()
+  const existing = await db.execute({ sql: 'SELECT * FROM lead_delegations WHERE id = ?', args: [id] })
+  if (existing.rows.length === 0) throw new Error('Delegation not found')
+  const row = serializeRow(existing.rows[0])
+  if (String(row.to_agent_id) !== responder_id) throw new Error('Not authorized to respond to this delegation')
+  const newStatus = action === 'accept' ? 'active' : 'declined'
+  await db.execute({
+    sql: `UPDATE lead_delegations SET status = ?, responded_at = datetime('now') WHERE id = ?`,
+    args: [newStatus, id],
+  })
+}
+
+export async function endDelegation(id: number, ended_by_id: string): Promise<void> {
+  const db = await ensureInit()
+  await db.execute({
+    sql: `UPDATE lead_delegations SET status = 'ended', ended_at = datetime('now'), ended_by = ? WHERE id = ?`,
+    args: [ended_by_id, id],
+  })
+}
+
+export async function bulkCreateDelegations(opts: {
+  lead_rows: number[]
+  from_agent_id: string
+  from_agent_name: string
+  to_agent_id: string
+  to_agent_name: string
+  expires_at?: string
+  admin_id: string
+}): Promise<{ count: number; ids: number[] }> {
+  const db = await ensureInit()
+  const ids: number[] = []
+  for (const lead_row of opts.lead_rows) {
+    // Get lead phone from contacts (best-effort)
+    let phone = ''
+    try {
+      const c = await db.execute({ sql: 'SELECT phone FROM contacts WHERE lead_row = ? LIMIT 1', args: [lead_row] })
+      if (c.rows.length > 0) phone = String(c.rows[0].phone || '')
+    } catch { /* phone not critical */ }
+
+    const result = await db.execute({
+      sql: `INSERT INTO lead_delegations
+              (lead_row, phone, from_agent_id, from_agent_name, to_agent_id, to_agent_name, status, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
+      args: [
+        lead_row,
+        phone,
+        opts.from_agent_id,
+        opts.from_agent_name,
+        opts.to_agent_id,
+        opts.to_agent_name,
+        opts.expires_at || null,
+      ],
+    })
+    ids.push(Number(result.lastInsertRowid))
+  }
+  return { count: ids.length, ids }
+}
+
+export async function getExpiredActiveDelegations(): Promise<Delegation[]> {
+  const db = await ensureInit()
+  const result = await db.execute(
+    `SELECT * FROM lead_delegations WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < datetime('now')`
+  )
+  return serializeRows(result.rows).map(rowToDelegation)
+}
+
+export async function getDelegationById(id: number): Promise<Delegation | null> {
+  const db = await ensureInit()
+  const result = await db.execute({ sql: 'SELECT * FROM lead_delegations WHERE id = ?', args: [id] })
+  if (result.rows.length === 0) return null
+  return rowToDelegation(serializeRow(result.rows[0]))
 }
