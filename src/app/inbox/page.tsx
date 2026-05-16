@@ -10,6 +10,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SUGGESTED_REPLIES } from '@/config/suggested-replies'
+import LogCallModal from '@/components/LogCallModal'
+import CallHistory from '@/components/CallHistory'
+import VoiceAgentCard from '@/components/VoiceAgentCard'
 
 interface Contact {
   phone: string
@@ -57,16 +60,6 @@ interface WaTemplate {
   category: string
 }
 
-interface CallLog {
-  id: number
-  phone: string
-  duration: string
-  outcome: string
-  notes: string
-  logged_by: string
-  created_at: string
-}
-
 interface LeadNote {
   id: number
   phone: string
@@ -109,11 +102,7 @@ export default function InboxPage() {
   const [updatingLead, setUpdatingLead] = useState(false)
   // Call logging
   const [showCallModal, setShowCallModal] = useState(false)
-  const [callDuration, setCallDuration] = useState('')
-  const [callOutcome, setCallOutcome] = useState('no_answer')
-  const [callNotes, setCallNotes] = useState('')
-  const [savingCall, setSavingCall] = useState(false)
-  const [callLogs, setCallLogs] = useState<CallLog[]>([])
+  const [callHistoryKey, setCallHistoryKey] = useState(0)
   // Notes
   const [leadNotes, setLeadNotes] = useState<LeadNote[]>([])
   const [newNote, setNewNote] = useState('')
@@ -313,11 +302,7 @@ export default function InboxPage() {
     setShowSidebar(false) // Hide sidebar on mobile
     setLeadInfo(null)
     fetchMessages(contact.phone).finally(() => setMsgLoading(false))
-    // Fetch call logs + notes
-    fetch(`/api/inbox/${contact.phone}/calls`)
-      .then(r => r.json())
-      .then(d => { if (d.success) setCallLogs(d.data) })
-      .catch(() => {})
+    // Fetch notes
     fetch(`/api/inbox/${contact.phone}/notes`)
       .then(r => r.json())
       .then(d => { if (d.success) setLeadNotes(d.data) })
@@ -484,41 +469,6 @@ export default function InboxPage() {
     setShowNewChat(false)
     setNewChatPhone('')
     setNewChatName('')
-  }
-
-  // Log call
-  async function handleLogCall() {
-    if (!activePhone) return
-    setSavingCall(true)
-    try {
-      const res = await fetch(`/api/inbox/${activePhone}/calls`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          duration: callDuration,
-          outcome: callOutcome,
-          notes: callNotes,
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        setToast('Call logged')
-        setShowCallModal(false)
-        setCallDuration('')
-        setCallOutcome('no_answer')
-        setCallNotes('')
-        // Refresh call logs
-        fetch(`/api/inbox/${activePhone}/calls`)
-          .then(r => r.json())
-          .then(d => { if (d.success) setCallLogs(d.data) })
-          .catch(() => {})
-      } else {
-        setToast('Error: ' + (data.error || 'Failed to log call'))
-      }
-    } catch {
-      setToast('Network error')
-    }
-    setSavingCall(false)
   }
 
   // Save note
@@ -691,53 +641,18 @@ export default function InboxPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Call Log Modal — shadcn Dialog */}
-      <Dialog open={showCallModal} onOpenChange={setShowCallModal}>
-        <DialogContent className="sm:max-w-md" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
-          <DialogHeader>
-            <DialogTitle className="text-sm" style={{ color: 'var(--color-text)' }}>Log Call</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Duration</label>
-                <Input value={callDuration} onChange={e => setCallDuration(e.target.value)} placeholder="e.g. 5 min" className="text-sm" style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Outcome</label>
-                <Select value={callOutcome} onValueChange={v => v && setCallOutcome(v)}>
-                  <SelectTrigger className="text-sm" style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
-                    <SelectItem value="no_answer">No Answer</SelectItem>
-                    <SelectItem value="answered">Answered</SelectItem>
-                    <SelectItem value="busy">Busy</SelectItem>
-                    <SelectItem value="callback">Callback Scheduled</SelectItem>
-                    <SelectItem value="interested">Interested</SelectItem>
-                    <SelectItem value="not_interested">Not Interested</SelectItem>
-                    <SelectItem value="wrong_number">Wrong Number</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Notes</label>
-              <textarea
-                value={callNotes}
-                onChange={e => setCallNotes(e.target.value)}
-                rows={3}
-                placeholder="Call summary, next steps..."
-                className="w-full rounded-md px-3 py-2 text-sm resize-none focus:outline-none"
-                style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-              />
-            </div>
-            <Button onClick={handleLogCall} disabled={savingCall} className="w-full font-semibold" style={{ background: 'var(--color-accent)', color: '#1a1209' }}>
-              {savingCall ? 'Saving...' : 'Save Call Log'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Call Log Modal */}
+      {activePhone && (
+        <LogCallModal
+          phone={activePhone}
+          open={showCallModal}
+          onClose={() => setShowCallModal(false)}
+          onLogged={() => {
+            setToast('Call logged')
+            setCallHistoryKey(k => k + 1)
+          }}
+        />
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar — Contact List */}
@@ -1090,27 +1005,17 @@ export default function InboxPage() {
                     </div>
                   )}
 
-                  {/* Call Logs */}
-                  {callLogs.length > 0 && (
+                  {/* Call History */}
+                  {activePhone && <CallHistory phone={activePhone} refreshKey={callHistoryKey} />}
+
+                  {/* AI Voice Agent — only for leads */}
+                  {activeContact?.is_lead && activePhone && (
                     <div className="mt-3 pt-3 border-t border-border/50">
-                      <span className="text-[10px] text-dim uppercase tracking-wider block mb-2">Recent Calls</span>
-                      <div className="space-y-1.5 max-h-24 overflow-y-auto">
-                        {callLogs.slice(0, 5).map(log => (
-                          <div key={log.id} className="flex items-center gap-2 text-[11px]">
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
-                              log.outcome === 'answered' || log.outcome === 'interested' ? 'bg-success/15 text-success' :
-                              log.outcome === 'no_answer' || log.outcome === 'busy' ? 'bg-warning/15 text-warning' :
-                              'bg-elevated text-muted'
-                            }`}>
-                              {log.outcome.replace(/_/g, ' ')}
-                            </span>
-                            {log.duration && <span className="text-dim">{log.duration}</span>}
-                            <span className="text-dim">{log.logged_by}</span>
-                            {log.notes && <span className="text-muted truncate flex-1">{log.notes}</span>}
-                            <span className="text-dim flex-shrink-0">{formatTime(log.created_at)}</span>
-                          </div>
-                        ))}
-                      </div>
+                      <VoiceAgentCard
+                        phone={activePhone}
+                        leadName={activeContact.name || ''}
+                        leadId={String(leadInfo?.row_number || activeContact.lead_row || '')}
+                      />
                     </div>
                   )}
 
@@ -1628,26 +1533,16 @@ export default function InboxPage() {
                 </div>
               )}
 
-              {callLogs.length > 0 && (
+              {activePhone && <CallHistory phone={activePhone} refreshKey={callHistoryKey} />}
+
+              {/* AI Voice Agent — only for leads */}
+              {activeContact?.is_lead && activePhone && (
                 <div className="mt-4 pt-3 border-t border-border/50">
-                  <span className="text-[10px] text-dim uppercase tracking-wider block mb-2">Recent Calls</span>
-                  <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                    {callLogs.slice(0, 5).map(log => (
-                      <div key={log.id} className="flex items-center gap-2 text-[11px] flex-wrap">
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
-                          log.outcome === 'answered' || log.outcome === 'interested' ? 'bg-success/15 text-success' :
-                          log.outcome === 'no_answer' || log.outcome === 'busy' ? 'bg-warning/15 text-warning' :
-                          'bg-elevated text-muted'
-                        }`}>
-                          {log.outcome.replace(/_/g, ' ')}
-                        </span>
-                        {log.duration && <span className="text-dim">{log.duration}</span>}
-                        <span className="text-dim">{log.logged_by}</span>
-                        {log.notes && <span className="text-muted truncate flex-1 min-w-0">{log.notes}</span>}
-                        <span className="text-dim flex-shrink-0">{formatTime(log.created_at)}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <VoiceAgentCard
+                    phone={activePhone}
+                    leadName={activeContact.name || ''}
+                    leadId={String(leadInfo?.row_number || activeContact.lead_row || '')}
+                  />
                 </div>
               )}
 

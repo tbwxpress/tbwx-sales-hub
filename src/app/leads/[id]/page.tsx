@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import type { Lead, Message, QuickReply, ApiResponse } from '@/lib/types'
 import VoiceAgentCard from '@/components/VoiceAgentCard'
 import AgreementForm from '@/components/AgreementForm'
+import LogCallModal from '@/components/LogCallModal'
+import CallHistory from '@/components/CallHistory'
 import { LEAD_STATUSES, STATUS_LABELS } from '@/config/client'
 import Toast from '@/components/Toast'
 import { formatTime } from '@/lib/format'
@@ -180,6 +182,10 @@ export default function LeadDetailPage() {
 
   // Session user
   const [sessionUser, setSessionUser] = useState<{ name: string; role: string } | null>(null)
+
+  // Log Call modal
+  const [showLogCallModal, setShowLogCallModal] = useState(false)
+  const [callHistoryKey, setCallHistoryKey] = useState(0)
 
   // Delete
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -892,6 +898,23 @@ export default function LeadDetailPage() {
               leadId={String(lead.row_number || '')}
             />
 
+            {/* Log Call + Call History */}
+            <div className="bg-card rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-semibold text-dim uppercase tracking-wide">Call Log</h2>
+                <button
+                  onClick={() => setShowLogCallModal(true)}
+                  className="flex items-center gap-1.5 text-xs bg-elevated hover:bg-border text-text px-3 py-1.5 rounded-md transition-colors font-medium border border-border"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                  </svg>
+                  Log Call
+                </button>
+              </div>
+              <CallHistory phone={lead.phone} refreshKey={callHistoryKey} />
+            </div>
+
             {/* Manage Card */}
             <div className="bg-card rounded-lg border border-border p-4 space-y-4">
               <h2 className="text-xs font-semibold text-dim uppercase tracking-wide mb-1">Manage</h2>
@@ -1326,6 +1349,16 @@ export default function LeadDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Log Call Modal */}
+      {lead && (
+        <LogCallModal
+          phone={lead.phone}
+          open={showLogCallModal}
+          onClose={() => setShowLogCallModal(false)}
+          onLogged={() => setCallHistoryKey(k => k + 1)}
+        />
+      )}
 
       {/* Toast */}
       {toast && <Toast message={toast} onClose={() => setToast('')} />}
