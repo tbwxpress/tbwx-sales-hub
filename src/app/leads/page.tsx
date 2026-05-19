@@ -126,6 +126,8 @@ export default function LeadsPage() {
   // Telecaller filter — '' = all, '__NONE__' = no telecaller assigned, else telecaller user_id
   const [telecallerFilter, setTelecallerFilter] = useState(() => getInitialParam('tc'))
   const [sortBy, setSortBy] = useState(() => getInitialParam('sort', 'score'))
+  const [dateFrom, setDateFrom] = useState(() => getInitialParam('from'))
+  const [dateTo, setDateTo] = useState(() => getInitialParam('to'))
 
   // Sync filters to URL (without full page reload)
   useEffect(() => {
@@ -135,10 +137,12 @@ export default function LeadsPage() {
     if (assignedFilter) params.set('assigned', assignedFilter)
     if (telecallerFilter) params.set('tc', telecallerFilter)
     if (sortBy && sortBy !== 'score') params.set('sort', sortBy)
+    if (dateFrom) params.set('from', dateFrom)
+    if (dateTo) params.set('to', dateTo)
     const qs = params.toString()
     const newUrl = qs ? `/leads?${qs}` : '/leads'
     window.history.replaceState(null, '', newUrl)
-  }, [search, statusFilter, assignedFilter, telecallerFilter, sortBy])
+  }, [search, statusFilter, assignedFilter, telecallerFilter, sortBy, dateFrom, dateTo])
 
   // Selection (admin/can_assign only)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -199,6 +203,14 @@ export default function LeadsPage() {
         } else if (telecallerFilter) {
           filtered = filtered.filter((l: Lead) => l.telecaller_user_id === telecallerFilter)
         }
+        if (dateFrom) {
+          const fromTs = new Date(dateFrom + 'T00:00:00').getTime()
+          filtered = filtered.filter((l: Lead) => l.created_time && new Date(l.created_time).getTime() >= fromTs)
+        }
+        if (dateTo) {
+          const toTs = new Date(dateTo + 'T23:59:59').getTime()
+          filtered = filtered.filter((l: Lead) => l.created_time && new Date(l.created_time).getTime() <= toTs)
+        }
         setLeads(filtered)
       } else {
         setError(data.error || 'Failed to load leads')
@@ -206,7 +218,7 @@ export default function LeadsPage() {
     } catch {
       setError('Failed to load leads')
     }
-  }, [search, statusFilter, assignedFilter, telecallerFilter, sortBy])
+  }, [search, statusFilter, assignedFilter, telecallerFilter, sortBy, dateFrom, dateTo])
 
   const fetchAgents = useCallback(async (_currentUser: SessionUser) => {
     // Every authed user fetches the active-user roster — non-admins need
@@ -235,7 +247,7 @@ export default function LeadsPage() {
   useEffect(() => {
     if (!user) return
     fetchLeads()
-  }, [search, statusFilter, assignedFilter, telecallerFilter, sortBy, fetchLeads, user])
+  }, [search, statusFilter, assignedFilter, telecallerFilter, sortBy, dateFrom, dateTo, fetchLeads, user])
 
   // ─── Keyboard Shortcuts ──────────────────────────────────────────────────
 
@@ -261,6 +273,8 @@ export default function LeadsPage() {
     setAssignedFilter('')
     setTelecallerFilter('')
     setSortBy('score')
+    setDateFrom('')
+    setDateTo('')
   }
 
   function toggleSelect(rowNum: number) {
@@ -571,6 +585,28 @@ export default function LeadsPage() {
             </select>
           )}
 
+          {/* Created date range */}
+          <div className="flex items-center gap-1.5 text-xs text-dim">
+            <span className="hidden sm:inline">Created:</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              max={dateTo || undefined}
+              title="From date (inclusive)"
+              className="bg-elevated border border-border rounded-md px-2 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50"
+            />
+            <span>→</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              min={dateFrom || undefined}
+              title="To date (inclusive)"
+              className="bg-elevated border border-border rounded-md px-2 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50"
+            />
+          </div>
+
           {/* Sort */}
           <select
             value={sortBy}
@@ -584,7 +620,7 @@ export default function LeadsPage() {
           </select>
 
           {/* Clear Filters */}
-          {(search || statusFilter || assignedFilter || telecallerFilter || sortBy !== 'score') && (
+          {(search || statusFilter || assignedFilter || telecallerFilter || sortBy !== 'score' || dateFrom || dateTo) && (
             <button onClick={clearFilters} className="text-sm text-dim hover:text-text transition-colors">
               Clear filters
             </button>
