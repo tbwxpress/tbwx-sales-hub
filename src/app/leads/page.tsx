@@ -578,8 +578,8 @@ export default function LeadsPage() {
             className="bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
           >
             <option value="score">Sort: Lead Score</option>
-            <option value="newest">Sort: Newest First</option>
-            <option value="oldest">Sort: Oldest First</option>
+            <option value="newest">Sort: Newest Created First</option>
+            <option value="oldest">Sort: Oldest Created First</option>
             <option value="followup">Sort: Follow-up Date</option>
           </select>
 
@@ -800,7 +800,14 @@ export default function LeadsPage() {
                     <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Telecaller</th>
                   )}
                   <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Follow-up</th>
-                  <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Added</th>
+                  <th
+                    className="px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-wider cursor-pointer select-none transition-colors hover:text-accent"
+                    style={{ color: sortBy === 'newest' || sortBy === 'oldest' ? 'var(--color-accent)' : 'var(--color-dim)' }}
+                    onClick={() => setSortBy(sortBy === 'newest' ? 'oldest' : sortBy === 'oldest' ? 'score' : 'newest')}
+                    title="Click to sort by create date"
+                  >
+                    Created {sortBy === 'newest' ? '↓' : sortBy === 'oldest' ? '↑' : ''}
+                  </th>
                   <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider w-20">Actions</th>
                 </tr>
               </thead>
