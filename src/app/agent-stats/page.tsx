@@ -185,6 +185,103 @@ function calculateAgentMetrics(leads: Lead[], agents: AgentUser[]): AgentMetrics
   return Array.from(metricsMap.values()).sort((a, b) => b.assigned - a.assigned)
 }
 
+// ─── Self Activity View (rendered for non-admins) ────────────────────────────
+// Shows the caller's own daily activity card, the peer-team average for the same
+// day, and an anonymous rank ("#3 of 7"). Peers are never named in this view —
+// non-admins can self-evaluate without seeing other agents' raw numbers.
+
+interface SelfActivityViewProps {
+  you: {
+    name: string
+    type: 'closer' | 'telecaller' | 'admin' | 'none'
+    leads_touched: number
+    actions: { manual_messages: number; calls_logged: number; notes_added: number; status_changes: number; reassignments_performed: number }
+    status_progressions: Record<string, number>
+    touched_leads: Array<{ lead_row: number | null; phone: string; name: string; current_status: string; actions: string[] }>
+  }
+  teamAvg: { leads_touched: number; manual_messages: number; calls_logged: number; notes_added: number; status_changes: number }
+  rank: { position: number; of: number } | null
+}
+
+function SelfActivityView({ you, teamAvg, rank }: SelfActivityViewProps) {
+  const totalActions = you.actions.manual_messages + you.actions.calls_logged + you.actions.notes_added + you.actions.status_changes + you.actions.reassignments_performed
+  const compare = (mine: number, avg: number) => {
+    if (avg === 0 && mine === 0) return { color: 'var(--color-dim)', label: '—' }
+    if (avg === 0) return { color: 'var(--color-success)', label: 'above team' }
+    const diff = mine - avg
+    const pct = Math.round((diff / avg) * 100)
+    if (pct >= 10) return { color: 'var(--color-success)', label: `+${pct}% vs team` }
+    if (pct <= -10) return { color: 'var(--color-danger)', label: `${pct}% vs team` }
+    return { color: 'var(--color-muted)', label: 'on par with team' }
+  }
+
+  const rows = [
+    { label: '📞 Calls', mine: you.actions.calls_logged, avg: teamAvg.calls_logged },
+    { label: '💬 Messages', mine: you.actions.manual_messages, avg: teamAvg.manual_messages },
+    { label: '📝 Notes', mine: you.actions.notes_added, avg: teamAvg.notes_added },
+    { label: '🔄 Status moves', mine: you.actions.status_changes, avg: teamAvg.status_changes },
+  ]
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
+      {/* Headline card — your numbers */}
+      <div className="lg:col-span-2 rounded-lg p-4" style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)' }}>
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <p className="text-[10px] text-dim uppercase tracking-wider mb-0.5">Your activity</p>
+            <p className="text-lg font-bold text-text">{you.name}</p>
+            <p className="text-[11px] text-dim capitalize">{you.type}</p>
+          </div>
+          <div className="text-right">
+            <p className={`text-3xl font-bold ${totalActions > 0 ? 'text-success' : 'text-dim'}`}>{you.leads_touched}</p>
+            <p className="text-[10px] text-dim uppercase tracking-wider">leads touched today</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-3 border-t border-border">
+          {rows.map(r => {
+            const c = compare(r.mine, r.avg)
+            return (
+              <div key={r.label} className="flex items-center justify-between text-xs">
+                <span className="text-dim">{r.label}</span>
+                <div className="text-right">
+                  <span className="text-text font-semibold">{r.mine}</span>
+                  <span className="text-[10px] ml-2" style={{ color: c.color }}>{c.label}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        {Object.keys(you.status_progressions).length > 0 && (
+          <div className="text-[10px] text-dim mt-3 pt-2 border-t border-border flex flex-wrap gap-1">
+            <span className="text-dim uppercase tracking-wider text-[9px] mr-1">Moved leads:</span>
+            {Object.entries(you.status_progressions).map(([k, v]) => (
+              <span key={k} className="px-1.5 py-0.5 rounded bg-card text-muted">
+                {k.replace(/^to_/, '→ ')}: <span className="text-text font-medium">{v}</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Rank + team avg card */}
+      <div className="rounded-lg p-4 flex flex-col" style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}>
+        <p className="text-[10px] text-dim uppercase tracking-wider mb-2">Your rank</p>
+        {rank && rank.of > 1 ? (
+          <>
+            <p className="text-3xl font-bold text-accent leading-none">#{rank.position}</p>
+            <p className="text-xs text-dim mt-1">of {rank.of} active teammates</p>
+          </>
+        ) : (
+          <p className="text-xs text-dim">Solo run today — no peers active.</p>
+        )}
+        <div className="mt-auto pt-3 text-[10px] text-dim">
+          Peer numbers stay private. You only see the team average — never an individual&apos;s data.
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function AgentStatsPage() {
@@ -205,19 +302,31 @@ export default function AgentStatsPage() {
     const istNow = new Date(Date.now() + 330 * 60 * 1000)
     return istNow.toISOString().split('T')[0]
   })
-  const [activity, setActivity] = useState<{
-    date: string;
-    agents: Array<{
-      user_id: string; name: string; email: string; role: string;
-      type: 'closer' | 'telecaller' | 'admin' | 'none';
-      active: boolean; leads_touched: number;
-      actions: { manual_messages: number; calls_logged: number; notes_added: number; status_changes: number; reassignments_performed: number };
-      status_progressions: Record<string, number>;
-      touched_leads: Array<{ lead_row: number | null; phone: string; name: string; current_status: string; actions: string[] }>;
-    }>;
-    totals: { leads_touched: number; manual_messages: number; calls_logged: number; notes_added: number; status_changes: number; reassignments_performed: number };
-    warnings: string[];
-  } | null>(null)
+  // Activity state — supports both admin (full leaderboard) and self (own card + team avg) shapes.
+  // Admin shape uses `agents` + `totals`; self shape uses `you` + `team_avg` + `your_rank`.
+  type AgentEntry = {
+    user_id: string; name: string; email: string; role: string;
+    type: 'closer' | 'telecaller' | 'admin' | 'none';
+    active: boolean; leads_touched: number;
+    actions: { manual_messages: number; calls_logged: number; notes_added: number; status_changes: number; reassignments_performed: number };
+    status_progressions: Record<string, number>;
+    touched_leads: Array<{ lead_row: number | null; phone: string; name: string; current_status: string; actions: string[] }>;
+  }
+  type ActivityState =
+    | {
+        scope: 'admin'; date: string;
+        agents: AgentEntry[];
+        totals: { leads_touched: number; manual_messages: number; calls_logged: number; notes_added: number; status_changes: number; reassignments_performed: number };
+        warnings: string[];
+      }
+    | {
+        scope: 'self'; date: string;
+        you: AgentEntry | null;
+        team_avg: { leads_touched: number; manual_messages: number; calls_logged: number; notes_added: number; status_changes: number };
+        your_rank: { position: number; of: number } | null;
+        warnings: string[];
+      }
+  const [activity, setActivity] = useState<ActivityState | null>(null)
   const [activityLoading, setActivityLoading] = useState(false)
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null)
 
@@ -231,10 +340,8 @@ export default function AgentStatsPage() {
         router.push('/login')
         return null
       }
-      if (data.data.role !== 'admin') {
-        router.push('/dashboard')
-        return null
-      }
+      // Both admins and agents/telecallers can view this page now.
+      // The API responds with a self-scoped payload for non-admins.
       setCurrentUser(data.data)
       return data.data as SessionUser
     } catch {
@@ -245,28 +352,30 @@ export default function AgentStatsPage() {
 
   // ─── Data Fetching ───────────────────────────────────────────────────────
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (isAdmin: boolean) => {
     try {
-      const [leadsRes, usersRes, slaRes, tcRes] = await Promise.all([
-        fetch('/api/leads'),
+      // Leads endpoint is role-aware — agents see only their own anyway.
+      const leadsRes = await fetch('/api/leads')
+      const leadsData = await leadsRes.json()
+      if (leadsData.success) setLeads(leadsData.data)
+      else setError('Failed to load leads')
+
+      // Admin-only endpoints: skip for non-admins to avoid 403 noise.
+      if (!isAdmin) return
+
+      const [usersRes, slaRes, tcRes] = await Promise.all([
         fetch('/api/users'),
         fetch('/api/reports/sla'),
         fetch('/api/analytics/telecallers'),
       ])
-      const [leadsData, usersData, slaResult, tcResult] = await Promise.all([
-        leadsRes.json(),
+      const [usersData, slaResult, tcResult] = await Promise.all([
         usersRes.json(),
         slaRes.json(),
         tcRes.json(),
       ])
 
-      if (leadsData.success) setLeads(leadsData.data)
-      else setError('Failed to load leads')
-
       if (usersData.success) setAgents(usersData.data.filter((u: AgentUser) => u.active))
-
       if (slaResult.success) setSlaData(slaResult.data)
-
       if (tcResult.success) setTcStats(tcResult.data)
     } catch {
       setError('Failed to load data')
@@ -296,7 +405,7 @@ export default function AgentStatsPage() {
       setLoading(true)
       const user = await fetchAuth()
       if (user) {
-        await fetchData()
+        await fetchData(user.role === 'admin')
       }
       setLoading(false)
     }
@@ -328,7 +437,7 @@ export default function AgentStatsPage() {
 
   // ─── Loading ─────────────────────────────────────────────────────────────
 
-  if (!currentUser || currentUser.role !== 'admin') {
+  if (!currentUser) {
     return (
       <div className="min-h-screen bg-bg">
         <Navbar />
@@ -338,6 +447,7 @@ export default function AgentStatsPage() {
       </div>
     )
   }
+  const isAdmin = currentUser.role === 'admin'
 
   if (loading) {
     return (
@@ -472,8 +582,8 @@ export default function AgentStatsPage() {
             </div>
           )}
 
-          {/* Org totals strip */}
-          {activity && (
+          {/* Org totals strip (admin view) */}
+          {activity?.scope === 'admin' && (
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4 text-center">
               {[
                 { label: 'Leads touched', v: activity.totals.leads_touched },
@@ -491,8 +601,17 @@ export default function AgentStatsPage() {
             </div>
           )}
 
-          {/* Per-agent cards */}
-          {activity && activity.agents.length > 0 ? (
+          {/* Self view (non-admin): your card + team avg + anonymous rank */}
+          {activity?.scope === 'self' && activity.you && (
+            <SelfActivityView
+              you={activity.you}
+              teamAvg={activity.team_avg}
+              rank={activity.your_rank}
+            />
+          )}
+
+          {/* Per-agent cards (admin view) */}
+          {activity?.scope === 'admin' && activity.agents.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {activity.agents.filter(a => a.active).map(a => {
                 const isGhost = a.type === 'closer' && a.leads_touched === 0
@@ -598,7 +717,8 @@ export default function AgentStatsPage() {
           </div>
         </div>
 
-        {/* ─── Agent Table ────────────────────────────────────────────── */}
+        {/* ─── Agent Table (admin only) ─────────────────────────────────── */}
+        {isAdmin && (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -730,7 +850,8 @@ export default function AgentStatsPage() {
             </table>
           </div>
         </div>
-        {/* ─── SLA Performance ────────────────────────────────────── */}
+        )}
+        {/* ─── SLA Performance (admin only, gated by slaData) ──────── */}
         {slaData && (
           <div className="mt-6">
             <h2 className="text-base font-bold text-text mb-3">SLA Performance</h2>
