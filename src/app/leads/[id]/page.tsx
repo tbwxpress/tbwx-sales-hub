@@ -8,6 +8,7 @@ import AgreementForm from '@/components/AgreementForm'
 import LogCallModal from '@/components/LogCallModal'
 import CallHistory from '@/components/CallHistory'
 import ActivityLog from '@/components/ActivityLog'
+import OpportunityCheckPrompt from '@/components/OpportunityCheckPrompt'
 import { LEAD_STATUSES, STATUS_LABELS } from '@/config/client'
 import Toast from '@/components/Toast'
 import { formatTime } from '@/lib/format'
@@ -1089,6 +1090,15 @@ export default function LeadDetailPage() {
               </div>
               <CallHistory phone={lead.phone} refreshKey={callHistoryKey} />
             </div>
+
+            {/* Opportunity Check — forces the "is this real?" conversation
+                once a lead has had multiple touches without status movement. */}
+            <OpportunityCheckPrompt
+              phone={lead.phone}
+              leadStatus={lead.lead_status}
+              leadName={lead.full_name}
+              onActed={() => setToast('Opportunity check saved')}
+            />
 
             {/* Manage Card */}
             <div className="bg-card rounded-lg border border-border p-4 space-y-4">
