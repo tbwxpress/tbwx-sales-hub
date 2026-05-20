@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
 import AgentQueue from '@/components/AgentQueue'
+import NeedsAttentionBanner from '@/components/NeedsAttentionBanner'
 import Toast from '@/components/Toast'
 import { timeAgo, followupLabel } from '@/lib/format'
 import { scoreColor, scoreBg, scoreBorder } from '@/lib/score-colors'
@@ -855,6 +856,9 @@ export default function DashboardPage() {
             </button>
           </div>
         )}
+
+        {/* Forced followup loop — leads requiring an explicit touch right now. */}
+        <NeedsAttentionBanner defaultExpanded />
 
         {/* ─── Pending Delegation Requests Widget ─────────────────────── */}
         {pendingDelegations.length > 0 && (

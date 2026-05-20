@@ -8,6 +8,7 @@ import AgreementForm from '@/components/AgreementForm'
 import LogCallModal from '@/components/LogCallModal'
 import CallHistory from '@/components/CallHistory'
 import ActivityLog from '@/components/ActivityLog'
+import OpportunityCheckPrompt from '@/components/OpportunityCheckPrompt'
 import { LEAD_STATUSES, STATUS_LABELS } from '@/config/client'
 import Toast from '@/components/Toast'
 import { formatTime } from '@/lib/format'
@@ -1090,23 +1091,61 @@ export default function LeadDetailPage() {
               <CallHistory phone={lead.phone} refreshKey={callHistoryKey} />
             </div>
 
+            {/* Opportunity Check — forces the "is this real?" conversation
+                once a lead has had multiple touches without status movement. */}
+            <OpportunityCheckPrompt
+              phone={lead.phone}
+              leadStatus={lead.lead_status}
+              leadName={lead.full_name}
+              onActed={() => setToast('Opportunity check saved')}
+            />
+
             {/* Manage Card */}
             <div className="bg-card rounded-lg border border-border p-4 space-y-4">
               <h2 className="text-xs font-semibold text-dim uppercase tracking-wide mb-1">Manage</h2>
 
-              <div>
-                <label className="text-xs text-dim block mb-1">Status</label>
-                <select
-                  value={lead.lead_status}
-                  onChange={(e) => updateField('lead_status', e.target.value)}
-                  disabled={savingField === 'lead_status'}
-                  className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50 disabled:opacity-50"
-                >
-                  {STATUSES.map(s => (
-                    <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
-                  ))}
-                </select>
-              </div>
+              {(() => {
+                // Status changes are owner-only. Admins always allowed. Anyone else
+                // (including telecallers assigned via lead_telecaller_assignments)
+                // sees a read-only badge with a clear explanation — eliminates the
+                // silent-403 confusion where the dropdown would appear to work but
+                // the API silently rejected the change.
+                const canEditStatus =
+                  sessionUser?.role === 'admin' ||
+                  (lead.assigned_to && sessionUser?.name === lead.assigned_to)
+
+                if (canEditStatus) {
+                  return (
+                    <div>
+                      <label className="text-xs text-dim block mb-1">Status</label>
+                      <select
+                        value={lead.lead_status}
+                        onChange={(e) => updateField('lead_status', e.target.value)}
+                        disabled={savingField === 'lead_status'}
+                        className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50 disabled:opacity-50"
+                      >
+                        {STATUSES.map(s => (
+                          <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div>
+                    <label className="text-xs text-dim block mb-1">Status</label>
+                    <div className="w-full bg-elevated/40 border border-border/60 rounded-md px-3 py-2 text-sm text-text flex items-center justify-between">
+                      <span>{STATUS_LABELS[lead.lead_status] || lead.lead_status}</span>
+                      <span className="text-[10px] text-dim uppercase tracking-wider">Owner-only</span>
+                    </div>
+                    <p className="text-[10px] text-dim mt-1.5 leading-relaxed">
+                      Only <span className="text-muted font-medium">{lead.assigned_to || 'the lead owner'}</span> or an admin can change the status.
+                      Log your call &amp; add a note — they&apos;ll review and move it.
+                    </p>
+                  </div>
+                )
+              })()}
 
               <div>
                 <label className="text-xs text-dim block mb-1">Priority</label>

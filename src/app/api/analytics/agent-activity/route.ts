@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { apiError } from '@/lib/api-error'
-import { getSession, requireAuth, requireAdmin } from '@/lib/auth'
+import { getSession, requireAuth } from '@/lib/auth'
 import { getUsers } from '@/lib/users'
 import { getLeads } from '@/lib/sheets'
+import { getAllAssignments, getAutoQueueConfig } from '@/lib/telecaller'
 import { createClient } from '@libsql/client'
 import { normalizePhone } from '@/lib/db'
 
 // GET /api/analytics/agent-activity?date=YYYY-MM-DD&tz_offset_min=330
-// Admin-only. Returns micro-level daily activity per active user, scoped to
-// active actions only (manual messages, calls logged, notes added, status
-// changes performed, reassignments performed).
+// Returns micro-level daily activity scoped to active actions (manual messages,
+// calls logged, notes added, status changes, reassignments).
+//
+// Admin → full leaderboard (every active user, all warnings, telecaller ghosts).
+// Non-admin → self view: only the caller's own row, plus team averages and an
+//   anonymous rank (e.g. "#3 of 7"). Peers are NEVER named in the response so
+//   non-admins can self-evaluate without exposing other agents' raw numbers.
 
 interface AgentActivity {
   user_id: string
@@ -47,7 +52,7 @@ export async function GET(req: NextRequest) {
   try {
     const session = await getSession()
     const user = requireAuth(session)
-    requireAdmin(user)
+    const isAdmin = user.role === 'admin'
 
     const url = new URL(req.url)
     const tzOffsetMin = parseInt(url.searchParams.get('tz_offset_min') || '330', 10) // IST default
@@ -269,11 +274,80 @@ export async function GET(req: NextRequest) {
         warnings.push(`${a.name} was assigned ${assignedToday} new lead${assignedToday === 1 ? '' : 's'} but didn't touch a single one in Sales Hub.`)
       }
     }
+
+    // Telecaller ghost warnings: telecallers with queue but zero touches today.
+    // Queue size = explicit assignments + auto-queue eligible.
+    const [tcAssignments, tcAutoCfg] = await Promise.all([
+      getAllAssignments(),
+      getAutoQueueConfig(),
+    ])
+    const tcQueueSizeByUserId = new Map<string, number>()
+    for (const a of tcAssignments) {
+      tcQueueSizeByUserId.set(a.telecaller_user_id, (tcQueueSizeByUserId.get(a.telecaller_user_id) || 0) + 1)
+    }
+    if (tcAutoCfg.enabled && tcAutoCfg.user_id && tcAutoCfg.statuses.length > 0) {
+      const statusSet = new Set(tcAutoCfg.statuses)
+      const autoCount = leads.filter(l => statusSet.has(l.lead_status)).length
+      tcQueueSizeByUserId.set(
+        tcAutoCfg.user_id,
+        (tcQueueSizeByUserId.get(tcAutoCfg.user_id) || 0) + autoCount,
+      )
+    }
+    for (const a of agents) {
+      if (a.type !== 'telecaller' || !a.active) continue
+      const queueSize = tcQueueSizeByUserId.get(a.user_id) || 0
+      if (queueSize >= 5 && a.leads_touched === 0) {
+        warnings.push(`${a.name} has ${queueSize} lead${queueSize === 1 ? '' : 's'} in their telecaller queue but logged zero activity today.`)
+      }
+    }
     void leadsByRow // suppress unused
+
+    // Self-scoped response for non-admins: hide peers, expose team average + rank.
+    // The "you" object is the same shape as one entry in `agents[]` for an admin.
+    if (!isAdmin) {
+      const myEntry = agents.find(a => a.email === user.email) || null
+      const peers = agents.filter(a => a.active && a.email !== user.email)
+      const peerCount = peers.length
+
+      const sum = (pick: (a: AgentActivity) => number) => peers.reduce((acc, a) => acc + pick(a), 0)
+      const team_avg = peerCount === 0
+        ? { leads_touched: 0, manual_messages: 0, calls_logged: 0, notes_added: 0, status_changes: 0 }
+        : {
+            leads_touched: Math.round((sum(a => a.leads_touched) / peerCount) * 10) / 10,
+            manual_messages: Math.round((sum(a => a.actions.manual_messages) / peerCount) * 10) / 10,
+            calls_logged: Math.round((sum(a => a.actions.calls_logged) / peerCount) * 10) / 10,
+            notes_added: Math.round((sum(a => a.actions.notes_added) / peerCount) * 10) / 10,
+            status_changes: Math.round((sum(a => a.actions.status_changes) / peerCount) * 10) / 10,
+          }
+
+      // Rank by leads_touched, ties broken by total actions
+      const ranked = [...agents.filter(a => a.active)].sort((x, y) => {
+        if (x.leads_touched !== y.leads_touched) return y.leads_touched - x.leads_touched
+        const xa = x.actions.manual_messages + x.actions.calls_logged + x.actions.notes_added + x.actions.status_changes
+        const ya = y.actions.manual_messages + y.actions.calls_logged + y.actions.notes_added + y.actions.status_changes
+        return ya - xa
+      })
+      const myPosition = myEntry ? ranked.findIndex(a => a.email === myEntry.email) + 1 : 0
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          scope: 'self',
+          date: dateStr,
+          window: { since: sinceISO, until: untilISO },
+          you: myEntry,
+          team_avg,
+          your_rank: myEntry ? { position: myPosition, of: ranked.length } : null,
+          // Only forward warnings that name the caller — peer warnings stay private.
+          warnings: warnings.filter(w => myEntry && w.startsWith(`${myEntry.name} `)),
+        },
+      })
+    }
 
     return NextResponse.json({
       success: true,
       data: {
+        scope: 'admin',
         date: dateStr,
         window: { since: sinceISO, until: untilISO },
         agents,
