@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
+import NeedsAttentionBanner from '@/components/NeedsAttentionBanner'
 
 interface FeedItem {
   kind: 'hot_stale' | 'overdue_followup' | 'telecaller_handoff' | 'unread_reply' | 'new_assignment'
@@ -69,6 +70,10 @@ export default function TodayPage() {
           </div>
           <button onClick={fetchFeed} className="text-xs text-accent hover:underline">Refresh</button>
         </div>
+
+        {/* Forced followup loop — sits above the curated feed so stale leads aren't buried */}
+        <NeedsAttentionBanner defaultExpanded />
+
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
