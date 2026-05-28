@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
       state: body.state || '',
       model_interest: body.model_interest || '',
       lead_priority: body.lead_priority || 'WARM',
-      assigned_to: body.assigned_to || '',
+      assigned_to: body.assigned_to || session!.name || '',
       notes: body.notes || '',
       source: body.source || 'Manual Entry',
     })

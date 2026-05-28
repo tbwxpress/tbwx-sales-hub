@@ -2,9 +2,9 @@ import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getMessages, getContact, markMessagesRead } from '@/lib/db'
-import { getLeads } from '@/lib/sheets'
+import { getAgentVisiblePhones } from '@/lib/visibility'
 
-// GET /api/inbox/[phone] — get conversation for a contact
+// GET /api/inbox/[phone] — get conversation for a contact (role-scoped)
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ phone: string }> }
@@ -15,14 +15,13 @@ export async function GET(
 
     const { phone } = await params
 
-    // Agents can only view assigned leads (+ unassigned if can_assign)
-    if (user.role === 'agent') {
-      const leads = await getLeads()
-      const visiblePhones = leads
-        .filter(l => l.assigned_to === user.name || (user.can_assign && !l.assigned_to))
-        .map(l => l.phone.replace(/\D/g, '').slice(-10))
+    const visiblePhones = await getAgentVisiblePhones(user)
+    if (visiblePhones !== null) {
       const phone10 = phone.replace(/\D/g, '').slice(-10)
-      if (!visiblePhones.includes(phone10)) {
+      const visible10 = new Set(
+        visiblePhones.map(p => String(p).replace(/\D/g, '').slice(-10))
+      )
+      if (!visible10.has(phone10)) {
         return NextResponse.json({ success: false, error: 'Not assigned to you' }, { status: 403 })
       }
     }

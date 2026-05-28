@@ -198,15 +198,42 @@ export default function InboxPage() {
     }
   }
 
-  // Fetch contacts
+  // Inbox pagination — agents with thousands of leads would overflow SQLite
+  // param limits and lag the DOM if we loaded everything at once.
+  const PAGE_SIZE = 200
+  const [loadedCount, setLoadedCount] = useState(PAGE_SIZE)
+  const [hasMoreContacts, setHasMoreContacts] = useState(false)
+  const [loadingMoreContacts, setLoadingMoreContacts] = useState(false)
+
+  // Fetch contacts (paginated, always from offset 0 so polling stays consistent)
   const fetchContacts = useCallback(async () => {
     try {
-      const res = await fetch('/api/inbox')
+      const res = await fetch(`/api/inbox?limit=${loadedCount}&offset=0`)
       const data = await res.json()
-      if (data.success) setContacts(data.data)
+      if (data.success) {
+        setContacts(data.data)
+        setHasMoreContacts(Boolean(data.meta?.hasMore))
+      }
     } catch { /* ignore */ }
     setLoading(false)
-  }, [])
+  }, [loadedCount])
+
+  // "Show older" — expand the loaded window and refetch
+  const loadOlderContacts = useCallback(async () => {
+    if (loadingMoreContacts || !hasMoreContacts) return
+    setLoadingMoreContacts(true)
+    const next = loadedCount + PAGE_SIZE
+    try {
+      const res = await fetch(`/api/inbox?limit=${next}&offset=0`)
+      const data = await res.json()
+      if (data.success) {
+        setContacts(data.data)
+        setHasMoreContacts(Boolean(data.meta?.hasMore))
+        setLoadedCount(next)
+      }
+    } catch { /* ignore */ }
+    setLoadingMoreContacts(false)
+  }, [loadedCount, hasMoreContacts, loadingMoreContacts])
 
   // Fetch messages for active contact
   const fetchMessages = useCallback(async (phone: string) => {
@@ -867,7 +894,8 @@ export default function InboxPage() {
                 }
               </div>
             ) : (
-              filteredContacts.map(contact => (
+              <>
+              {filteredContacts.map(contact => (
                 <button
                   key={contact.phone}
                   onClick={() => openConversation(contact)}
@@ -924,7 +952,17 @@ export default function InboxPage() {
                     </div>
                   </div>
                 </button>
-              ))
+              ))}
+              {hasMoreContacts && !searchQuery && !showUnreadOnly && (
+                <button
+                  onClick={loadOlderContacts}
+                  disabled={loadingMoreContacts}
+                  className="w-full py-3 text-xs text-muted hover:text-text hover:bg-elevated border-t border-border transition-colors disabled:opacity-50"
+                >
+                  {loadingMoreContacts ? 'Loading…' : 'Show older conversations'}
+                </button>
+              )}
+              </>
             )}
           </div>
         </div>

@@ -469,44 +469,94 @@ export async function getContacts() {
   return serializeRows(result.rows)
 }
 
-export async function getContactsForAgent(assignedPhones: string[]) {
+// Chunk size kept well under SQLite/libsql's ~999 parameter ceiling.
+const PHONE_QUERY_CHUNK = 500
+
+export async function getContactsForAgent(
+  assignedPhones: string[],
+  opts: { limit?: number; offset?: number } = {}
+): Promise<{ contacts: any[]; total: number; hasMore: boolean }> {
   const db = await ensureInit()
-  if (assignedPhones.length === 0) return []
+  if (assignedPhones.length === 0) return { contacts: [], total: 0, hasMore: false }
 
-  // Match contacts by last 10 digits of phone
-  const conditions = assignedPhones.map(() => 'SUBSTR(c.phone, -10) = ?').join(' OR ')
-  const phones10 = assignedPhones.map(p => p.replace(/\D/g, '').slice(-10))
+  const limit = Math.max(opts.limit ?? 200, 1)
+  const offset = Math.max(opts.offset ?? 0, 0)
 
-  const result = await db.execute({
-    sql: `
-      SELECT
-        c.*,
-        m.text AS last_message,
-        m.direction AS last_direction,
-        m.timestamp AS last_message_at,
-        (SELECT COUNT(*) FROM messages WHERE phone = c.phone AND read = 0 AND direction = 'received') AS unread_count
-      FROM contacts c
-      LEFT JOIN messages m ON m.phone = c.phone AND m.timestamp = (
-        SELECT MAX(timestamp) FROM messages WHERE phone = c.phone
-      )
-      WHERE ${conditions}
-      ORDER BY m.timestamp DESC NULLS LAST
-    `,
-    args: phones10,
+  const phones10 = Array.from(
+    new Set(
+      assignedPhones
+        .map(p => String(p).replace(/\D/g, '').slice(-10))
+        .filter(p => p.length === 10)
+    )
+  )
+  if (phones10.length === 0) return { contacts: [], total: 0, hasMore: false }
+
+  const seen = new Set<string>()
+  const merged: any[] = []
+
+  for (let i = 0; i < phones10.length; i += PHONE_QUERY_CHUNK) {
+    const batch = phones10.slice(i, i + PHONE_QUERY_CHUNK)
+    const conditions = batch.map(() => 'SUBSTR(c.phone, -10) = ?').join(' OR ')
+    const result = await db.execute({
+      sql: `
+        SELECT
+          c.*,
+          m.text AS last_message,
+          m.direction AS last_direction,
+          m.timestamp AS last_message_at,
+          (SELECT COUNT(*) FROM messages WHERE phone = c.phone AND read = 0 AND direction = 'received') AS unread_count
+        FROM contacts c
+        LEFT JOIN messages m ON m.phone = c.phone AND m.timestamp = (
+          SELECT MAX(timestamp) FROM messages WHERE phone = c.phone
+        )
+        WHERE ${conditions}
+      `,
+      args: batch,
+    })
+    for (const row of serializeRows(result.rows)) {
+      const phoneKey = String(row.phone ?? '')
+      if (!seen.has(phoneKey)) {
+        seen.add(phoneKey)
+        merged.push(row)
+      }
+    }
+  }
+
+  merged.sort((a, b) => {
+    if (!a.last_message_at && !b.last_message_at) return 0
+    if (!a.last_message_at) return 1
+    if (!b.last_message_at) return -1
+    return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
   })
-  return serializeRows(result.rows)
+
+  const page = merged.slice(offset, offset + limit)
+  return { contacts: page, total: merged.length, hasMore: merged.length > offset + limit }
 }
 
 export async function getUnreadCountForAgent(assignedPhones: string[]) {
   const db = await ensureInit()
   if (assignedPhones.length === 0) return 0
-  const conditions = assignedPhones.map(() => 'SUBSTR(phone, -10) = ?').join(' OR ')
-  const phones10 = assignedPhones.map(p => p.replace(/\D/g, '').slice(-10))
-  const result = await db.execute({
-    sql: `SELECT COUNT(*) as count FROM messages WHERE read = 0 AND direction = 'received' AND (${conditions})`,
-    args: phones10,
-  })
-  return Number(result.rows[0]?.count ?? 0)
+
+  const phones10 = Array.from(
+    new Set(
+      assignedPhones
+        .map(p => String(p).replace(/\D/g, '').slice(-10))
+        .filter(p => p.length === 10)
+    )
+  )
+  if (phones10.length === 0) return 0
+
+  let total = 0
+  for (let i = 0; i < phones10.length; i += PHONE_QUERY_CHUNK) {
+    const batch = phones10.slice(i, i + PHONE_QUERY_CHUNK)
+    const conditions = batch.map(() => 'SUBSTR(phone, -10) = ?').join(' OR ')
+    const result = await db.execute({
+      sql: `SELECT COUNT(*) as count FROM messages WHERE read = 0 AND direction = 'received' AND (${conditions})`,
+      args: batch,
+    })
+    total += Number(result.rows[0]?.count ?? 0)
+  }
+  return total
 }
 
 export async function getContact(phone: string) {
