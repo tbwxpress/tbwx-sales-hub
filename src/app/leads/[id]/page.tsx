@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import type { Lead, Message, QuickReply, ApiResponse, PaymentFollowup } from '@/lib/types'
+import UpdateRequestBanner from '@/components/UpdateRequestBanner'
 import VoiceAgentCard from '@/components/VoiceAgentCard'
 import AgreementForm from '@/components/AgreementForm'
 import LogCallModal from '@/components/LogCallModal'
@@ -1336,6 +1337,7 @@ export default function LeadDetailPage() {
               </div>
 
               {/* Notes — timestamped, from DB */}
+              <UpdateRequestBanner leadRow={lead.row_number} />
               <LeadNotes phone={lead.phone} />
             </div>
 
