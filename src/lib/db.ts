@@ -380,6 +380,27 @@ async function ensureInit(): Promise<Client> {
       CREATE INDEX IF NOT EXISTS idx_pfu_followup ON payment_followup_updates(followup_id, created_at);
     `)
 
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS update_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lead_row INTEGER NOT NULL,
+        agent_id TEXT NOT NULL,
+        agent_name TEXT NOT NULL,
+        requested_by TEXT NOT NULL,
+        reason TEXT,
+        due_date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','ANSWERED','CANCELLED')),
+        created_at TEXT NOT NULL,
+        answered_at TEXT,
+        answer_note_id INTEGER,
+        cancelled_at TEXT,
+        cancelled_by TEXT
+      )
+    `)
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_update_requests_agent_status ON update_requests(agent_id, status)`)
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_update_requests_lead ON update_requests(lead_row)`)
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_update_requests_status_due ON update_requests(status, due_date)`)
+
     // Additive migrations (try-catch for existing DBs)
     try { await db.execute('ALTER TABLE drip_state ADD COLUMN resumed_at TEXT') } catch { /* column may already exist */ }
     try { await db.execute('ALTER TABLE drip_state ADD COLUMN opted_out INTEGER DEFAULT 0') } catch { /* column may already exist */ }
