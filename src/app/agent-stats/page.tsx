@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import RequestUpdatesButton from '@/components/RequestUpdatesButton'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -682,6 +683,11 @@ export default function AgentStatsPage() {
                             <span className="text-[10px]">{l.actions.map(x => x === 'msg' ? '💬' : x === 'call' ? '📞' : x === 'note' ? '📝' : x === 'status' ? '🔄' : x === 'reassign' ? '🔀' : '·').join('')}</span>
                           </div>
                         ))}
+                      </div>
+                    )}
+                    {isExpanded && (
+                      <div className="pt-3 mt-3 border-t border-border/50">
+                        <RequestUpdatesButton agentId={a.user_id} agentName={a.name} />
                       </div>
                     )}
                   </div>
