@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createUpdateRequests, getRequestById, listPendingForAgent, getPendingForLeadAndAgent, listRequestsForAdmin, cancelRequest } from '../update-requests'
+import { createUpdateRequests, getRequestById, listPendingForAgent, getPendingForLeadAndAgent, listRequestsForAdmin, cancelRequest, autoAnswerForNote } from '../update-requests'
 import { ensureInit } from '../db'
 
 beforeEach(async () => {
@@ -126,5 +126,43 @@ describe('cancelRequest', () => {
     })
 
     await expect(cancelRequest(id, 'admin_1')).rejects.toThrow(/cannot cancel/i)
+  })
+})
+
+describe('autoAnswerForNote', () => {
+  it('closes the oldest pending request and stores the note id', async () => {
+    const [id] = await createUpdateRequests({
+      agent_id: 'agent_g', agent_name: 'G', requested_by: 'admin_1',
+      lead_rows: [800], due_date: '2026-06-20',
+    })
+    const closed = await autoAnswerForNote({
+      lead_row: 800,
+      agent_id: 'agent_g',
+      note_id: 42,
+      note_text: 'Called him, sending the deck tomorrow.',
+    })
+    expect(closed?.id).toBe(id)
+    const r = await getRequestById(id)
+    expect(r?.status).toBe('ANSWERED')
+    expect(r?.answer_note_id).toBe(42)
+    expect(r?.answered_at).toBeTruthy()
+  })
+
+  it('ignores notes shorter than 5 trimmed chars', async () => {
+    await createUpdateRequests({
+      agent_id: 'agent_h', agent_name: 'H', requested_by: 'admin_1',
+      lead_rows: [900], due_date: '2026-06-20',
+    })
+    const closed = await autoAnswerForNote({
+      lead_row: 900, agent_id: 'agent_h', note_id: 50, note_text: 'ok',
+    })
+    expect(closed).toBeNull()
+  })
+
+  it('returns null when no pending request exists', async () => {
+    const closed = await autoAnswerForNote({
+      lead_row: 9999, agent_id: 'agent_z', note_id: 99, note_text: 'Hello there',
+    })
+    expect(closed).toBeNull()
   })
 })

@@ -128,3 +128,26 @@ export async function cancelRequest(id: number, cancelled_by: string): Promise<v
     args: [new Date().toISOString(), cancelled_by, id],
   })
 }
+
+const MIN_ANSWER_NOTE_CHARS = 5
+
+export async function autoAnswerForNote(input: {
+  lead_row: number
+  agent_id: string
+  note_id: number
+  note_text: string
+}): Promise<UpdateRequest | null> {
+  if (input.note_text.trim().length < MIN_ANSWER_NOTE_CHARS) return null
+
+  const pending = await getPendingForLeadAndAgent(input.lead_row, input.agent_id)
+  if (!pending) return null
+
+  const db = await ensureInit()
+  await db.execute({
+    sql: `UPDATE update_requests
+          SET status = 'ANSWERED', answered_at = ?, answer_note_id = ?
+          WHERE id = ?`,
+    args: [new Date().toISOString(), input.note_id, pending.id],
+  })
+  return { ...pending, status: 'ANSWERED', answered_at: new Date().toISOString(), answer_note_id: input.note_id }
+}
