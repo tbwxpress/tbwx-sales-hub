@@ -7,6 +7,7 @@ import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
 import AgentQueue from '@/components/AgentQueue'
 import NeedsAttentionBanner from '@/components/NeedsAttentionBanner'
+import UpdateRequestWidget from '@/components/UpdateRequestWidget'
 import Toast from '@/components/Toast'
 import { timeAgo, followupLabel } from '@/lib/format'
 import { scoreColor, scoreBg, scoreBorder } from '@/lib/score-colors'
@@ -856,6 +857,9 @@ export default function DashboardPage() {
             </button>
           </div>
         )}
+
+        {/* Update requests from Sales Head */}
+        <UpdateRequestWidget />
 
         {/* Forced followup loop — leads requiring an explicit touch right now. */}
         <NeedsAttentionBanner defaultExpanded />
