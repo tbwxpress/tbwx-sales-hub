@@ -12,7 +12,7 @@ function serializeRow(row: Row): Record<string, unknown> {
   return out
 }
 
-function serializeRows(rows: Row[]) {
+export function serializeRows(rows: Row[]) {
   return rows.map(serializeRow)
 }
 
@@ -41,7 +41,7 @@ function getClient(): Client {
   return _db
 }
 
-async function ensureInit(): Promise<Client> {
+export async function ensureInit(): Promise<Client> {
   const db = getClient()
   if (!_initialized) {
     await db.executeMultiple(`
