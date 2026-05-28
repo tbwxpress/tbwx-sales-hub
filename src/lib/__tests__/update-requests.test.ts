@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createUpdateRequests, getRequestById, listPendingForAgent, getPendingForLeadAndAgent } from '../update-requests'
+import { createUpdateRequests, getRequestById, listPendingForAgent, getPendingForLeadAndAgent, listRequestsForAdmin, cancelRequest } from '../update-requests'
 import { ensureInit } from '../db'
 
 beforeEach(async () => {
@@ -81,5 +81,50 @@ describe('getPendingForLeadAndAgent', () => {
 
     const missing = await getPendingForLeadAndAgent(999, 'agent_c')
     expect(missing).toBeNull()
+  })
+})
+
+describe('listRequestsForAdmin', () => {
+  it('filters by status', async () => {
+    const pending = await listRequestsForAdmin({ status: 'PENDING' })
+    expect(pending.every(r => r.status === 'PENDING')).toBe(true)
+  })
+
+  it('"overdue" returns only PENDING where due_date < today', async () => {
+    await createUpdateRequests({
+      agent_id: 'agent_d', agent_name: 'D', requested_by: 'admin_1',
+      lead_rows: [500], due_date: '2020-01-01',
+    })
+    const overdue = await listRequestsForAdmin({ overdue: true })
+    expect(overdue.some(r => r.lead_row === 500)).toBe(true)
+    expect(overdue.every(r => r.status === 'PENDING')).toBe(true)
+  })
+})
+
+describe('cancelRequest', () => {
+  it('flips status to CANCELLED and records who/when', async () => {
+    const [id] = await createUpdateRequests({
+      agent_id: 'agent_e', agent_name: 'E', requested_by: 'admin_1',
+      lead_rows: [600], due_date: '2026-06-15',
+    })
+    await cancelRequest(id, 'admin_1')
+    const r = await getRequestById(id)
+    expect(r?.status).toBe('CANCELLED')
+    expect(r?.cancelled_by).toBe('admin_1')
+    expect(r?.cancelled_at).toBeTruthy()
+  })
+
+  it('refuses to cancel an already-answered request', async () => {
+    const [id] = await createUpdateRequests({
+      agent_id: 'agent_f', agent_name: 'F', requested_by: 'admin_1',
+      lead_rows: [700], due_date: '2026-06-15',
+    })
+    const db = await ensureInit()
+    await db.execute({
+      sql: `UPDATE update_requests SET status = 'ANSWERED', answered_at = ?, answer_note_id = 1 WHERE id = ?`,
+      args: [new Date().toISOString(), id],
+    })
+
+    await expect(cancelRequest(id, 'admin_1')).rejects.toThrow(/cannot cancel/i)
   })
 })

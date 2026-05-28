@@ -77,3 +77,54 @@ export async function getPendingForLeadAndAgent(
   const rows = serializeRows(result.rows)
   return rows[0] ? (rows[0] as unknown as UpdateRequest) : null
 }
+
+export async function listRequestsForAdmin(opts: {
+  status?: UpdateRequestStatus
+  overdue?: boolean
+} = {}): Promise<UpdateRequest[]> {
+  const db = await ensureInit()
+  const today = new Date().toISOString().slice(0, 10)
+
+  if (opts.overdue) {
+    const result = await db.execute({
+      sql: `SELECT * FROM update_requests
+            WHERE status = 'PENDING' AND due_date < ?
+            ORDER BY due_date ASC, created_at ASC`,
+      args: [today],
+    })
+    return serializeRows(result.rows) as unknown as UpdateRequest[]
+  }
+
+  if (opts.status) {
+    const order = opts.status === 'ANSWERED'
+      ? 'answered_at DESC'
+      : opts.status === 'CANCELLED'
+        ? 'cancelled_at DESC'
+        : 'due_date ASC, created_at ASC'
+    const result = await db.execute({
+      sql: `SELECT * FROM update_requests WHERE status = ? ORDER BY ${order}`,
+      args: [opts.status],
+    })
+    return serializeRows(result.rows) as unknown as UpdateRequest[]
+  }
+
+  const result = await db.execute({
+    sql: `SELECT * FROM update_requests ORDER BY created_at DESC`,
+  })
+  return serializeRows(result.rows) as unknown as UpdateRequest[]
+}
+
+export async function cancelRequest(id: number, cancelled_by: string): Promise<void> {
+  const db = await ensureInit()
+  const existing = await getRequestById(id)
+  if (!existing) throw new Error('Request not found')
+  if (existing.status !== 'PENDING') {
+    throw new Error(`Cannot cancel request in status ${existing.status}`)
+  }
+  await db.execute({
+    sql: `UPDATE update_requests
+          SET status = 'CANCELLED', cancelled_at = ?, cancelled_by = ?
+          WHERE id = ?`,
+    args: [new Date().toISOString(), cancelled_by, id],
+  })
+}
