@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
 import ThemeToggle from './ThemeToggle'
 import NotificationBell from './NotificationBell'
+import UpdateRequestsBadge from './UpdateRequestsBadge'
 
 interface User {
   name: string
@@ -239,6 +240,7 @@ export default function Navbar() {
               </svg>
               <kbd className="text-[9px] font-mono px-1 py-0.5 rounded hidden lg:inline" style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)' }}>⌘K</kbd>
             </button>
+            <UpdateRequestsBadge />
             <NotificationBell />
             <ThemeToggle />
             {/* Avatar with dropdown */}

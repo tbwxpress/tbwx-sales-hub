@@ -1,4 +1,4 @@
-import { ensureInit, serializeRows } from './db'
+import { ensureInit, serializeRows, getSetting, setSetting } from './db'
 
 export type UpdateRequestStatus = 'PENDING' | 'ANSWERED' | 'CANCELLED'
 
@@ -150,4 +150,30 @@ export async function autoAnswerForNote(input: {
     args: [new Date().toISOString(), input.note_id, pending.id],
   })
   return { ...pending, status: 'ANSWERED', answered_at: new Date().toISOString(), answer_note_id: input.note_id }
+}
+
+const ADMIN_LAST_SEEN_KEY = 'admin.update_requests.last_seen'
+
+export async function getAdminLastSeen(): Promise<string | null> {
+  const v = await getSetting(ADMIN_LAST_SEEN_KEY)
+  return v || null
+}
+
+export async function setAdminLastSeen(ts: string): Promise<void> {
+  await setSetting(ADMIN_LAST_SEEN_KEY, ts)
+}
+
+export async function countAnsweredSince(ts: string | null): Promise<number> {
+  const db = await ensureInit()
+  if (!ts) {
+    const result = await db.execute({
+      sql: `SELECT COUNT(*) as n FROM update_requests WHERE status = 'ANSWERED'`,
+    })
+    return Number(result.rows[0]?.n ?? 0)
+  }
+  const result = await db.execute({
+    sql: `SELECT COUNT(*) as n FROM update_requests WHERE status = 'ANSWERED' AND answered_at > ?`,
+    args: [ts],
+  })
+  return Number(result.rows[0]?.n ?? 0)
 }
