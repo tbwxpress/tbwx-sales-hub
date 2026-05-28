@@ -121,12 +121,15 @@ export async function cancelRequest(id: number, cancelled_by: string): Promise<v
   if (existing.status !== 'PENDING') {
     throw new Error(`Cannot cancel request in status ${existing.status}`)
   }
-  await db.execute({
+  const result = await db.execute({
     sql: `UPDATE update_requests
           SET status = 'CANCELLED', cancelled_at = ?, cancelled_by = ?
-          WHERE id = ?`,
+          WHERE id = ? AND status = 'PENDING'`,
     args: [new Date().toISOString(), cancelled_by, id],
   })
+  if (Number(result.rowsAffected) === 0) {
+    throw new Error('Cannot cancel: request status changed concurrently')
+  }
 }
 
 const MIN_ANSWER_NOTE_CHARS = 5
@@ -143,12 +146,13 @@ export async function autoAnswerForNote(input: {
   if (!pending) return null
 
   const db = await ensureInit()
-  await db.execute({
+  const result = await db.execute({
     sql: `UPDATE update_requests
           SET status = 'ANSWERED', answered_at = ?, answer_note_id = ?
-          WHERE id = ?`,
+          WHERE id = ? AND status = 'PENDING'`,
     args: [new Date().toISOString(), input.note_id, pending.id],
   })
+  if (Number(result.rowsAffected) === 0) return null
   return { ...pending, status: 'ANSWERED', answered_at: new Date().toISOString(), answer_note_id: input.note_id }
 }
 
