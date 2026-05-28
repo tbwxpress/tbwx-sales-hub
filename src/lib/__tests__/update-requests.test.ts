@@ -1,5 +1,13 @@
-import { describe, it, expect } from 'vitest'
-import { createUpdateRequests, getRequestById } from '../update-requests'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { createUpdateRequests, getRequestById, listPendingForAgent, getPendingForLeadAndAgent } from '../update-requests'
+import { ensureInit } from '../db'
+
+beforeEach(async () => {
+  const db = await ensureInit()
+  await db.execute({
+    sql: `DELETE FROM update_requests WHERE agent_id IN ('user_happy','agent_a','agent_b','agent_c','agent_d','agent_e','agent_f','agent_g','agent_h','agent_z')`,
+  })
+})
 
 describe('createUpdateRequests', () => {
   it('inserts one row per lead with PENDING status', async () => {
@@ -30,5 +38,48 @@ describe('createUpdateRequests', () => {
     })
     const row = await getRequestById(ids[0])
     expect(row?.reason).toBeNull()
+  })
+})
+
+describe('listPendingForAgent', () => {
+  it('returns only PENDING for the given agent, sorted by due_date asc', async () => {
+    await createUpdateRequests({
+      agent_id: 'agent_a', agent_name: 'A', requested_by: 'admin_1',
+      lead_rows: [300], due_date: '2026-06-05',
+    })
+    await createUpdateRequests({
+      agent_id: 'agent_a', agent_name: 'A', requested_by: 'admin_1',
+      lead_rows: [301], due_date: '2026-06-01',
+    })
+    await createUpdateRequests({
+      agent_id: 'agent_b', agent_name: 'B', requested_by: 'admin_1',
+      lead_rows: [302], due_date: '2026-06-01',
+    })
+
+    const aList = await listPendingForAgent('agent_a')
+    expect(aList.map(r => r.lead_row)).toEqual([301, 300])
+
+    const bList = await listPendingForAgent('agent_b')
+    expect(bList.map(r => r.lead_row)).toEqual([302])
+  })
+})
+
+describe('getPendingForLeadAndAgent', () => {
+  it('returns the oldest pending request for that (lead, agent) pair, or null', async () => {
+    const [id1] = await createUpdateRequests({
+      agent_id: 'agent_c', agent_name: 'C', requested_by: 'admin_1',
+      lead_rows: [400], due_date: '2026-06-10',
+    })
+    // Add a second one (rare but possible)
+    await createUpdateRequests({
+      agent_id: 'agent_c', agent_name: 'C', requested_by: 'admin_1',
+      lead_rows: [400], due_date: '2026-07-10',
+    })
+    const r = await getPendingForLeadAndAgent(400, 'agent_c')
+    expect(r?.id).toBe(id1)  // oldest by created_at
+    expect(r?.status).toBe('PENDING')
+
+    const missing = await getPendingForLeadAndAgent(999, 'agent_c')
+    expect(missing).toBeNull()
   })
 })

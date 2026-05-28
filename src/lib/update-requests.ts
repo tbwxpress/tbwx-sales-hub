@@ -51,3 +51,29 @@ export async function getRequestById(id: number): Promise<UpdateRequest | null> 
   const rows = serializeRows(result.rows)
   return rows[0] ? (rows[0] as unknown as UpdateRequest) : null
 }
+
+export async function listPendingForAgent(agent_id: string): Promise<UpdateRequest[]> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `SELECT * FROM update_requests
+          WHERE agent_id = ? AND status = 'PENDING'
+          ORDER BY due_date ASC, created_at ASC`,
+    args: [agent_id],
+  })
+  return serializeRows(result.rows) as unknown as UpdateRequest[]
+}
+
+export async function getPendingForLeadAndAgent(
+  lead_row: number,
+  agent_id: string
+): Promise<UpdateRequest | null> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `SELECT * FROM update_requests
+          WHERE lead_row = ? AND agent_id = ? AND status = 'PENDING'
+          ORDER BY created_at ASC LIMIT 1`,
+    args: [lead_row, agent_id],
+  })
+  const rows = serializeRows(result.rows)
+  return rows[0] ? (rows[0] as unknown as UpdateRequest) : null
+}
