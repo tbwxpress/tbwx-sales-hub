@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { findCity, projectLatLng } from '../india-cities'
+import { findCity, projectLatLng, isKnownForeign, isJunkCityValue } from '../india-cities'
 
 describe('findCity', () => {
   it('returns null for empty/null/whitespace input', () => {
@@ -85,6 +85,24 @@ describe('findCity', () => {
     expect(findCity('amdavad')?.name).toBe('Ahmedabad')
   })
 
+  it('matches the third-batch tier-2/3 cities', () => {
+    expect(findCity('Modasa')?.name).toBe('Modasa')
+    expect(findCity('Kangra')?.name).toBe('Kangra')
+    expect(findCity('Pinjore')?.name).toBe('Pinjore')
+    expect(findCity('Hardoi')?.name).toBe('Hardoi')
+    expect(findCity('Jind')?.name).toBe('Jind')
+    expect(findCity('Gulbarga')?.name).toBe('Gulbarga')
+    expect(findCity('Kalaburagi')?.name).toBe('Gulbarga')  // modern name alias
+    expect(findCity('Balangir')?.name).toBe('Balangir')
+    expect(findCity('Manali')?.name).toBe('Manali')
+    expect(findCity('Mau')?.name).toBe('Mau')
+    expect(findCity('Maunath Bhanjan')?.name).toBe('Mau')
+    expect(findCity('Palwal')?.name).toBe('Palwal')
+    expect(findCity('Khandwa')?.name).toBe('Khandwa')
+    expect(findCity('Anantnag')?.name).toBe('Anantnag')
+    expect(findCity('Lko')?.name).toBe('Lucknow')
+  })
+
   it('routes state names to their capital city', () => {
     expect(findCity('Bihar')?.name).toBe('Patna')
     expect(findCity('Maharashtra')?.name).toBe('Mumbai')
@@ -106,5 +124,37 @@ describe('projectLatLng', () => {
     const west = projectLatLng(23, 68, 500, 600)
     const east = projectLatLng(23, 95, 500, 600)
     expect(west.x).toBeLessThan(east.x)
+  })
+})
+
+describe('isKnownForeign', () => {
+  it('returns true for known foreign cities (case-insensitive)', () => {
+    expect(isKnownForeign('Dubai')).toBe(true)
+    expect(isKnownForeign('dubai')).toBe(true)
+    expect(isKnownForeign('  DUBAI  ')).toBe(true)
+    expect(isKnownForeign('Singapore')).toBe(true)
+  })
+  it('returns false for Indian cities and unknowns', () => {
+    expect(isKnownForeign('Mumbai')).toBe(false)
+    expect(isKnownForeign('Xanadu')).toBe(false)
+    expect(isKnownForeign('')).toBe(false)
+    expect(isKnownForeign(null)).toBe(false)
+  })
+})
+
+describe('isJunkCityValue', () => {
+  it('returns true for placeholder values', () => {
+    expect(isJunkCityValue('Others')).toBe(true)
+    expect(isJunkCityValue('NA')).toBe(true)
+    expect(isJunkCityValue('-')).toBe(true)
+    expect(isJunkCityValue('Pan India')).toBe(true)
+  })
+  it('returns true for empty / null input', () => {
+    expect(isJunkCityValue(null)).toBe(true)
+    expect(isJunkCityValue('')).toBe(true)
+  })
+  it('returns false for real city names', () => {
+    expect(isJunkCityValue('Mumbai')).toBe(false)
+    expect(isJunkCityValue('Dehradun')).toBe(false)
   })
 })

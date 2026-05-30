@@ -2,7 +2,7 @@ import { apiError } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads } from '@/lib/sheets'
-import { findCity } from '@/config/india-cities'
+import { findCity, isKnownForeign, isJunkCityValue } from '@/config/india-cities'
 
 /**
  * GET /api/analytics/regions
@@ -41,6 +41,11 @@ export async function GET() {
       const coord = findCity(lead.city)
 
       if (!coord) {
+        // Skip silently if the value is foreign or junk — they shouldn't pollute
+        // the "Unmapped cities" warning since they aren't actionable.
+        if (isKnownForeign(lead.city) || isJunkCityValue(lead.city)) {
+          continue
+        }
         unmatchedCities.set(lead.city, (unmatchedCities.get(lead.city) || 0) + 1)
         continue
       }

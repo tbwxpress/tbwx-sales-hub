@@ -235,6 +235,20 @@ export const INDIA_CITIES: CityCoord[] = [
   { name: 'Bhilai', state: 'Chhattisgarh', lat: 21.2090, lng: 81.4285 },
   { name: 'Korba', state: 'Chhattisgarh', lat: 22.3595, lng: 82.7501 },
 
+  // Third batch — late-2026 unmapped additions
+  { name: 'Modasa', state: 'Gujarat', lat: 23.4644, lng: 73.2997 },
+  { name: 'Kangra', state: 'Himachal Pradesh', lat: 32.0998, lng: 76.2691 },
+  { name: 'Pinjore', state: 'Haryana', lat: 30.7942, lng: 76.9173 },
+  { name: 'Hardoi', state: 'Uttar Pradesh', lat: 27.4167, lng: 80.1167 },
+  { name: 'Jind', state: 'Haryana', lat: 29.3162, lng: 76.3144 },
+  { name: 'Gulbarga', state: 'Karnataka', lat: 17.3297, lng: 76.8343 },
+  { name: 'Balangir', state: 'Odisha', lat: 20.7099, lng: 83.4842 },
+  { name: 'Manali', state: 'Himachal Pradesh', lat: 32.2432, lng: 77.1892 },
+  { name: 'Mau', state: 'Uttar Pradesh', lat: 25.9412, lng: 83.5611 },
+  { name: 'Palwal', state: 'Haryana', lat: 28.1473, lng: 77.3260 },
+  { name: 'Khandwa', state: 'Madhya Pradesh', lat: 21.8333, lng: 76.3500 },
+  { name: 'Anantnag', state: 'Jammu & Kashmir', lat: 33.7311, lng: 75.1487 },
+
   // Latest unmapped-cities batch (2026-05-30)
   { name: 'Amravati', state: 'Maharashtra', lat: 20.9333, lng: 77.7833 },
   { name: 'Panvel', state: 'Maharashtra', lat: 18.9894, lng: 73.1175 },
@@ -300,6 +314,12 @@ const CITY_ALIASES: Record<string, string> = {
   // Others
   'pondicherry': 'Puducherry', 'puducherry': 'Puducherry',
   'nellore': 'Nellore', 'kakinada': 'Vijayawada',
+
+  // Third-batch aliases (2026-05-30)
+  'lko': 'Lucknow',
+  'maunath bhanjan': 'Mau',
+  'maunathbhanjan': 'Mau',
+  'kalaburagi': 'Gulbarga',
 
   // Misspellings of existing cities (2026-05-30 unmapped batch)
   'gauhati': 'Guwahati',
@@ -400,6 +420,39 @@ export function findCity(name: string): CityCoord | null {
   }
 
   return null
+}
+
+// ─── Foreign-city and junk-value filters ─────────────────────────────────
+
+/**
+ * Known foreign cities — legitimate leads from outside India.
+ * These won't appear on the India heatmap (out of bounds) but
+ * shouldn't pollute the "Unmapped cities" warning either.
+ */
+const KNOWN_FOREIGN_CITIES = new Set([
+  'dubai', 'abu dhabi', 'sharjah', 'doha', 'kuwait', 'kuwait city',
+  'singapore', 'london', 'manchester', 'new york', 'toronto', 'sydney',
+  'melbourne', 'auckland', 'kathmandu', 'colombo', 'dhaka', 'kuala lumpur',
+])
+
+export function isKnownForeign(name: string | null | undefined): boolean {
+  if (!name) return false
+  return KNOWN_FOREIGN_CITIES.has(name.trim().toLowerCase())
+}
+
+/**
+ * Placeholder / junk values frequently typed into a city field —
+ * not real cities, not worth surfacing as "unmapped".
+ */
+const JUNK_CITY_VALUES = new Set([
+  'others', 'other', 'na', 'n/a', 'none', 'nil', 'unknown', 'tbd',
+  'pan india', 'all india', 'india', 'pan-india', 'all-india',
+  '-', '--', '?', '...', 'xxx',
+])
+
+export function isJunkCityValue(name: string | null | undefined): boolean {
+  if (!name) return true
+  return JUNK_CITY_VALUES.has(name.trim().toLowerCase())
 }
 
 // ─── India map projection (equirectangular) ──────────────────────────────
