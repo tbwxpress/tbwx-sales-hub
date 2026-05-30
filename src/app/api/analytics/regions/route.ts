@@ -126,7 +126,6 @@ export async function GET() {
     const unmatched = Array.from(unmatchedCities.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 20)
 
     return NextResponse.json({
       success: true,

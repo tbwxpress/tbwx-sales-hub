@@ -342,7 +342,7 @@ export default function AnalyticsPage() {
                 <h4 className="text-xs font-semibold text-warning mb-2">Unmapped cities ({regions.unmatched.length})</h4>
                 <p className="text-[10px] text-dim mb-2">These city names don&apos;t match our known list. Consider adding them to `src/config/india-cities.ts` or fixing the spelling in the sheet.</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {regions.unmatched.slice(0, 15).map(u => (
+                  {regions.unmatched.map(u => (
                     <span key={u.name} className="text-[10px] bg-elevated text-muted px-2 py-0.5 rounded">
                       {u.name} ({u.count})
                     </span>

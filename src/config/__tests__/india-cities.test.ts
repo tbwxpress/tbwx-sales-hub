@@ -111,6 +111,25 @@ describe('findCity', () => {
     expect(findCity('Uttar Pradesh')?.name).toBe('Lucknow')
     expect(findCity('UP')?.name).toBe('Lucknow')
   })
+
+  it('matches the fourth-batch tier-2/3 cities', () => {
+    expect(findCity('Sambhal')?.name).toBe('Sambhal')
+    expect(findCity('Amroha')?.name).toBe('Amroha')
+    expect(findCity('Shamli')?.name).toBe('Shamli')
+    expect(findCity('Mundra')?.name).toBe('Mundra')
+    expect(findCity('Pilani')?.name).toBe('Pilani')
+    expect(findCity('Jhunjhunu')?.name).toBe('Jhunjhunu')
+    expect(findCity('Gandhidham')?.name).toBe('Gandhidham')
+    expect(findCity('Haflong')?.name).toBe('Haflong')
+    expect(findCity('Ambajogai')?.name).toBe('Ambajogai')
+    expect(findCity('Pinarayi')?.name).toBe('Pinarayi')
+    expect(findCity('Tumkunta')?.name).toBe('Tumkunta')
+  })
+
+  it('resolves Panjim and bangluru via alias', () => {
+    expect(findCity('Panjim')?.name).toBe('Panaji')
+    expect(findCity('bangluru')?.name).toBe('Bangalore')
+  })
 })
 
 describe('projectLatLng', () => {
@@ -156,5 +175,10 @@ describe('isJunkCityValue', () => {
   it('returns false for real city names', () => {
     expect(isJunkCityValue('Mumbai')).toBe(false)
     expect(isJunkCityValue('Dehradun')).toBe(false)
+  })
+  it('flags new junk values', () => {
+    expect(isJunkCityValue('Call me')).toBe(true)
+    expect(isJunkCityValue('Bhat gam')).toBe(true)
+    expect(isJunkCityValue('bhatgam')).toBe(true)
   })
 })

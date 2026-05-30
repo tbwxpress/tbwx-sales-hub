@@ -262,6 +262,19 @@ export const INDIA_CITIES: CityCoord[] = [
   { name: 'Banswara', state: 'Rajasthan', lat: 23.5461, lng: 74.4350 },
   { name: 'Valsad', state: 'Gujarat', lat: 20.6101, lng: 72.9342 },
   { name: 'Gohana', state: 'Haryana', lat: 29.1373, lng: 76.6997 },
+
+  // Fourth batch — Q2 2026 unmapped additions
+  { name: 'Sambhal', state: 'Uttar Pradesh', lat: 28.5862, lng: 78.5734 },
+  { name: 'Pinarayi', state: 'Kerala', lat: 11.8500, lng: 75.5667 },
+  { name: 'Haflong', state: 'Assam', lat: 25.1675, lng: 93.0211 },
+  { name: 'Ambajogai', state: 'Maharashtra', lat: 18.7236, lng: 76.3838 },
+  { name: 'Amroha', state: 'Uttar Pradesh', lat: 28.9034, lng: 78.4685 },
+  { name: 'Shamli', state: 'Uttar Pradesh', lat: 29.4495, lng: 77.3104 },
+  { name: 'Mundra', state: 'Gujarat', lat: 22.8336, lng: 69.7218 },
+  { name: 'Pilani', state: 'Rajasthan', lat: 28.3675, lng: 75.6043 },
+  { name: 'Tumkunta', state: 'Telangana', lat: 17.5169, lng: 78.5489 },
+  { name: 'Jhunjhunu', state: 'Rajasthan', lat: 28.1289, lng: 75.3995 },
+  { name: 'Gandhidham', state: 'Gujarat', lat: 23.0758, lng: 70.1337 },
 ]
 
 /**
@@ -317,6 +330,9 @@ const CITY_ALIASES: Record<string, string> = {
 
   // Third-batch aliases (2026-05-30)
   'lko': 'Lucknow',
+  // Fourth-batch aliases — Q2 2026
+  'panjim': 'Panaji',
+  'bangluru': 'Bangalore',
   'maunath bhanjan': 'Mau',
   'maunathbhanjan': 'Mau',
   'kalaburagi': 'Gulbarga',
@@ -448,6 +464,7 @@ const JUNK_CITY_VALUES = new Set([
   'others', 'other', 'na', 'n/a', 'none', 'nil', 'unknown', 'tbd',
   'pan india', 'all india', 'india', 'pan-india', 'all-india',
   '-', '--', '?', '...', 'xxx',
+  'bhat gam', 'bhatgam', 'call me',
 ])
 
 export function isJunkCityValue(name: string | null | undefined): boolean {
