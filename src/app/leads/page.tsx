@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import { STATUS_LABELS, STATUS_MIGRATION } from '@/config/client'
 import Toast from '@/components/Toast'
-import { timeAgo, followupLabel } from '@/lib/format'
+import { timeAgo, followupLabel, istToday } from '@/lib/format'
 import { scoreColor, scoreBg, scoreBorder } from '@/lib/score-colors'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -157,6 +157,10 @@ export default function LeadsPage() {
   const [showAddLead, setShowAddLead] = useState(false)
   const [addLeadForm, setAddLeadForm] = useState({ full_name: '', phone: '', email: '', city: '', state: '', model_interest: '', lead_priority: 'WARM', notes: '', source: '' })
   const [addLeadSaving, setAddLeadSaving] = useState(false)
+  const [addLeadTouched, setAddLeadTouched] = useState<Record<string, boolean>>({})
+
+  // Quick filter pills
+  const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'hot' | 'unassigned' | 'due_today'>('all')
 
   // ─── Data Fetching ───────────────────────────────────────────────────────
 
@@ -287,8 +291,8 @@ export default function LeadsPage() {
   }
 
   function toggleSelectAll() {
-    if (selected.size === leads.length) setSelected(new Set())
-    else setSelected(new Set(leads.map(l => l.row_number)))
+    if (selected.size === displayedLeads.length) setSelected(new Set())
+    else setSelected(new Set(displayedLeads.map(l => l.row_number)))
   }
 
   async function updateLeadField(rowNum: number, field: string, value: string) {
@@ -400,6 +404,7 @@ export default function LeadsPage() {
       if (data.success) {
         setShowAddLead(false)
         setAddLeadForm({ full_name: '', phone: '', email: '', city: '', state: '', model_interest: '', lead_priority: 'WARM', notes: '', source: '' })
+        setAddLeadTouched({})
         setToast('Lead added successfully')
         fetchLeads()
       } else {
@@ -410,6 +415,23 @@ export default function LeadsPage() {
     }
     setAddLeadSaving(false)
   }
+
+  // Quick filter pill counts — always computed from the full fetched leads list
+  const today = istToday()
+  const pillCounts = {
+    all: leads.length,
+    mine: leads.filter(l => l.assigned_to === user?.name).length,
+    hot: leads.filter(l => l.lead_priority === 'HOT').length,
+    unassigned: leads.filter(l => !l.assigned_to).length,
+    due_today: leads.filter(l => l.next_followup?.startsWith(today)).length,
+  }
+
+  // Apply quick filter on top of the already-fetched leads
+  const displayedLeads = quickFilter === 'all' ? leads
+    : quickFilter === 'mine' ? leads.filter(l => l.assigned_to === user?.name)
+    : quickFilter === 'hot' ? leads.filter(l => l.lead_priority === 'HOT')
+    : quickFilter === 'unassigned' ? leads.filter(l => !l.assigned_to)
+    : leads.filter(l => l.next_followup?.startsWith(today))
 
   const assignedNames = [...new Set(leads.map(l => l.assigned_to).filter(Boolean))]
   const canBulkAction = user?.role === 'admin' || user?.can_assign
@@ -472,7 +494,7 @@ export default function LeadsPage() {
               {user?.role === 'agent' ? 'My Leads' : 'All Leads'}
             </h1>
             <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted)' }}>
-              {leads.length} lead{leads.length !== 1 ? 's' : ''}
+              {displayedLeads.length} lead{displayedLeads.length !== 1 ? 's' : ''}
               {statusFilter && ` matching "${statusFilter.replace('_', ' ')}"`}
             </p>
           </div>
@@ -480,7 +502,7 @@ export default function LeadsPage() {
             <button
               onClick={() => {
                 const headers = ['Name', 'Phone', 'Email', 'City', 'State', 'Status', 'Priority', 'Assigned', 'Score', 'Created', 'Follow-up']
-                const rows = leads.map(l => [
+                const rows = displayedLeads.map(l => [
                   l.full_name, l.phone, l.email, l.city, l.state,
                   l.lead_status, l.lead_priority, l.assigned_to,
                   l.lead_score !== undefined ? String(l.lead_score) : '',
@@ -520,6 +542,45 @@ export default function LeadsPage() {
               &larr; Dashboard
             </Link>
           </div>
+        </div>
+
+        {/* ─── Quick Filter Pills ───────────────────────────────────────── */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          {(
+            [
+              { key: 'all', label: 'All' },
+              ...(user?.role !== 'admin' ? [{ key: 'mine', label: 'My Leads' }] : []),
+              { key: 'hot', label: 'HOT' },
+              { key: 'unassigned', label: 'Unassigned' },
+              { key: 'due_today', label: 'Due Today' },
+            ] as { key: typeof quickFilter; label: string }[]
+          ).map(({ key, label }) => {
+            const active = quickFilter === key
+            return (
+              <button
+                key={key}
+                onClick={() => setQuickFilter(active ? 'all' : key)}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-colors"
+                style={
+                  active
+                    ? { backgroundColor: 'var(--color-accent)', color: '#1a1209', border: '1px solid var(--color-accent)' }
+                    : { backgroundColor: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }
+                }
+              >
+                {label}
+                <span
+                  className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-[11px] font-bold"
+                  style={
+                    active
+                      ? { backgroundColor: 'rgba(26,18,9,0.2)', color: '#1a1209' }
+                      : { backgroundColor: 'var(--color-elevated)', color: 'var(--color-dim)' }
+                  }
+                >
+                  {pillCounts[key]}
+                </span>
+              </button>
+            )
+          })}
         </div>
 
         {/* ─── Filter Bar ───────────────────────────────────────────────── */}
@@ -628,13 +689,13 @@ export default function LeadsPage() {
 
           {/* Lead Count */}
           <span className="text-xs text-dim ml-auto">
-            {leads.length} lead{leads.length !== 1 ? 's' : ''}
+            {displayedLeads.length} lead{displayedLeads.length !== 1 ? 's' : ''}
           </span>
         </div>
 
         {/* ─── Mobile Card List (<md) ─────────────────────────────────── */}
         <div className="md:hidden space-y-2">
-          {leads.length === 0 ? (
+          {displayedLeads.length === 0 ? (
             <div className="bg-card border border-border rounded-lg px-4 py-12 text-center">
               <div className="flex flex-col items-center gap-3">
                 <svg className="w-10 h-10 text-dim/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
@@ -655,7 +716,7 @@ export default function LeadsPage() {
               </div>
             </div>
           ) : (
-            leads.map((lead) => {
+            displayedLeads.map((lead) => {
               const statusColor = STATUS_COLORS[lead.lead_status] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
               const followup = followupLabel(lead.next_followup)
               const isChecked = selected.has(lead.row_number)
@@ -818,7 +879,7 @@ export default function LeadsPage() {
                     <th className="px-3 py-3 text-left w-10">
                       <input
                         type="checkbox"
-                        checked={leads.length > 0 && selected.size === leads.length}
+                        checked={displayedLeads.length > 0 && selected.size === displayedLeads.length}
                         onChange={toggleSelectAll}
                         className="rounded border-border accent-accent"
                       />
@@ -848,7 +909,7 @@ export default function LeadsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {leads.length === 0 ? (
+                {displayedLeads.length === 0 ? (
                   <tr>
                     <td
                       colSpan={(showCheckboxColumn ? 12 : 11) + (user?.role === 'admin' ? 1 : 0)}
@@ -874,7 +935,7 @@ export default function LeadsPage() {
                     </td>
                   </tr>
                 ) : (
-                  leads.map((lead, idx) => {
+                  displayedLeads.map((lead, idx) => {
                     const statusColor = STATUS_COLORS[lead.lead_status] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
                     const priorityColor = PRIORITY_COLORS[lead.lead_priority] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
                     const followup = followupLabel(lead.next_followup)
@@ -1229,25 +1290,62 @@ export default function LeadsPage() {
 
       {/* Add Lead Modal */}
       {showAddLead && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddLead(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { setShowAddLead(false); setAddLeadTouched({}) }}>
           <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-border flex items-center justify-between">
               <h2 className="text-base font-semibold text-text">Add New Lead</h2>
-              <button onClick={() => setShowAddLead(false)} className="text-dim hover:text-text transition-colors">
+              <button onClick={() => { setShowAddLead(false); setAddLeadTouched({}) }} className="text-dim hover:text-text transition-colors">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
             <div className="px-6 py-5 space-y-4">
+              {(() => {
+                const nameInvalid = addLeadTouched.full_name && !addLeadForm.full_name.trim()
+                const phoneDigits = addLeadForm.phone.replace(/\D/g, '')
+                const phoneInvalid = addLeadTouched.phone && (addLeadForm.phone.trim() === '' || phoneDigits.length < 10)
+                const phoneBadFormat = addLeadTouched.phone && addLeadForm.phone.trim() !== '' && phoneDigits.length < 10
+                return (
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className="text-xs text-dim block mb-1">Full Name <span className="text-danger">*</span></label>
-                  <input type="text" value={addLeadForm.full_name} onChange={e => setAddLeadForm(f => ({ ...f, full_name: e.target.value }))} placeholder="John Doe" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" autoFocus />
+                  <label htmlFor="add-lead-name" className="text-xs text-dim block mb-1">Full Name <span className="text-danger">*</span></label>
+                  <input
+                    id="add-lead-name"
+                    type="text"
+                    value={addLeadForm.full_name}
+                    onChange={e => setAddLeadForm(f => ({ ...f, full_name: e.target.value }))}
+                    onBlur={() => setAddLeadTouched(t => ({ ...t, full_name: true }))}
+                    placeholder="John Doe"
+                    aria-required="true"
+                    aria-invalid={nameInvalid}
+                    aria-describedby={nameInvalid ? 'add-lead-name-err' : undefined}
+                    className={`w-full bg-elevated border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50 ${nameInvalid ? 'border-danger' : 'border-border'}`}
+                    autoFocus
+                  />
+                  {nameInvalid && (
+                    <p id="add-lead-name-err" className="text-danger text-[11px] mt-1">Full name is required</p>
+                  )}
                 </div>
                 <div>
-                  <label className="text-xs text-dim block mb-1">Phone <span className="text-danger">*</span></label>
-                  <input type="tel" value={addLeadForm.phone} onChange={e => setAddLeadForm(f => ({ ...f, phone: e.target.value }))} placeholder="9876543210" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
+                  <label htmlFor="add-lead-phone" className="text-xs text-dim block mb-1">Phone <span className="text-danger">*</span></label>
+                  <input
+                    id="add-lead-phone"
+                    type="tel"
+                    value={addLeadForm.phone}
+                    onChange={e => setAddLeadForm(f => ({ ...f, phone: e.target.value }))}
+                    onBlur={() => setAddLeadTouched(t => ({ ...t, phone: true }))}
+                    placeholder="9876543210"
+                    aria-required="true"
+                    aria-invalid={phoneInvalid}
+                    aria-describedby={phoneInvalid ? 'add-lead-phone-err' : undefined}
+                    className={`w-full bg-elevated border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50 ${phoneInvalid ? 'border-danger' : 'border-border'}`}
+                  />
+                  {phoneInvalid && (
+                    <p id="add-lead-phone-err" className="text-danger text-[11px] mt-1">
+                      {phoneBadFormat ? 'Enter a valid 10-digit phone' : 'Phone is required'}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-dim block mb-1">Email</label>
@@ -1282,12 +1380,14 @@ export default function LeadsPage() {
                   <textarea value={addLeadForm.notes} onChange={e => setAddLeadForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any notes about this lead..." rows={2} className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50 resize-none" />
                 </div>
               </div>
+                )
+              })()}
             </div>
             <div className="px-6 py-4 border-t border-border flex items-center justify-end gap-3">
-              <button onClick={() => setShowAddLead(false)} className="px-4 py-2 text-sm text-muted hover:text-text transition-colors">Cancel</button>
+              <button onClick={() => { setShowAddLead(false); setAddLeadTouched({}) }} className="px-4 py-2 text-sm text-muted hover:text-text transition-colors">Cancel</button>
               <button
                 onClick={handleAddLead}
-                disabled={addLeadSaving || !addLeadForm.full_name.trim() || !addLeadForm.phone.trim()}
+                disabled={addLeadSaving || !addLeadForm.full_name.trim() || !addLeadForm.phone.trim() || addLeadForm.phone.replace(/\D/g, '').length < 10}
                 className="bg-accent hover:bg-accent-hover text-[#1a1209] px-5 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {addLeadSaving ? (

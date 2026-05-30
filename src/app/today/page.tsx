@@ -7,7 +7,7 @@ import PoweredBy from '@/components/PoweredBy'
 import NeedsAttentionBanner from '@/components/NeedsAttentionBanner'
 
 interface FeedItem {
-  kind: 'hot_stale' | 'overdue_followup' | 'telecaller_handoff' | 'unread_reply' | 'new_assignment'
+  kind: 'hot_stale' | 'overdue_followup' | 'upcoming_followup' | 'telecaller_handoff' | 'unread_reply' | 'new_assignment'
   priority: number
   title: string
   subtitle: string
@@ -22,6 +22,7 @@ const KIND_META: Record<string, { label: string; color: string }> = {
   unread_reply: { label: 'Reply', color: 'var(--color-success)' },
   telecaller_handoff: { label: 'Hand-off', color: 'var(--color-accent)' },
   overdue_followup: { label: 'Overdue', color: 'var(--color-warning)' },
+  upcoming_followup: { label: 'Upcoming', color: 'var(--color-accent)' },
   new_assignment: { label: 'New', color: 'var(--color-accent)' },
 }
 
@@ -57,7 +58,7 @@ export default function TodayPage() {
     return acc
   }, {})
 
-  const sectionOrder: FeedItem['kind'][] = ['hot_stale', 'unread_reply', 'telecaller_handoff', 'overdue_followup', 'new_assignment']
+  const sectionOrder: FeedItem['kind'][] = ['hot_stale', 'unread_reply', 'telecaller_handoff', 'overdue_followup', 'new_assignment', 'upcoming_followup']
 
   return (
     <div className="min-h-screen bg-bg flex flex-col">

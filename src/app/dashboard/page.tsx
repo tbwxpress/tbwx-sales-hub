@@ -377,6 +377,12 @@ export default function DashboardPage() {
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
 
+  // Per-section loading states
+  const [loadingStats, setLoadingStats] = useState(true)
+  const [loadingLeads, setLoadingLeads] = useState(true)
+  const [loadingAgents, setLoadingAgents] = useState(true)
+  const [loadingTasks, setLoadingTasks] = useState(true)
+
   // Tasks
   const [tasks, setTasks] = useState<Task[]>([])
 
@@ -442,16 +448,20 @@ export default function DashboardPage() {
   }, [router])
 
   const fetchStats = useCallback(async () => {
+    setLoadingStats(true)
     try {
       const res = await fetch('/api/leads?stats=true')
       const data = await res.json()
       if (data.success) setStats(data.data)
     } catch {
       // stats are non-critical
+    } finally {
+      setLoadingStats(false)
     }
   }, [])
 
   const fetchLeads = useCallback(async () => {
+    setLoadingLeads(true)
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
@@ -484,22 +494,30 @@ export default function DashboardPage() {
       }
     } catch {
       setError('Failed to load leads')
+    } finally {
+      setLoadingLeads(false)
     }
   }, [search, statusFilter, assignedFilter, sortBy])
 
   const fetchAgents = useCallback(async (currentUser: SessionUser) => {
     if (currentUser.role === 'admin') {
+      setLoadingAgents(true)
       try {
         const res = await fetch('/api/users')
         const data = await res.json()
         if (data.success) setAgents(data.data.filter((u: AgentUser) => u.active))
       } catch {
         // non-critical
+      } finally {
+        setLoadingAgents(false)
       }
+    } else {
+      setLoadingAgents(false)
     }
   }, [])
 
   const fetchTasks = useCallback(async () => {
+    setLoadingTasks(true)
     try {
       const todayEnd = new Date()
       todayEnd.setHours(23, 59, 59, 999)
@@ -511,6 +529,8 @@ export default function DashboardPage() {
     } catch {
       // Tasks API may not exist yet — silently ignore
       setTasks([])
+    } finally {
+      setLoadingTasks(false)
     }
   }, [])
 
@@ -560,7 +580,14 @@ export default function DashboardPage() {
       setLoading(true)
       const currentUser = await fetchUser()
       if (currentUser) {
-        await Promise.all([fetchStats(), fetchLeads(), fetchAgents(currentUser), fetchTasks(), fetchWaStats(), fetchPendingDelegations(), fetchPaymentFollowups(currentUser)])
+        // Fire all fetches in parallel — each manages its own loading state
+        fetchStats()
+        fetchLeads()
+        fetchAgents(currentUser)
+        fetchTasks()
+        fetchWaStats()
+        fetchPendingDelegations()
+        fetchPaymentFollowups(currentUser)
       }
       setLoading(false)
     }
@@ -848,6 +875,15 @@ export default function DashboardPage() {
       <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 animate-fade-in">
+        {/* Role-aware view label */}
+        <p className="text-xs italic mb-4" style={{ color: 'var(--color-dim)' }}>
+          {user?.role === 'admin'
+            ? 'Dashboard — overview of all activity'
+            : user?.role === 'telecaller'
+            ? 'Dashboard — your calling queue'
+            : 'Dashboard — your queue'}
+        </p>
+
         {/* Error Banner */}
         {error && (
           <div className="mb-4 px-4 py-3 rounded-lg bg-danger/10 border border-danger/20 text-danger text-sm flex items-center justify-between">
@@ -1000,6 +1036,14 @@ export default function DashboardPage() {
         {/* ─── Today's Tasks + Avg Response Time Row ──────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           {/* Today's Tasks Widget */}
+          {loadingTasks ? (
+            <div className="lg:col-span-2 bg-card border border-border rounded-lg px-5 py-4 animate-pulse">
+              <div className="h-3 w-28 rounded bg-elevated mb-4" />
+              <div className="space-y-3">
+                {[1,2,3].map(i => <div key={i} className="h-5 w-full rounded bg-elevated" />)}
+              </div>
+            </div>
+          ) : (
           <div className={`lg:col-span-2 bg-card border border-border rounded-lg px-5 py-4${tasks.some(t => new Date(t.due_at).getTime() < Date.now()) ? ' glow-danger' : ''}`}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-[10px] font-semibold uppercase tracking-wider text-dim flex items-center gap-2">
@@ -1056,8 +1100,16 @@ export default function DashboardPage() {
               </ul>
             )}
           </div>
+          )}
 
           {/* Avg Response Time Card */}
+          {loadingLeads ? (
+            <div className="bg-card border border-border rounded-lg px-5 py-4 animate-pulse">
+              <div className="h-3 w-32 rounded bg-elevated mb-3" />
+              <div className="h-9 w-16 rounded bg-elevated mb-2" />
+              <div className="h-3 w-40 rounded bg-elevated" />
+            </div>
+          ) : (
           <div className="bg-card border border-border rounded-lg px-5 py-4 flex flex-col justify-center">
             <div className="flex items-center gap-2 mb-1.5">
               <svg className="w-4 h-4 text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -1068,10 +1120,108 @@ export default function DashboardPage() {
             <p className="text-3xl font-bold text-accent">{computeAvgResponseHours(leads)}</p>
             <p className="text-xs text-dim mt-1">Based on lead age at first status change</p>
           </div>
+          )}
         </div>
 
         {/* ─── Admin Header ─────────────────────────────────────────── */}
-        <AdminHeader user={user!} stats={stats} leads={leads} agents={agents} />
+        {user?.role === 'admin' && (
+          (loadingLeads || loadingAgents) ? (
+            <div className="mb-6 animate-pulse space-y-3">
+              {/* Featured stat cards skeleton */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                {[1,2,3,4].map(i => (
+                  <div key={i} className="rounded-xl p-4 border border-border bg-card">
+                    <div className="h-3 w-20 rounded bg-elevated mb-3" />
+                    <div className="h-8 w-12 rounded bg-elevated mb-2" />
+                    <div className="h-2 w-24 rounded bg-elevated" />
+                  </div>
+                ))}
+              </div>
+              {/* Recent Leads skeleton */}
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="px-4 py-3 border-b border-border">
+                  <div className="h-3 w-24 rounded bg-elevated" />
+                </div>
+                {[1,2,3,4,5].map(i => (
+                  <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-b border-border">
+                    <div className="w-6 h-6 rounded-full bg-elevated shrink-0" />
+                    <div className="flex-1 space-y-1">
+                      <div className="h-3 w-32 rounded bg-elevated" />
+                      <div className="h-2 w-20 rounded bg-elevated" />
+                    </div>
+                    <div className="h-4 w-16 rounded-full bg-elevated" />
+                  </div>
+                ))}
+              </div>
+              {/* Agent Performance skeleton */}
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+                <div className="lg:col-span-3 rounded-xl p-4 border border-border bg-card space-y-3">
+                  <div className="h-3 w-28 rounded bg-elevated" />
+                  {[1,2,3].map(i => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-full bg-elevated shrink-0" />
+                      <div className="flex-1 space-y-1">
+                        <div className="h-3 w-24 rounded bg-elevated" />
+                        <div className="h-1.5 w-full rounded-full bg-elevated" />
+                      </div>
+                      <div className="h-4 w-8 rounded bg-elevated" />
+                    </div>
+                  ))}
+                </div>
+                <div className="lg:col-span-2 rounded-xl p-4 border border-border bg-card space-y-2">
+                  <div className="h-3 w-28 rounded bg-elevated" />
+                  {[1,2,3].map(i => (
+                    <div key={i} className="h-9 w-full rounded bg-elevated" />
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <AdminHeader user={user} stats={stats} leads={leads} agents={agents} />
+          )
+        )}
+
+        {/* ─── Stat Cards (clickable filters) ─────────────────────────── */}
+        {loadingStats ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
+            {[1,2,3,4,5,6,7,8].map(i => (
+              <div key={i} className="bg-card border border-border rounded-lg px-4 py-3 animate-pulse">
+                <div className="h-3 w-12 rounded bg-elevated mb-3" />
+                <div className="h-7 w-10 rounded bg-elevated" />
+              </div>
+            ))}
+          </div>
+        ) : statCards.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
+            {statCards.map(card => {
+              const filterValue = STAT_FILTER_MAP[card.label]
+              const isActive = filterValue
+                ? filterValue === '__ALL__'
+                  ? statusFilter === ''
+                  : statusFilter === filterValue
+                : false
+              return (
+                <button
+                  key={card.label}
+                  onClick={() => handleStatClick(card.label)}
+                  className="text-left rounded-lg px-4 py-3 border transition-all duration-150 focus:outline-none"
+                  style={{
+                    background: isActive ? 'color-mix(in srgb, var(--color-accent) 12%, var(--color-card))' : 'var(--color-card)',
+                    borderColor: isActive ? 'var(--color-accent)' : 'var(--color-border)',
+                    boxShadow: isActive ? '0 0 0 1px var(--color-accent)' : undefined,
+                  }}
+                >
+                  <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--color-dim)' }}>
+                    {card.label}
+                  </div>
+                  <div className={`text-2xl font-extrabold leading-none ${card.color}`}>
+                    {card.value}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         {/* ─── Filter Bar ─────────────────────────────────────────────── */}
         <div className="flex items-center justify-between mb-2">
@@ -1200,6 +1350,23 @@ export default function DashboardPage() {
         </div>
 
         {/* ─── Lead Table ─────────────────────────────────────────────── */}
+        {loadingLeads ? (
+          <div className="bg-card border border-border rounded-lg overflow-hidden animate-pulse">
+            <div className="px-4 py-3 border-b border-border bg-elevated/50">
+              <div className="h-4 w-full rounded bg-elevated" />
+            </div>
+            {[1,2,3,4,5,6].map(i => (
+              <div key={i} className="px-4 py-3 border-b border-border flex gap-4">
+                <div className="h-4 w-8 rounded bg-elevated" />
+                <div className="h-4 w-24 rounded bg-elevated" />
+                <div className="h-4 w-20 rounded bg-elevated" />
+                <div className="h-4 flex-1 rounded bg-elevated" />
+                <div className="h-4 w-16 rounded bg-elevated" />
+                <div className="h-4 w-14 rounded bg-elevated" />
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -1433,6 +1600,7 @@ export default function DashboardPage() {
             </table>
           </div>
         </div>
+        )}
 
         {/* ─── WA Backfill Results ───────────────────────────────────── */}
         {backfillResult && (

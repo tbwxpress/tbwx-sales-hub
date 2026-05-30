@@ -9,7 +9,7 @@ import { getOptedOutPhones } from '@/lib/db'
 import { STATUS_MIGRATION } from '@/config/client'
 
 interface FeedItem {
-  kind: 'hot_stale' | 'overdue_followup' | 'telecaller_handoff' | 'unread_reply' | 'new_assignment'
+  kind: 'hot_stale' | 'overdue_followup' | 'upcoming_followup' | 'telecaller_handoff' | 'unread_reply' | 'new_assignment'
   priority: number // lower = more urgent
   title: string
   subtitle: string
@@ -55,6 +55,8 @@ export async function GET() {
 
     const now = Date.now()
     const todayStr = new Date().toISOString().split('T')[0]
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
+    const sevenDaysLater = new Date(now + sevenDaysMs)
     const items: FeedItem[] = []
 
     // For each lead in scope, look at recent messages to know "last contacted"
@@ -73,6 +75,27 @@ export async function GET() {
             kind: 'overdue_followup',
             priority: 20 + Math.min(10, daysOver), // older = lower priority bump
             title: `${lead.full_name || lead.phone} — follow-up overdue ${daysOver}d`,
+            subtitle: `Status: ${lead.lead_status} · Priority: ${lead.lead_priority || '—'}`,
+            ref_phone: lead.phone,
+            ref_lead_row: lead.row_number,
+            status: lead.lead_status,
+          })
+        }
+      }
+
+      // 1b. Upcoming follow-up (today or within 7 days, not overdue)
+      if (lead.next_followup) {
+        const followupDate = new Date(lead.next_followup)
+        if (
+          !Number.isNaN(followupDate.getTime()) &&
+          followupDate >= new Date(todayStr) &&
+          followupDate <= sevenDaysLater
+        ) {
+          const daysUntil = Math.round((followupDate.getTime() - now) / (24 * 3600 * 1000))
+          items.push({
+            kind: 'upcoming_followup',
+            priority: 40 + daysUntil,
+            title: `${lead.full_name || lead.phone} — follow-up ${daysUntil <= 0 ? 'today' : `in ${daysUntil}d`}`,
             subtitle: `Status: ${lead.lead_status} · Priority: ${lead.lead_priority || '—'}`,
             ref_phone: lead.phone,
             ref_lead_row: lead.row_number,

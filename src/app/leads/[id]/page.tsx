@@ -259,6 +259,12 @@ export default function LeadDetailPage() {
   const [showLogCallModal, setShowLogCallModal] = useState(false)
   const [callHistoryKey, setCallHistoryKey] = useState(0)
 
+  // Collapsible section state (false = collapsed)
+  const [activityOpen, setActivityOpen] = useState(false)
+  const [paymentOpen, setPaymentOpen] = useState(false)
+  const [voiceOpen, setVoiceOpen] = useState(false)
+  const [agreementsOpen, setAgreementsOpen] = useState(false)
+
   // Delete
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showAgreementForm, setShowAgreementForm] = useState(false)
@@ -579,13 +585,21 @@ export default function LeadDetailPage() {
     scrollToBottom()
   }, [messages, scrollToBottom])
 
-  // Auto-refresh messages every 15 seconds
+  // Single 15-second polling interval for all live data.
+  // Use a ref for the callbacks so the interval never needs to reset
+  // when fetch functions are recreated by React.
+  const fetchLeadRef = useRef(fetchLead)
+  const fetchMessagesRef = useRef(fetchMessages)
+  useEffect(() => { fetchLeadRef.current = fetchLead }, [fetchLead])
+  useEffect(() => { fetchMessagesRef.current = fetchMessages }, [fetchMessages])
+
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchMessages()
+      fetchLeadRef.current()
+      fetchMessagesRef.current()
     }, 15000)
     return () => clearInterval(interval)
-  }, [fetchMessages])
+  }, []) // empty deps — interval is stable, refs keep callbacks current
 
   // Close dropdowns on click outside
   useEffect(() => {
@@ -782,8 +796,80 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
+      {/* Sticky context header — stays visible while agents scroll the sidebar */}
+      {(() => {
+        const canEditStatus =
+          sessionUser?.role === 'admin' ||
+          (lead.assigned_to && sessionUser?.name === lead.assigned_to)
+        const sc = STATUS_COLORS[lead.lead_status]
+        const pc = PRIORITY_COLORS[lead.lead_priority]
+        return (
+          <div className="sticky top-0 z-30 bg-card border-b border-border px-4 md:px-6 py-2 flex items-center gap-3 flex-wrap">
+            {/* Name + phone */}
+            <div className="min-w-0 mr-1">
+              <p className="text-sm font-bold text-text leading-tight truncate max-w-[180px]">{lead.full_name}</p>
+              <p className="text-[11px] text-dim font-mono">{lead.phone}</p>
+            </div>
+
+            <div className="h-4 w-px bg-border hidden sm:block" />
+
+            {/* Status */}
+            {canEditStatus ? (
+              <select
+                value={lead.lead_status}
+                onChange={e => updateField('lead_status', e.target.value)}
+                disabled={savingField === 'lead_status'}
+                className="text-xs rounded border px-2 py-1 bg-elevated focus:outline-none focus:border-accent/50 disabled:opacity-50"
+                style={sc ? { color: sc.text, borderColor: sc.border, background: sc.bg } : {}}
+              >
+                {STATUSES.map(s => (
+                  <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
+                ))}
+              </select>
+            ) : (
+              <span
+                className="text-xs px-2 py-1 rounded border font-medium"
+                style={sc ? { background: sc.bg, color: sc.text, borderColor: sc.border } : { background: 'var(--color-elevated)', color: 'var(--color-muted)', borderColor: 'var(--color-border)' }}
+              >
+                {STATUS_LABELS[lead.lead_status] || lead.lead_status}
+              </span>
+            )}
+
+            {/* Priority */}
+            <select
+              value={lead.lead_priority}
+              onChange={e => updateField('lead_priority', e.target.value)}
+              disabled={savingField === 'lead_priority'}
+              className="text-xs rounded border px-2 py-1 bg-elevated focus:outline-none focus:border-accent/50 disabled:opacity-50"
+              style={pc ? { color: pc.text, borderColor: pc.border, background: pc.bg } : {}}
+            >
+              {PRIORITIES.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+
+            {/* Assigned-to */}
+            {lead.assigned_to && (
+              <span className="text-[11px] text-dim whitespace-nowrap">
+                → <span className="text-muted font-medium">{lead.assigned_to}</span>
+              </span>
+            )}
+
+            {/* Lead score */}
+            {leadScore !== null && (
+              <span
+                className="text-xs font-bold px-2 py-1 rounded-full ml-auto"
+                style={{ background: scoreBg(leadScore), color: scoreColor(leadScore), border: `1px solid ${scoreBorder(leadScore, 30)}` }}
+              >
+                {leadScore}
+              </span>
+            )}
+          </div>
+        )
+      })()}
+
       {/* Main layout */}
-      <div className="flex flex-col md:flex-row md:h-[calc(100vh-57px)]">
+      <div className="flex flex-col md:flex-row md:h-[calc(100vh-114px)]">
 
         {/* LEFT SIDEBAR */}
         <div className="w-full md:w-1/3 md:min-w-[340px] md:max-w-[440px] border-b md:border-b-0 md:border-r border-border md:overflow-y-auto bg-bg">
@@ -984,69 +1070,81 @@ export default function LeadDetailPage() {
               )}
             </div>
 
-            {/* Documents Card */}
-            <div className="bg-card rounded-lg border border-border p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-text flex items-center gap-2">
+            {/* Documents Card — collapsible */}
+            <div className="bg-card rounded-lg border border-border">
+              <button
+                onClick={() => setAgreementsOpen(o => !o)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left"
+              >
+                <span className="flex items-center gap-2 text-xs font-semibold text-dim uppercase tracking-wide">
                   <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                   </svg>
                   Agreements
-                </h3>
-                <button
-                  onClick={() => setShowAgreementForm(true)}
-                  className="text-[10px] bg-accent/10 hover:bg-accent/20 text-accent px-2.5 py-1 rounded transition-colors font-medium"
-                >
-                  + Generate
-                </button>
-              </div>
-              {agreements.length > 0 ? (
-                <div className="space-y-2">
-                  {agreements.map(a => (
-                    <div key={a.id} className="flex items-center justify-between text-xs bg-elevated/50 rounded px-3 py-2 border border-border/50">
-                      <div>
-                        <span className="text-text font-medium">{a.doc_type === 'FBA' ? 'FBA' : 'Franchise Agreement'}</span>
-                        <span className={`ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                          a.status === 'GENERATED' ? 'bg-success/15 text-success' :
-                          a.status === 'REVIEWED' ? 'bg-accent/15 text-accent' :
-                          'bg-elevated text-dim'
-                        }`}>{a.status}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {/* Preview — works for any status */}
-                        <button
-                          onClick={() => window.open(`/api/agreements/${a.id}/generate`, '_blank')}
-                          className="text-accent hover:text-accent-hover text-[10px] font-medium"
-                        >
-                          Preview
-                        </button>
-                        {/* Generate PDF — admin only, for drafts */}
-                        {a.status === 'DRAFT' && sessionUser?.role === 'admin' && (
-                          <button
-                            onClick={async () => {
-                              const res = await fetch(`/api/agreements/${a.id}/generate`, { method: 'POST' })
-                              if (res.ok) {
-                                const html = await res.text()
-                                const win = window.open('', '_blank')
-                                if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500) }
-                                // Refresh agreements list
-                                fetch(`/api/agreements?phone=${encodeURIComponent(lead!.phone)}`)
-                                  .then(r => r.json())
-                                  .then(d => { if (d.success) setAgreements(d.data || []) })
-                                  .catch(() => {})
-                              }
-                            }}
-                            className="text-success hover:text-green-300 text-[10px] font-medium"
-                          >
-                            Generate PDF
-                          </button>
-                        )}
-                      </div>
+                  {agreements.length > 0 && (
+                    <span className="ml-1 text-[10px] text-muted">({agreements.length})</span>
+                  )}
+                </span>
+                <svg className={`w-4 h-4 text-dim transition-transform ${agreementsOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              {agreementsOpen && (
+                <div className="px-4 pb-4 space-y-3 border-t border-border/60 pt-3">
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setShowAgreementForm(true)}
+                      className="text-[10px] bg-accent/10 hover:bg-accent/20 text-accent px-2.5 py-1 rounded transition-colors font-medium"
+                    >
+                      + Generate
+                    </button>
+                  </div>
+                  {agreements.length > 0 ? (
+                    <div className="space-y-2">
+                      {agreements.map(a => (
+                        <div key={a.id} className="flex items-center justify-between text-xs bg-elevated/50 rounded px-3 py-2 border border-border/50">
+                          <div>
+                            <span className="text-text font-medium">{a.doc_type === 'FBA' ? 'FBA' : 'Franchise Agreement'}</span>
+                            <span className={`ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                              a.status === 'GENERATED' ? 'bg-success/15 text-success' :
+                              a.status === 'REVIEWED' ? 'bg-accent/15 text-accent' :
+                              'bg-elevated text-dim'
+                            }`}>{a.status}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => window.open(`/api/agreements/${a.id}/generate`, '_blank')}
+                              className="text-accent hover:text-accent-hover text-[10px] font-medium"
+                            >
+                              Preview
+                            </button>
+                            {a.status === 'DRAFT' && sessionUser?.role === 'admin' && (
+                              <button
+                                onClick={async () => {
+                                  const res = await fetch(`/api/agreements/${a.id}/generate`, { method: 'POST' })
+                                  if (res.ok) {
+                                    const html = await res.text()
+                                    const win = window.open('', '_blank')
+                                    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500) }
+                                    fetch(`/api/agreements?phone=${encodeURIComponent(lead!.phone)}`)
+                                      .then(r => r.json())
+                                      .then(d => { if (d.success) setAgreements(d.data || []) })
+                                      .catch(() => {})
+                                  }
+                                }}
+                                className="text-success hover:text-green-300 text-[10px] font-medium"
+                              >
+                                Generate PDF
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <p className="text-[10px] text-dim">No agreements generated yet</p>
+                  )}
                 </div>
-              ) : (
-                <p className="text-[10px] text-dim">No agreements generated yet</p>
               )}
             </div>
 
@@ -1068,12 +1166,32 @@ export default function LeadDetailPage() {
               />
             )}
 
-            {/* AI Voice Agent Card */}
-            <VoiceAgentCard
-              phone={lead.phone}
-              leadName={lead.full_name}
-              leadId={String(lead.row_number || '')}
-            />
+            {/* AI Voice Agent Card — collapsible */}
+            <div className="bg-card rounded-lg border border-border">
+              <button
+                onClick={() => setVoiceOpen(o => !o)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left"
+              >
+                <span className="text-xs font-semibold text-dim uppercase tracking-wide flex items-center gap-2">
+                  <svg className="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                  </svg>
+                  AI Voice Agent
+                </span>
+                <svg className={`w-4 h-4 text-dim transition-transform ${voiceOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              {voiceOpen && (
+                <div className="border-t border-border/60">
+                  <VoiceAgentCard
+                    phone={lead.phone}
+                    leadName={lead.full_name}
+                    leadId={String(lead.row_number || '')}
+                  />
+                </div>
+              )}
+            </div>
 
             {/* Log Call + Call History */}
             <div className="bg-card rounded-lg border border-border p-4">
@@ -1341,11 +1459,51 @@ export default function LeadDetailPage() {
               <LeadNotes phone={lead.phone} />
             </div>
 
-            {/* Payment Followups */}
-            <LeadPaymentFollowupsCard lead_row={lead.row_number} />
+            {/* Payment Followups — collapsible */}
+            <div className="bg-card rounded-lg border border-border">
+              <button
+                onClick={() => setPaymentOpen(o => !o)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left"
+              >
+                <span className="text-xs font-semibold text-dim uppercase tracking-wide flex items-center gap-2">
+                  <svg className="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                  </svg>
+                  Payment Followups
+                </span>
+                <svg className={`w-4 h-4 text-dim transition-transform ${paymentOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              {paymentOpen && (
+                <div className="border-t border-border/60 px-4 py-3">
+                  <LeadPaymentFollowupsCard lead_row={lead.row_number} />
+                </div>
+              )}
+            </div>
 
-            {/* Activity Log */}
-            <ActivityLog lead_row={lead.row_number} phone={lead.phone} />
+            {/* Activity Log — collapsible */}
+            <div className="bg-card rounded-lg border border-border">
+              <button
+                onClick={() => setActivityOpen(o => !o)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left"
+              >
+                <span className="text-xs font-semibold text-dim uppercase tracking-wide flex items-center gap-2">
+                  <svg className="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
+                  </svg>
+                  Activity Log
+                </span>
+                <svg className={`w-4 h-4 text-dim transition-transform ${activityOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              {activityOpen && (
+                <div className="border-t border-border/60 px-4 py-3">
+                  <ActivityLog lead_row={lead.row_number} phone={lead.phone} />
+                </div>
+              )}
+            </div>
 
             {/* Action Buttons */}
             {!isTerminal && (

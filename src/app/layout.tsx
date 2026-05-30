@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { BRAND } from '@/config/client'
 import CommandPalette from '@/components/CommandPalette'
+import KeyboardShortcutsHelp from '@/components/KeyboardShortcutsHelp'
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 import Script from 'next/script';
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen antialiased transition-colors duration-200">
         <CommandPalette />
+        <KeyboardShortcutsHelp />
         {children}
         <Script id="sw-register" strategy="afterInteractive">{`
           if ('serviceWorker' in navigator) {

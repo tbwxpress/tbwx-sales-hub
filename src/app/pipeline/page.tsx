@@ -37,11 +37,15 @@ const PRIORITY_BORDER: Record<string, string> = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function maskPhone(phone: string): string {
+function formatPhone(phone: string): string {
   if (!phone) return '-'
   const digits = phone.replace(/\D/g, '')
-  if (digits.length < 4) return phone
-  return '****' + digits.slice(-4)
+  // Indian mobile: last 10 digits formatted as XXXXX XXXXX
+  if (digits.length >= 10) {
+    const d10 = digits.slice(-10)
+    return d10.slice(0, 5) + ' ' + d10.slice(5)
+  }
+  return phone
 }
 
 // ─── Lead Card ───────────────────────────────────────────────────────────────
@@ -54,7 +58,18 @@ function LeadCard({
   onMove: (rowNum: number, newStatus: string) => void
 }) {
   const [showMove, setShowMove] = useState(false)
+  const [copied, setCopied] = useState(false)
   const borderColor = PRIORITY_BORDER[lead.lead_priority] || '#444'
+  const isHot = lead.lead_priority === 'HOT'
+
+  function handleCopy(e: React.MouseEvent) {
+    e.stopPropagation()
+    const digits = lead.phone.replace(/\D/g, '')
+    navigator.clipboard.writeText(digits).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {/* clipboard unavailable */})
+  }
 
   return (
     <div
@@ -76,19 +91,42 @@ function LeadCard({
       }}
       onClick={() => setShowMove(!showMove)}
     >
+      {/* HOT badge — top-left */}
+      {isHot && (
+        <span className="absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 leading-none select-none">
+          🔥 HOT
+        </span>
+      )}
+
       {/* Name */}
       <Link
         href={`/leads/${lead.row_number}`}
-        className="text-sm font-medium text-accent hover:text-accent-hover transition-colors block truncate"
+        className={`text-sm font-medium text-accent hover:text-accent-hover transition-colors block truncate ${isHot ? 'pr-12' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
         {lead.full_name || 'Unknown'}
       </Link>
 
-      {/* City + Phone */}
-      <div className="flex items-center justify-between mt-2">
+      {/* City + Phone + Copy */}
+      <div className="flex items-center justify-between mt-2 gap-1">
         <span className="text-xs text-muted truncate">{lead.city || '-'}</span>
-        <span className="text-[10px] text-dim font-mono">{maskPhone(lead.phone)}</span>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <span className="hidden md:inline text-[10px] text-dim font-mono">{formatPhone(lead.phone)}</span>
+          {copied ? (
+            <span className="text-[9px] text-green-400 font-medium whitespace-nowrap">Copied!</span>
+          ) : (
+            <button
+              onClick={handleCopy}
+              title="Copy phone"
+              className="text-dim hover:text-accent transition-colors p-0.5 rounded"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Assigned + Time */}
