@@ -776,7 +776,7 @@ export default function LeadDetailPage() {
           {lead.created_time && (
             <>
               <span className="text-border-light hidden sm:inline">|</span>
-              <span className="hidden sm:inline">Created {new Date(lead.created_time).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              <span className="hidden sm:inline">Created {new Date(lead.created_time).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</span>
             </>
           )}
         </div>

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
+import { istToday } from '@/lib/format'
 
 interface Request {
   id: number
@@ -51,9 +52,9 @@ export default function AdminUpdateRequestsPage() {
     else alert(data.error || 'Failed')
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = istToday()
   function daysFrom(d: string): string {
-    const diff = Math.floor((new Date(today).getTime() - new Date(d).getTime()) / 86400000)
+    const diff = Math.round((new Date(today).getTime() - new Date(d).getTime()) / 86400000)
     if (diff === 0) return 'today'
     if (diff > 0) return `${diff}d ago`
     return `in ${-diff}d`

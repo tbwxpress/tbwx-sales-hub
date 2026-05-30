@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { IST, istToday, istDate } from '@/lib/format'
 
 interface PendingRequest {
   id: number
@@ -13,12 +14,13 @@ interface PendingRequest {
 }
 
 function dueLabel(d: string): string {
-  const today = new Date().toISOString().slice(0, 10)
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1)
-  const tomorrowStr = tomorrow.toISOString().slice(0, 10)
+  const today = istToday()
+  const tomorrowDate = new Date()
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+  const tomorrow = istDate(tomorrowDate)
   if (d === today) return 'TODAY'
-  if (d === tomorrowStr) return 'Tomorrow'
-  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  if (d === tomorrow) return 'Tomorrow'
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: IST })
 }
 
 export default function UpdateRequestWidget() {

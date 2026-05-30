@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     const totalConverted = leads.filter(l => l.lead_status === 'CONVERTED').length
     const overallRate = leads.length > 0 ? Math.round((totalConverted / leads.length) * 100) : 0
 
-    const dateStr = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })
+    const dateStr = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
 
     // Send email
     const { google } = await import('googleapis')

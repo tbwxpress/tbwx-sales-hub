@@ -109,7 +109,7 @@ export default function OpportunityCheckPrompt({ phone, leadStatus, leadName, on
           {recentAnswer.note.replace(NOTE_MARKER, '').trim()}
         </p>
         <p className="text-[10px] mt-1.5" style={{ color: 'var(--color-dim)' }}>
-          by {recentAnswer.created_by || 'unknown'} · {new Date(recentAnswer.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+          by {recentAnswer.created_by || 'unknown'} · {new Date(recentAnswer.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}
         </p>
       </div>
     )

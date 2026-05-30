@@ -60,10 +60,10 @@ function formatTime(ts: string): string {
   const yesterday = new Date(now)
   yesterday.setDate(yesterday.getDate() - 1)
   const isYesterday = d.toDateString() === yesterday.toDateString()
-  const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+  const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
   if (isToday) return `Today ${time}`
   if (isYesterday) return `Yesterday ${time}`
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' ' + time
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }) + ' ' + time
 }
 
 export default function VoiceAgentCard({ phone, leadName, leadId }: VoiceAgentCardProps) {

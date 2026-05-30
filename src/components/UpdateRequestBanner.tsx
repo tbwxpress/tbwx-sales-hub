@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { IST, istToday } from '@/lib/format'
 
 interface PendingRequest {
   id: number
@@ -24,9 +25,9 @@ export default function UpdateRequestBanner({ leadRow }: Props) {
 
   if (!request) return null
 
-  const isOverdue = request.due_date < new Date().toISOString().slice(0, 10)
+  const isOverdue = request.due_date < istToday()
   const dueLabel = new Date(request.due_date).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'long', year: 'numeric',
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: IST,
   })
 
   return (

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { listPendingForAgent } from '@/lib/update-requests'
 import { getLeads } from '@/lib/sheets'
+import { istToday } from '@/lib/format'
 
 export async function GET() {
   try {
@@ -17,13 +18,14 @@ export async function GET() {
     // Decorate with lead name + city so the widget renders without an extra fetch
     const leads = await getLeads()
     const leadByRow = new Map(leads.map(l => [l.row_number, l]))
+    const today = istToday()
     const decorated = rows.map(r => {
       const lead = leadByRow.get(r.lead_row)
       return {
         ...r,
         lead_name: lead?.full_name || `Lead #${r.lead_row}`,
         lead_city: lead?.city || '',
-        overdue: r.due_date < new Date().toISOString().slice(0, 10),
+        overdue: r.due_date < today,
       }
     })
     return NextResponse.json({ success: true, data: decorated })

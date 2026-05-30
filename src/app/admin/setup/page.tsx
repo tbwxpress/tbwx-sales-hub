@@ -158,7 +158,7 @@ export default function SetupPage() {
             </p>
             {lastChecked && (
               <p className="text-[11px] text-dim mt-1">
-                Last checked: {lastChecked.toLocaleTimeString()}
+                Last checked: {lastChecked.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
               </p>
             )}
           </div>

@@ -1,4 +1,5 @@
 import { ensureInit, serializeRows, getSetting, setSetting } from './db'
+import { istToday } from './format'
 
 export type UpdateRequestStatus = 'PENDING' | 'ANSWERED' | 'CANCELLED'
 
@@ -83,7 +84,7 @@ export async function listRequestsForAdmin(opts: {
   overdue?: boolean
 } = {}): Promise<UpdateRequest[]> {
   const db = await ensureInit()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = istToday()
 
   if (opts.overdue) {
     const result = await db.execute({

@@ -649,15 +649,15 @@ export default function InboxPage() {
     const now = new Date()
     const diff = now.getTime() - d.getTime()
     if (diff < 86400000 && d.getDate() === now.getDate()) {
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
     }
     if (diff < 172800000) return 'Yesterday'
-    return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+    return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' })
   }
 
   function formatMsgTime(ts: string) {
     if (!ts) return ''
-    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    return new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
   }
 
   function getDateLabel(ts: string) {
@@ -666,7 +666,7 @@ export default function InboxPage() {
     const diff = now.getTime() - d.getTime()
     if (diff < 86400000 && d.getDate() === now.getDate()) return 'Today'
     if (diff < 172800000) return 'Yesterday'
-    return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+    return d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' })
   }
 
   return (
@@ -1181,7 +1181,7 @@ export default function InboxPage() {
                         <span className="text-dim block text-[10px] uppercase tracking-wider">Score</span>
                         <span className="text-text font-medium">{leadInfo.lead_score ?? '—'}</span>
                         {leadInfo.next_followup && (
-                          <span className="text-dim block text-[9px] mt-0.5">Follow-up: {new Date(leadInfo.next_followup).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                          <span className="text-dim block text-[9px] mt-0.5">Follow-up: {new Date(leadInfo.next_followup).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}</span>
                         )}
                       </div>
                     </div>
@@ -1740,7 +1740,7 @@ export default function InboxPage() {
                     <span className="text-dim block text-[10px] uppercase tracking-wider">Score</span>
                     <span className="text-text font-medium">{leadInfo.lead_score ?? '—'}</span>
                     {leadInfo.next_followup && (
-                      <span className="text-dim block text-[9px] mt-0.5">Follow-up: {new Date(leadInfo.next_followup).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                      <span className="text-dim block text-[9px] mt-0.5">Follow-up: {new Date(leadInfo.next_followup).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}</span>
                     )}
                   </div>
                 </div>

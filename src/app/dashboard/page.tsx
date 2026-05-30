@@ -155,7 +155,7 @@ function AdminHeader({
 }) {
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-  const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })
+  const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata' })
 
   const featuredStats = [
     {
@@ -987,7 +987,7 @@ export default function DashboardPage() {
                     <span className="shrink-0" style={{ color: 'var(--color-muted)' }}>{f.currency}{f.amount.toLocaleString('en-IN')}</span>
                     {f.due_date && (
                       <span className="text-xs shrink-0" style={{ color: isOverdue ? 'var(--color-danger)' : 'var(--color-dim)' }}>
-                        {isOverdue ? '! ' : ''}{new Date(f.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                        {isOverdue ? '! ' : ''}{new Date(f.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}
                       </span>
                     )}
                   </li>
@@ -1029,7 +1029,7 @@ export default function DashboardPage() {
                 {tasks.slice(0, 5).map(task => {
                   const dueDate = new Date(task.due_at)
                   const isOverdue = dueDate.getTime() < Date.now()
-                  const timeStr = dueDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                  const timeStr = dueDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
                   return (
                     <li key={task.id} className="flex items-center gap-3 group">
                       <button
