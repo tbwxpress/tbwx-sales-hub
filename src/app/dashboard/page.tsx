@@ -11,6 +11,8 @@ import UpdateRequestWidget from '@/components/UpdateRequestWidget'
 import Toast from '@/components/Toast'
 import { timeAgo, followupLabel } from '@/lib/format'
 import { scoreColor, scoreBg, scoreBorder } from '@/lib/score-colors'
+import Badge, { statusTone, priorityTone } from '@/components/ui/Badge'
+import { Clock, CheckCircle2, AlertTriangle, ChevronDown } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -203,10 +205,10 @@ function AdminHeader({
       {/* Greeting */}
       <div className="flex items-baseline justify-between mb-5">
         <div>
-          <h1 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>
+          <h1 className="text-heading" style={{ color: 'var(--color-text)' }}>
             {greeting}, {user.name} 👋
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted)' }}>{today}</p>
+          <p className="text-caption mt-0.5" style={{ color: 'var(--color-muted)' }}>{today}</p>
         </div>
       </div>
 
@@ -218,13 +220,13 @@ function AdminHeader({
             className="rounded-xl p-4 border"
             style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}
           >
-            <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-muted)' }}>
+            <div className="text-eyebrow mb-2" style={{ color: 'var(--color-muted)' }}>
               {stat.label}
             </div>
-            <div className="text-3xl font-extrabold leading-none mb-1.5" style={{ color: stat.color }}>
+            <div className="text-display leading-none mb-1.5" style={{ color: stat.color }}>
               {stat.value}
             </div>
-            <div className="text-[10px]" style={{ color: 'var(--color-dim)' }}>{stat.sub}</div>
+            <div className="text-caption" style={{ color: 'var(--color-dim)' }}>{stat.sub}</div>
           </div>
         ))}
       </div>
@@ -232,25 +234,17 @@ function AdminHeader({
       {/* Recent Leads mini-table */}
       {(() => {
         const recent = [...leads].sort((a, b) => new Date(b.created_time).getTime() - new Date(a.created_time).getTime()).slice(0, 8)
-        const statusColor: Record<string, string> = {
-          NEW: 'var(--color-accent)', DECK_SENT: 'var(--color-muted)', REPLIED: 'var(--color-success)',
-          NO_RESPONSE: '#facc15', CALL_DONE_INTERESTED: '#2dd4bf', HOT: '#fb923c',
-          FINAL_NEGOTIATION: '#f472b6', CONVERTED: 'var(--color-status-converted)', DELAYED: '#fbbf24', LOST: 'var(--color-danger)',
-        }
-        const priorityColor: Record<string, string> = { HOT: 'var(--color-hot)', WARM: '#fbbf24', COLD: '#60a5fa' }
         return (
           <div className="rounded-xl border mb-3 overflow-hidden" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
             <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
-              <span className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-muted)' }}>Recent Leads</span>
-              <Link href="/leads" className="text-[10px] font-medium transition-colors" style={{ color: 'var(--color-accent)' }}>View all →</Link>
+              <span className="text-eyebrow" style={{ color: 'var(--color-muted)' }}>Recent Leads</span>
+              <Link href="/leads" className="text-caption font-medium" style={{ color: 'var(--color-accent)' }}>View all →</Link>
             </div>
             <div className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
               {recent.map((lead, i) => {
-                const sc = statusColor[lead.lead_status] || 'var(--color-muted)'
-                const pc = priorityColor[lead.lead_priority] || 'var(--color-dim)'
                 const daysAgo = Math.floor((Date.now() - new Date(lead.created_time).getTime()) / (1000*60*60*24))
                 return (
-                  <Link key={lead.row_number} href={`/leads/${lead.row_number}`} className="flex items-center gap-3 px-4 py-2.5 transition-colors duration-150" style={{ background: i % 2 === 1 ? 'color-mix(in srgb, var(--color-elevated) 30%, transparent)' : 'transparent' }}>
+                  <Link key={lead.row_number} href={`/leads/${lead.row_number}`} className="flex items-center gap-3 px-4 py-2.5" style={{ background: i % 2 === 1 ? 'color-mix(in srgb, var(--color-elevated) 30%, transparent)' : 'transparent' }}>
                     <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold" style={{ background: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
                       {lead.full_name.charAt(0).toUpperCase()}
                     </div>
@@ -258,8 +252,8 @@ function AdminHeader({
                       <span className="text-xs font-medium truncate block" style={{ color: 'var(--color-text)' }}>{lead.full_name}</span>
                       <span className="text-[10px]" style={{ color: 'var(--color-dim)' }}>{lead.city}</span>
                     </div>
-                    <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ background: `color-mix(in srgb, ${sc} 15%, transparent)`, color: sc }}>{lead.lead_status.replace('_', ' ')}</span>
-                    <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full shrink-0 hidden sm:block" style={{ background: `color-mix(in srgb, ${pc} 15%, transparent)`, color: pc }}>{lead.lead_priority}</span>
+                    <Badge tone={statusTone(lead.lead_status)}>{lead.lead_status.replace('_', ' ')}</Badge>
+                    <span className="hidden sm:inline-flex"><Badge tone={priorityTone(lead.lead_priority)}>{lead.lead_priority}</Badge></span>
                     <span className="text-[10px] shrink-0 hidden md:block" style={{ color: 'var(--color-dim)' }}>{lead.assigned_to || '—'}</span>
                     <span className="text-[10px] shrink-0" style={{ color: 'var(--color-dim)' }}>{daysAgo === 0 ? 'today' : `${daysAgo}d ago`}</span>
                   </Link>
@@ -278,7 +272,7 @@ function AdminHeader({
           className="lg:col-span-3 rounded-xl p-4 border"
           style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}
         >
-          <div className="text-[9px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-muted)' }}>
+          <div className="text-eyebrow mb-3" style={{ color: 'var(--color-muted)' }}>
             Agent Performance
           </div>
           {agentPerf.length === 0 ? (
@@ -328,8 +322,8 @@ function AdminHeader({
             borderLeft: '3px solid var(--color-warning)',
           }}
         >
-          <div className="text-[9px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-warning)' }}>
-            ⚠ Stale Follow-ups
+          <div className="text-eyebrow mb-3 flex items-center gap-1" style={{ color: 'var(--color-warning)' }}>
+            <AlertTriangle className="w-3 h-3" /> Stale Follow-ups
           </div>
           {staleLeads.length === 0 ? (
             <p className="text-xs" style={{ color: 'var(--color-dim)' }}>All follow-ups are on track</p>
@@ -1046,14 +1040,12 @@ export default function DashboardPage() {
           ) : (
           <div className={`lg:col-span-2 bg-card border border-border rounded-lg px-5 py-4${tasks.some(t => new Date(t.due_at).getTime() < Date.now()) ? ' glow-danger' : ''}`}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[10px] font-semibold uppercase tracking-wider text-dim flex items-center gap-2">
-                <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+              <h3 className="text-eyebrow text-dim flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-accent" strokeWidth={1.5} />
                 Today&apos;s Tasks
               </h3>
               {tasks.length > 5 && (
-                <Link href="/tasks" className="text-xs text-accent hover:text-accent-hover transition-colors">
+                <Link href="/tasks" className="text-xs text-accent hover:text-accent-hover">
                   View all ({tasks.length})
                 </Link>
               )}
@@ -1112,13 +1104,11 @@ export default function DashboardPage() {
           ) : (
           <div className="bg-card border border-border rounded-lg px-5 py-4 flex flex-col justify-center">
             <div className="flex items-center gap-2 mb-1.5">
-              <svg className="w-4 h-4 text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-[10px] text-dim uppercase tracking-wider font-medium">Avg Response Time</p>
+              <Clock className="w-4 h-4 text-dim" strokeWidth={1.5} />
+              <p className="text-eyebrow text-dim">Avg Response Time</p>
             </div>
-            <p className="text-3xl font-bold text-accent">{computeAvgResponseHours(leads)}</p>
-            <p className="text-xs text-dim mt-1">Based on lead age at first status change</p>
+            <p className="text-display text-accent">{computeAvgResponseHours(leads)}</p>
+            <p className="text-caption text-dim mt-1">Based on lead age at first status change</p>
           </div>
           )}
         </div>
@@ -1204,17 +1194,16 @@ export default function DashboardPage() {
                 <button
                   key={card.label}
                   onClick={() => handleStatClick(card.label)}
-                  className="text-left rounded-lg px-4 py-3 border transition-all duration-150 focus:outline-none"
+                  className="text-left rounded-lg px-4 py-3 border focus:outline-none"
                   style={{
-                    background: isActive ? 'color-mix(in srgb, var(--color-accent) 12%, var(--color-card))' : 'var(--color-card)',
+                    background: isActive ? 'color-mix(in srgb, var(--color-accent) 10%, var(--color-card))' : 'var(--color-card)',
                     borderColor: isActive ? 'var(--color-accent)' : 'var(--color-border)',
-                    boxShadow: isActive ? '0 0 0 1px var(--color-accent)' : undefined,
                   }}
                 >
-                  <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--color-dim)' }}>
+                  <div className="text-eyebrow mb-1" style={{ color: 'var(--color-dim)' }}>
                     {card.label}
                   </div>
-                  <div className={`text-2xl font-extrabold leading-none ${card.color}`}>
+                  <div className={`text-display leading-none ${card.color}`}>
                     {card.value}
                   </div>
                 </button>
@@ -1225,7 +1214,7 @@ export default function DashboardPage() {
 
         {/* ─── Filter Bar ─────────────────────────────────────────────── */}
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-dim">Lead Pipeline</p>
+          <p className="text-eyebrow text-dim">Lead Pipeline</p>
           <div className="flex items-center gap-2">
             {user?.role === 'admin' && (
               <button
@@ -1645,12 +1634,7 @@ export default function DashboardPage() {
                           <td className="px-3 py-1.5 text-dim">{m.phone}</td>
                           <td className="px-3 py-1.5 text-dim">{m.city || '-'}</td>
                           <td className="px-3 py-1.5">
-                            <span className="px-1.5 py-0.5 rounded text-[10px]" style={{
-                              background: STATUS_COLORS[m.lead_status]?.bg || '#666',
-                              color: STATUS_COLORS[m.lead_status]?.text || '#fff',
-                            }}>
-                              {m.lead_status}
-                            </span>
+                            <Badge tone={statusTone(m.lead_status)}>{m.lead_status}</Badge>
                           </td>
                           <td className="px-3 py-1.5 text-dim">{timeAgo(m.created_time)}</td>
                         </tr>
@@ -1679,15 +1663,10 @@ export default function DashboardPage() {
                 </span>
                 <span className="text-xs text-dim">No activity for 14+ days</span>
               </div>
-              <svg
+              <ChevronDown
                 className={`w-4 h-4 text-dim transition-transform ${staleOpen ? 'rotate-180' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
                 strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
+              />
             </button>
 
             {staleOpen && (
@@ -1713,16 +1692,7 @@ export default function DashboardPage() {
                           <td className="px-4 py-2 text-muted font-mono text-xs">{lead.phone}</td>
                           <td className="px-4 py-2 text-muted text-xs">{lead.city}</td>
                           <td className="px-4 py-2">
-                            <span
-                              className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border"
-                              style={{
-                                backgroundColor: (STATUS_COLORS[lead.lead_status] || {}).bg || '#2e221420',
-                                color: (STATUS_COLORS[lead.lead_status] || {}).text || '#a89274',
-                                borderColor: (STATUS_COLORS[lead.lead_status] || {}).border || '#3d2e1a',
-                              }}
-                            >
-                              {lead.lead_status}
-                            </span>
+                            <Badge tone={statusTone(lead.lead_status)}>{lead.lead_status}</Badge>
                           </td>
                           <td className="px-4 py-2 text-warning text-xs font-semibold">{days}d</td>
                           <td className="px-4 py-2 text-muted text-xs">{lead.assigned_to || '-'}</td>

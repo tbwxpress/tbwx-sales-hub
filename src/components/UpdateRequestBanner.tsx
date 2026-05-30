@@ -1,5 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { CircleAlert } from 'lucide-react'
+import Badge from './ui/Badge'
 import { IST, istToday } from '@/lib/format'
 
 interface PendingRequest {
@@ -38,13 +40,17 @@ export default function UpdateRequestBanner({ leadRow }: Props) {
           : 'bg-amber-500/10 border-amber-500/40 text-amber-300'
       }`}
     >
-      <div className="text-xs font-semibold">
-        🟡 Sales Head requested an update on this lead — due {dueLabel}{isOverdue ? ' (OVERDUE)' : ''}.
+      <div className="flex items-center gap-2 text-body font-semibold">
+        <CircleAlert className="w-4 h-4 shrink-0" strokeWidth={2} />
+        <span className="flex-1">
+          Sales Head requested an update on this lead — due {dueLabel}.
+        </span>
+        {isOverdue && <Badge tone="lost">Overdue</Badge>}
       </div>
       {request.reason && (
-        <div className="text-[11px] italic mt-1 text-current/80">&quot;{request.reason}&quot;</div>
+        <div className="text-caption italic mt-1 text-current/80">&quot;{request.reason}&quot;</div>
       )}
-      <div className="text-[10px] mt-1.5 text-current/70">
+      <div className="text-caption mt-1.5 text-current/70">
         Add a note below to answer this request.
       </div>
     </div>

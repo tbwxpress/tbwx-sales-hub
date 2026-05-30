@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Navbar from '@/components/Navbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -14,6 +13,9 @@ import LogCallModal from '@/components/LogCallModal'
 import CallHistory from '@/components/CallHistory'
 import VoiceAgentCard from '@/components/VoiceAgentCard'
 import ActivityLog from '@/components/ActivityLog'
+import EmptyState from '@/components/ui/EmptyState'
+import { Send, Paperclip, MessageSquare, ArrowLeft } from 'lucide-react'
+// Note: no Mic/audio button exists in the current composer, so lucide Mic was not adopted.
 
 interface Contact {
   phone: string
@@ -755,9 +757,12 @@ export default function InboxPage() {
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar — Contact List */}
-        <div className={`w-full md:w-80 lg:w-96 border-r border-border flex flex-col bg-card ${
-          !showSidebar && activePhone ? 'hidden md:flex' : 'flex'
-        }`}>
+        <div
+          className={`w-full md:w-80 lg:w-96 flex flex-col bg-card ${
+            !showSidebar && activePhone ? 'hidden md:flex' : 'flex'
+          }`}
+          style={{ boxShadow: 'inset -1px 0 0 0 color-mix(in srgb, var(--color-border) 60%, transparent)' }}
+        >
           {/* Sidebar Header */}
           <div className="p-3 border-b border-border">
             <div className="flex items-center justify-between mb-2.5">
@@ -884,25 +889,25 @@ export default function InboxPage() {
                 ))}
               </div>
             ) : filteredContacts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-48 text-dim text-sm px-4 text-center">
-                <svg className="w-10 h-10 mb-2 text-dim/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-2.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                </svg>
-                {contacts.length === 0
-                  ? 'No messages yet. Click "Sync" to import from Google Sheets.'
-                  : 'No contacts match your search.'
-                }
-              </div>
+              contacts.length === 0 ? (
+                <EmptyState
+                  icon={<MessageSquare className="w-10 h-10" />}
+                  title="No messages yet"
+                  hint='Click "Sync" to import from Google Sheets.'
+                />
+              ) : (
+                <EmptyState icon={<MessageSquare className="w-10 h-10" />} title="No conversations match" />
+              )
             ) : (
               <>
               {filteredContacts.map(contact => (
                 <button
                   key={contact.phone}
                   onClick={() => openConversation(contact)}
-                  className={`w-full flex items-center gap-3 px-3 py-3 border-b border-border/50 transition-all text-left ${
+                  className={`w-full flex items-center gap-3 px-3 py-3 border-b border-border/50 text-left ${
                     activePhone === contact.phone
                       ? 'bg-accent/10 border-l-2 border-l-accent'
-                      : 'hover:bg-elevated hover:border-l-2 hover:border-l-accent/40 border-l-2 border-l-transparent'
+                      : 'hover:bg-elevated/80 hover:border-l-2 hover:border-l-accent/40 border-l-2 border-l-transparent'
                   }`}
                 >
                   {/* Avatar */}
@@ -921,12 +926,12 @@ export default function InboxPage() {
                       <span className="text-sm font-medium text-text truncate">
                         {contact.name || formatPhoneDisplay(contact.phone)}
                       </span>
-                      <span className="text-[10px] text-muted flex-shrink-0 ml-2">
+                      <span className="text-caption text-muted flex-shrink-0 ml-2">
                         {formatTime(contact.last_message_at)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between mt-0.5">
-                      <span className="text-xs text-muted truncate">
+                      <span className="text-caption text-muted truncate">
                         {contact.last_direction === 'sent' && (
                           <span className="text-muted mr-0.5">You: </span>
                         )}
@@ -935,7 +940,7 @@ export default function InboxPage() {
                       {contact.unread_count > 0 && (
                         <span className="flex items-center gap-1.5 flex-shrink-0 ml-1">
                           <span className="w-2 h-2 rounded-full bg-[#25d366] pulse-dot"></span>
-                          <span className="bg-[#25d366] text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                          <span className="bg-[#25d366] text-white text-caption font-bold rounded-full w-5 h-5 flex items-center justify-center">
                             {contact.unread_count > 9 ? '9+' : contact.unread_count}
                           </span>
                         </span>
@@ -990,10 +995,8 @@ export default function InboxPage() {
                   className="md:hidden flex items-center gap-1 text-muted hover:text-text flex-shrink-0"
                   aria-label="Back to conversation list"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                  </svg>
-                  <span className="text-xs font-medium">Conversations</span>
+                  <ArrowLeft className="w-5 h-5" strokeWidth={2} />
+                  <span className="text-caption font-medium">Conversations</span>
                 </button>
 
                 {/* Avatar */}
@@ -1014,7 +1017,7 @@ export default function InboxPage() {
                   <div className="text-sm font-semibold text-text truncate">
                     {activeContact?.name || formatPhoneDisplay(activePhone)}
                   </div>
-                  <div className="text-[11px] text-muted flex items-center gap-2 flex-wrap">
+                  <div className="text-caption text-muted flex items-center gap-2 flex-wrap">
                     <span>+{activePhone}</span>
                     {activeContact?.is_lead ? (
                       <span className="bg-accent/20 text-accent px-1.5 py-0.5 rounded text-[9px] font-semibold">Lead</span>
@@ -1279,7 +1282,7 @@ export default function InboxPage() {
                         <div key={msg.id || idx}>
                           {showDate && (
                             <div className="flex justify-center my-3">
-                              <span className="glass text-dim text-[10px] px-3 py-1 rounded-full">
+                              <span className="glass text-dim text-caption px-3 py-1 rounded-full">
                                 {getDateLabel(msg.timestamp)}
                               </span>
                             </div>
@@ -1364,7 +1367,7 @@ export default function InboxPage() {
                                 {msg.direction === 'sent' && msg.sent_by && (
                                   <span className="text-[9px] text-wa-meta">{msg.sent_by}</span>
                                 )}
-                                <span className="text-[10px] text-wa-meta">{formatMsgTime(msg.timestamp)}</span>
+                                <span className="text-caption text-wa-meta">{formatMsgTime(msg.timestamp)}</span>
                                 {msg.direction === 'sent' && (
                                   <span className="text-[10px]">
                                     {msg.status === 'failed' || msg.status === 'undelivered' ? (
@@ -1530,9 +1533,7 @@ export default function InboxPage() {
                       <path d="M12 2v4m0 12v4m-8-10H2m20 0h-4m-2.343-5.657L14.828 7.172m-5.656 9.656l-2.829 2.829m11.314 0l-2.829-2.829m-5.656-9.656L6.343 4.343" />
                     </svg>
                   ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
-                    </svg>
+                    <Paperclip className="w-5 h-5" strokeWidth={1.5} />
                   )}
                 </button>
 
@@ -1615,9 +1616,7 @@ export default function InboxPage() {
                       <path d="M12 2v4m0 12v4m-8-10H2m20 0h-4m-2.343-5.657L14.828 7.172m-5.656 9.656l-2.829 2.829m11.314 0l-2.829-2.829m-5.656-9.656L6.343 4.343" />
                     </svg>
                   ) : (
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                    </svg>
+                    <Send className="w-4 h-4" strokeWidth={2} />
                   )}
                 </button>
               </form>

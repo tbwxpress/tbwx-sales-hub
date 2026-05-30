@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import RequestUpdatesButton from '@/components/RequestUpdatesButton'
+import Badge from '@/components/ui/Badge'
+import Card from '@/components/ui/Card'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -229,13 +231,13 @@ function SelfActivityView({ you, teamAvg, rank }: SelfActivityViewProps) {
       <div className="lg:col-span-2 rounded-lg p-4" style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)' }}>
         <div className="flex items-start justify-between mb-3">
           <div>
-            <p className="text-[10px] text-dim uppercase tracking-wider mb-0.5">Your activity</p>
-            <p className="text-lg font-bold text-text">{you.name}</p>
-            <p className="text-[11px] text-dim capitalize">{you.type}</p>
+            <p className="text-eyebrow text-dim mb-0.5">Your activity</p>
+            <p className="text-heading text-text">{you.name}</p>
+            <p className="text-caption text-dim capitalize">{you.type}</p>
           </div>
           <div className="text-right">
-            <p className={`text-3xl font-bold ${totalActions > 0 ? 'text-success' : 'text-dim'}`}>{you.leads_touched}</p>
-            <p className="text-[10px] text-dim uppercase tracking-wider">leads touched today</p>
+            <p className={`text-display ${totalActions > 0 ? 'text-success' : 'text-dim'}`}>{you.leads_touched}</p>
+            <p className="text-eyebrow text-dim">leads touched today</p>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-3 border-t border-border">
@@ -266,14 +268,14 @@ function SelfActivityView({ you, teamAvg, rank }: SelfActivityViewProps) {
 
       {/* Rank + team avg card */}
       <div className="rounded-lg p-4 flex flex-col" style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}>
-        <p className="text-[10px] text-dim uppercase tracking-wider mb-2">Your rank</p>
+        <p className="text-eyebrow text-dim mb-2">Your rank</p>
         {rank && rank.of > 1 ? (
           <>
-            <p className="text-3xl font-bold text-accent leading-none">#{rank.position}</p>
-            <p className="text-xs text-dim mt-1">of {rank.of} active teammates</p>
+            <p className="text-display text-accent leading-none">#{rank.position}</p>
+            <p className="text-caption text-dim mt-1">of {rank.of} active teammates</p>
           </>
         ) : (
-          <p className="text-xs text-dim">Solo run today — no peers active.</p>
+          <p className="text-caption text-dim">Solo run today — no peers active.</p>
         )}
         <div className="mt-auto pt-3 text-[10px] text-dim">
           Peer numbers stay private. You only see the team average — never an individual&apos;s data.
@@ -484,8 +486,8 @@ export default function AgentStatsPage() {
         {/* Header + WA Token */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-xl font-bold text-text">Agent Performance</h1>
-            <p className="text-sm text-dim mt-0.5">
+            <h1 className="text-heading text-text">Agent Performance</h1>
+            <p className="text-body text-dim mt-0.5">
               {metrics.length} agent{metrics.length !== 1 ? 's' : ''} tracked
               {unassigned > 0 && (
                 <span className="text-accent ml-2">({unassigned} unassigned lead{unassigned !== 1 ? 's' : ''})</span>
@@ -509,10 +511,10 @@ export default function AgentStatsPage() {
               key={card.label}
               className="bg-card border border-border rounded-lg px-4 py-3"
             >
-              <p className="text-[10px] text-dim uppercase tracking-wider font-medium mb-1.5">
+              <p className="text-caption text-dim mb-1.5">
                 {card.label}
               </p>
-              <p className={`text-2xl font-bold ${card.color}`}>{card.value}</p>
+              <p className={`text-display ${card.color}`}>{card.value}</p>
             </div>
           ))}
         </div>
@@ -521,8 +523,8 @@ export default function AgentStatsPage() {
         <section className="bg-card border border-border rounded-xl p-4 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
-              <h2 className="text-base font-bold text-text">Daily Activity</h2>
-              <p className="text-xs text-dim mt-0.5">
+              <h2 className="text-heading text-text">Daily Activity</h2>
+              <p className="text-caption text-dim mt-0.5">
                 Active actions only — manual messages, calls, notes, status changes, reassignments by each agent.
               </p>
             </div>
@@ -595,8 +597,8 @@ export default function AgentStatsPage() {
                 { label: 'Reassigns', v: activity.totals.reassignments_performed },
               ].map(s => (
                 <div key={s.label} className="bg-elevated rounded-md py-2">
-                  <p className="text-[9px] text-dim uppercase tracking-wider">{s.label}</p>
-                  <p className="text-lg font-bold text-text mt-0.5">{s.v}</p>
+                  <p className="text-eyebrow text-dim">{s.label}</p>
+                  <p className="text-display text-text mt-0.5">{s.v}</p>
                 </div>
               ))}
             </div>
@@ -619,25 +621,21 @@ export default function AgentStatsPage() {
                 const isExpanded = expandedAgent === a.user_id
                 const totalActions = a.actions.manual_messages + a.actions.calls_logged + a.actions.notes_added + a.actions.status_changes + a.actions.reassignments_performed
                 return (
-                  <div
+                  <Card
                     key={a.user_id || a.name}
-                    className="rounded-lg p-3 transition-colors"
-                    style={{
-                      background: 'var(--color-elevated)',
-                      border: `1px solid ${isGhost ? 'color-mix(in srgb, var(--color-danger) 40%, transparent)' : totalActions > 0 ? 'color-mix(in srgb, var(--color-success) 30%, transparent)' : 'var(--color-border)'}`,
-                    }}
+                    className="p-3 transition-colors"
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-text truncate">{a.name}</p>
-                        <p className="text-[10px] text-dim mt-0.5 capitalize">{a.type}</p>
+                        <p className="text-heading text-text truncate">{a.name}</p>
+                        <p className="text-eyebrow text-dim mt-0.5 capitalize">{a.type}</p>
                       </div>
                       <div className="text-right">
-                        <p className={`text-2xl font-bold ${isGhost ? 'text-danger' : totalActions > 0 ? 'text-success' : 'text-dim'}`}>{a.leads_touched}</p>
-                        <p className="text-[9px] text-dim uppercase tracking-wider">leads touched</p>
+                        <p className={`text-display ${isGhost ? 'text-danger' : totalActions > 0 ? 'text-success' : 'text-dim'}`}>{a.leads_touched}</p>
+                        <p className="text-eyebrow text-dim">leads touched</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] py-2 border-t border-border">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-caption py-2 border-t border-border">
                       <div className="flex items-center justify-between">
                         <span className="text-dim">💬 Messages</span><span className="text-text font-medium">{a.actions.manual_messages}</span>
                       </div>
@@ -657,18 +655,25 @@ export default function AgentStatsPage() {
                       )}
                     </div>
                     {Object.keys(a.status_progressions).length > 0 && (
-                      <div className="text-[10px] text-dim mt-2 flex flex-wrap gap-1">
-                        {Object.entries(a.status_progressions).map(([k, v]) => (
-                          <span key={k} className="px-1.5 py-0.5 rounded bg-card text-muted">
-                            {k.replace(/^to_/, '→ ')}: <span className="text-text font-medium">{v}</span>
-                          </span>
-                        ))}
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {Object.entries(a.status_progressions).map(([k, v]) => {
+                          const statusKey = k.replace(/^to_/, '')
+                          const tone = statusKey.toUpperCase() === 'CONVERTED' ? 'won'
+                            : statusKey.toUpperCase() === 'LOST' ? 'lost'
+                            : statusKey.toUpperCase() === 'HOT' ? 'hot'
+                            : 'neutral'
+                          return (
+                            <Badge key={k} tone={tone}>
+                              → {statusKey}: {v}
+                            </Badge>
+                          )
+                        })}
                       </div>
                     )}
                     {a.touched_leads.length > 0 && (
                       <button
                         onClick={() => setExpandedAgent(isExpanded ? null : a.user_id)}
-                        className="text-[11px] text-accent hover:underline mt-2"
+                        className="text-caption text-accent hover:underline mt-2"
                       >
                         {isExpanded ? 'Hide' : `View ${a.touched_leads.length} touched lead${a.touched_leads.length === 1 ? '' : 's'}`}
                       </button>
@@ -676,11 +681,11 @@ export default function AgentStatsPage() {
                     {isExpanded && (
                       <div className="mt-2 pt-2 border-t border-border space-y-1 max-h-64 overflow-y-auto">
                         {a.touched_leads.map((l, i) => (
-                          <div key={i} className="text-[11px] flex items-center gap-2 hover:bg-card rounded px-1 py-0.5">
+                          <div key={i} className="text-caption flex items-center gap-2 hover:bg-card rounded px-1 py-0.5 transition-colors">
                             <span className="text-dim font-mono w-12 shrink-0">{l.lead_row || '—'}</span>
                             <a href={l.lead_row ? `/leads/${l.lead_row}` : '#'} className="text-accent hover:underline truncate flex-1">{l.name}</a>
-                            <span className="text-dim text-[10px]">{l.current_status}</span>
-                            <span className="text-[10px]">{l.actions.map(x => x === 'msg' ? '💬' : x === 'call' ? '📞' : x === 'note' ? '📝' : x === 'status' ? '🔄' : x === 'reassign' ? '🔀' : '·').join('')}</span>
+                            <span className="text-dim">{l.current_status}</span>
+                            <span>{l.actions.map(x => x === 'msg' ? '💬' : x === 'call' ? '📞' : x === 'note' ? '📝' : x === 'status' ? '🔄' : x === 'reassign' ? '🔀' : '·').join('')}</span>
                           </div>
                         ))}
                       </div>
@@ -690,7 +695,7 @@ export default function AgentStatsPage() {
                         <RequestUpdatesButton agentId={a.user_id} agentName={a.name} />
                       </div>
                     )}
-                  </div>
+                  </Card>
                 )
               })}
             </div>

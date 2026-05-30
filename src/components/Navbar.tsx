@@ -4,6 +4,26 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
+import {
+  Calendar,
+  LayoutDashboard,
+  MessageSquare,
+  Users,
+  Kanban,
+  CreditCard,
+  Zap,
+  FileText,
+  BookOpen,
+  ChartColumn,
+  Banknote,
+  Settings,
+  ChevronDown,
+  Search,
+  LogOut,
+  Menu,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
 import NotificationBell from './NotificationBell'
 import UpdateRequestsBadge from './UpdateRequestsBadge'
@@ -93,26 +113,28 @@ export default function Navbar() {
     router.push('/login')
   }
 
-  const primaryLinks = [
-    { href: '/today', label: 'Today', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', badge: null as number | null },
-    { href: '/dashboard', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', badge: null as number | null },
-    { href: '/inbox', label: 'Inbox', icon: 'M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-2.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4', badge: unreadCount },
-    { href: '/leads', label: 'Leads', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z', badge: null as number | null },
-    { href: '/pipeline', label: 'Pipeline', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', badge: null as number | null },
+  type NavLink = { href: string; label: string; Icon: LucideIcon; badge?: number | null }
+
+  const primaryLinks: NavLink[] = [
+    { href: '/today', label: 'Today', Icon: Calendar, badge: null },
+    { href: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, badge: null },
+    { href: '/inbox', label: 'Inbox', Icon: MessageSquare, badge: unreadCount },
+    { href: '/leads', label: 'Leads', Icon: Users, badge: null },
+    { href: '/pipeline', label: 'Pipeline', Icon: Kanban, badge: null },
   ]
 
-  const secondaryLinks = [
-    { href: '/payment-followups', label: 'Payment Followups', icon: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z' },
-    { href: '/quick-replies', label: 'Quick Replies', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
-    { href: '/templates', label: 'Templates', icon: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z' },
-    { href: '/knowledge-base', label: 'Knowledge Base', icon: 'M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0118 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25' },
-    { href: '/analytics', label: 'Analytics', icon: 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z' },
-    { href: '/commissions', label: 'Commissions', icon: 'M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4' },
+  const secondaryLinks: NavLink[] = [
+    { href: '/payment-followups', label: 'Payment Followups', Icon: CreditCard },
+    { href: '/quick-replies', label: 'Quick Replies', Icon: Zap },
+    { href: '/templates', label: 'Templates', Icon: FileText },
+    { href: '/knowledge-base', label: 'Knowledge Base', Icon: BookOpen },
+    { href: '/analytics', label: 'Analytics', Icon: ChartColumn },
+    { href: '/commissions', label: 'Commissions', Icon: Banknote },
     // Stats link: admins get the full leaderboard, agents/telecallers get their self view
     // from the same /agent-stats page (the API serves a different shape based on role).
-    { href: '/agent-stats', label: user?.role === 'admin' ? 'Agent Stats' : 'My Stats', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+    { href: '/agent-stats', label: user?.role === 'admin' ? 'Agent Stats' : 'My Stats', Icon: ChartColumn },
     ...(user?.role === 'admin' ? [
-      { href: '/admin', label: 'Admin', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
+      { href: '/admin', label: 'Admin', Icon: Settings } as NavLink,
     ] : []),
   ]
 
@@ -170,7 +192,7 @@ export default function Navbar() {
                   />
                 )}
                 {link.badge != null && link.badge > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-[#25d366] text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center badge-pulse">
+                  <span className="absolute -top-0.5 -right-0.5 bg-[#25d366] text-white text-caption font-bold rounded-full min-w-[14px] h-3.5 px-1 flex items-center justify-center badge-pulse">
                     {link.badge > 9 ? '9+' : link.badge}
                   </span>
                 )}
@@ -185,9 +207,7 @@ export default function Navbar() {
                 style={{ color: moreActive ? 'var(--color-accent)' : 'var(--color-muted)' }}
               >
                 More
-                <svg className={`w-3 h-3 transition-transform duration-150 ${moreOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                </svg>
+                <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${moreOpen ? 'rotate-180' : ''}`} strokeWidth={2.5} />
                 {moreActive && (
                   <span
                     className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full"
@@ -214,9 +234,7 @@ export default function Navbar() {
                       onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-text)')}
                       onMouseLeave={e => (e.currentTarget.style.color = isActive(link.href) ? 'var(--color-accent)' : 'var(--color-muted)')}
                     >
-                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d={link.icon} />
-                      </svg>
+                      <link.Icon className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
                       {link.label}
                     </Link>
                   ))}
@@ -234,9 +252,7 @@ export default function Navbar() {
               style={{ color: 'var(--color-muted)' }}
               title="Search (⌘K)"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <Search className="w-3.5 h-3.5" strokeWidth={2} />
               <kbd className="text-[9px] font-mono px-1 py-0.5 rounded hidden lg:inline" style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)' }}>⌘K</kbd>
             </button>
             <button
@@ -244,12 +260,18 @@ export default function Navbar() {
                 const event = new KeyboardEvent('keydown', { key: '?' })
                 window.dispatchEvent(event)
               }}
-              className="text-xs transition-colors duration-150"
+              className="w-6 h-6 flex items-center justify-center rounded-md text-caption transition-colors duration-150"
               style={{ color: 'var(--color-dim)' }}
               title="Keyboard shortcuts"
               aria-label="Keyboard shortcuts"
-              onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-text)')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-dim)')}
+              onMouseEnter={e => {
+                e.currentTarget.style.color = 'var(--color-text)'
+                e.currentTarget.style.background = 'var(--color-elevated)'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.color = 'var(--color-dim)'
+                e.currentTarget.style.background = 'transparent'
+              }}
             >
               ?
             </button>
@@ -300,9 +322,7 @@ export default function Navbar() {
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-elevated)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3-3h-9m9 0l-3-3m3 3l-3 3" />
-                      </svg>
+                      <LogOut className="w-3.5 h-3.5" strokeWidth={1.5} />
                       Sign out
                     </button>
                   </div>
@@ -327,12 +347,10 @@ export default function Navbar() {
               style={{ color: 'var(--color-muted)' }}
               aria-label="Toggle menu"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                {mobileMenuOpen
-                  ? <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  : <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-                }
-              </svg>
+              {mobileMenuOpen
+                ? <X className="w-5 h-5" strokeWidth={1.5} />
+                : <Menu className="w-5 h-5" strokeWidth={1.5} />
+              }
             </button>
           </div>
         </div>
@@ -352,12 +370,10 @@ export default function Navbar() {
                   background: isActive(link.href) ? 'var(--color-accent-soft)' : 'transparent',
                 }}
               >
-                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d={link.icon} />
-                </svg>
+                <link.Icon className="w-4 h-4 shrink-0" strokeWidth={1.5} />
                 {link.label}
                 {'badge' in link && typeof link.badge === 'number' && link.badge > 0 && (
-                  <span className="ml-auto bg-[#25d366] text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                  <span className="ml-auto bg-[#25d366] text-white text-caption font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
                     {link.badge > 9 ? '9+' : link.badge}
                   </span>
                 )}
@@ -380,9 +396,7 @@ export default function Navbar() {
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150"
                 style={{ color: 'var(--color-danger)' }}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3-3h-9m9 0l-3-3m3 3l-3 3" />
-                </svg>
+                <LogOut className="w-4 h-4" strokeWidth={1.5} />
                 Sign out
               </button>
             </div>

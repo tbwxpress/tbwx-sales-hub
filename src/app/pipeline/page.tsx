@@ -3,9 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Copy, Check, Inbox } from 'lucide-react'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
 import Toast from '@/components/Toast'
+import Badge, { statusTone } from '@/components/ui/Badge'
+import EmptyState from '@/components/ui/EmptyState'
 import { timeAgo } from '@/lib/format'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -84,24 +87,24 @@ function LeadCard({
       onDragEnd={(e) => {
         (e.currentTarget as HTMLElement).style.opacity = '1'
       }}
-      className="card-hover bg-elevated rounded-lg p-3.5 cursor-grab active:cursor-grabbing relative"
+      className="card-hover bg-card rounded-lg p-3.5 cursor-grab active:cursor-grabbing relative"
       style={{
         borderLeft: `3px solid ${borderColor}`,
-        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.15)',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06)',
       }}
       onClick={() => setShowMove(!showMove)}
     >
-      {/* HOT badge — top-left */}
+      {/* HOT badge — top-right */}
       {isHot && (
-        <span className="absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 leading-none select-none">
-          🔥 HOT
-        </span>
+        <div className="absolute top-2 right-2">
+          <Badge tone="hot">🔥 HOT</Badge>
+        </div>
       )}
 
       {/* Name */}
       <Link
         href={`/leads/${lead.row_number}`}
-        className={`text-sm font-medium text-accent hover:text-accent-hover transition-colors block truncate ${isHot ? 'pr-12' : ''}`}
+        className={`text-body text-text hover:text-accent transition-colors block truncate ${isHot ? 'pr-16' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
         {lead.full_name || 'Unknown'}
@@ -111,21 +114,14 @@ function LeadCard({
       <div className="flex items-center justify-between mt-2 gap-1">
         <span className="text-xs text-muted truncate">{lead.city || '-'}</span>
         <div className="flex items-center gap-1 flex-shrink-0">
-          <span className="hidden md:inline text-[10px] text-dim font-mono">{formatPhone(lead.phone)}</span>
-          {copied ? (
-            <span className="text-[9px] text-green-400 font-medium whitespace-nowrap">Copied!</span>
-          ) : (
-            <button
-              onClick={handleCopy}
-              title="Copy phone"
-              className="text-dim hover:text-accent transition-colors p-0.5 rounded"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-              </svg>
-            </button>
-          )}
+          <span className="text-caption text-dim font-mono">{formatPhone(lead.phone)}</span>
+          <button
+            onClick={handleCopy}
+            title="Copy phone"
+            className="text-dim hover:text-accent transition-colors p-0.5 rounded"
+          >
+            {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+          </button>
         </div>
       </div>
 
@@ -402,41 +398,8 @@ export default function PipelinePage() {
                             : 'bg-card border-border'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      {isConverted && (
-                        <span className="w-2 h-2 rounded-full bg-success" />
-                      )}
-                      {isDelayed && (
-                        <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      )}
-                      {isLost && (
-                        <span className="w-2 h-2 rounded-full bg-danger" />
-                      )}
-                      <h3
-                        className={`text-xs font-semibold uppercase tracking-wider ${
-                          isConverted
-                            ? 'text-success'
-                            : isDelayed
-                              ? 'text-amber-500/70'
-                              : isLost
-                                ? 'text-danger/70'
-                                : 'text-muted'
-                        }`}
-                      >
-                        {STAGE_LABELS[stage]}
-                      </h3>
-                    </div>
-                    <span
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                        isConverted
-                          ? 'bg-success/15 text-success'
-                          : isDelayed
-                            ? 'bg-amber-500/10 text-amber-500/60'
-                            : isLost
-                              ? 'bg-danger/10 text-danger/60'
-                              : 'bg-elevated/60 text-dim backdrop-blur-sm border border-border/30'
-                      }`}
-                    >
+                    <Badge tone={statusTone(stage)}>{STAGE_LABELS[stage]}</Badge>
+                    <span className="text-caption text-dim">
                       {stageleads.length}
                     </span>
                   </div>
@@ -444,11 +407,12 @@ export default function PipelinePage() {
                   {/* Cards */}
                   <div className={`flex-1 overflow-y-auto max-h-[calc(100vh-280px)] p-2 space-y-2 ${isLost || isDelayed ? 'opacity-60' : ''}`}>
                     {stageleads.length === 0 ? (
-                      <div className="text-center py-8 border border-dashed border-border/50 rounded-lg mx-1 my-1">
-                        <svg className="w-5 h-5 mx-auto text-dim/50 mb-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-2.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                        </svg>
-                        <p className="text-[10px] text-dim/60">No leads</p>
+                      <div className="[&>div]:py-6">
+                        <EmptyState
+                          icon={<Inbox className="w-5 h-5" />}
+                          title="No leads"
+                          hint="Drop someone in this stage"
+                        />
                       </div>
                     ) : (
                       stageleads.map(lead => (

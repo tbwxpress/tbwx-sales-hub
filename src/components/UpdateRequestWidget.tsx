@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { Bell } from 'lucide-react'
 import { IST, istToday, istDate } from '@/lib/format'
 
 interface PendingRequest {
@@ -43,8 +44,10 @@ export default function UpdateRequestWidget() {
       anyOverdue ? 'border-danger/60' : 'border-amber-500/40'
     } bg-card`}>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-text">
-          🔔 Updates Requested by Sales Head <span className="text-dim text-xs ml-1">({requests.length} pending)</span>
+        <h2 className="flex items-center gap-2 text-heading text-text">
+          <Bell className="size-4 shrink-0" strokeWidth={2} />
+          Updates Requested by Sales Head
+          <span className="text-dim text-caption ml-1">({requests.length} pending)</span>
         </h2>
       </div>
       <div className="space-y-1">
@@ -54,10 +57,10 @@ export default function UpdateRequestWidget() {
             href={`/leads/${r.lead_row}`}
             className="flex items-center justify-between px-3 py-2 rounded-md hover:bg-elevated transition-colors"
           >
-            <span className="text-xs text-text truncate">
+            <span className="text-body text-text truncate">
               • {r.lead_name}{r.lead_city ? ` (${r.lead_city})` : ''}
             </span>
-            <span className={`text-[10px] font-medium ${r.overdue ? 'text-danger' : 'text-amber-400'}`}>
+            <span className={`text-caption font-medium ${r.overdue ? 'text-danger' : 'text-amber-400'}`}>
               due {dueLabel(r.due_date)} →
             </span>
           </Link>

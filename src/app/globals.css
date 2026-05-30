@@ -530,3 +530,22 @@ input:focus, textarea:focus, select:focus {
     @apply font-sans;
   }
 }
+
+@layer base {
+  *:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent);
+    border-radius: 6px;
+  }
+  button, a, [role="button"], select {
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+  }
+}
+
+@layer utilities {
+  .text-display { font-size: 22px; line-height: 30px; font-weight: 700; letter-spacing: -0.01em; }
+  .text-heading { font-size: 15px; line-height: 22px; font-weight: 600; }
+  .text-body    { font-size: 13px; line-height: 20px; font-weight: 400; }
+  .text-caption { font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.02em; }
+  .text-eyebrow { font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+}

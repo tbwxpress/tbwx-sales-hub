@@ -3,9 +3,12 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Plus, Search, UserPlus, Download, Eye, MessageSquare, Pencil, X } from 'lucide-react'
 import Navbar from '@/components/Navbar'
 import { STATUS_LABELS, STATUS_MIGRATION } from '@/config/client'
 import Toast from '@/components/Toast'
+import Badge, { statusTone, priorityTone } from '@/components/ui/Badge'
+import EmptyState from '@/components/ui/EmptyState'
 import { timeAgo, followupLabel, istToday } from '@/lib/format'
 import { scoreColor, scoreBg, scoreBorder } from '@/lib/score-colors'
 
@@ -490,10 +493,10 @@ export default function LeadsPage() {
         {/* Page Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>
+            <h1 className="text-heading font-bold" style={{ color: 'var(--color-text)' }}>
               {user?.role === 'agent' ? 'My Leads' : 'All Leads'}
             </h1>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted)' }}>
+            <p className="text-caption mt-0.5" style={{ color: 'var(--color-muted)' }}>
               {displayedLeads.length} lead{displayedLeads.length !== 1 ? 's' : ''}
               {statusFilter && ` matching "${statusFilter.replace('_', ' ')}"`}
             </p>
@@ -517,26 +520,22 @@ export default function LeadsPage() {
                 a.click()
                 URL.revokeObjectURL(url)
               }}
-              className="bg-elevated hover:bg-border text-muted text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+              className="bg-elevated hover:bg-border text-muted text-caption font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
               title="Download filtered leads as CSV"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-              </svg>
+              <Download className="w-3.5 h-3.5" strokeWidth={2} />
               CSV
             </button>
             <button
               onClick={() => setShowAddLead(true)}
-              className="bg-accent/10 hover:bg-accent/20 text-accent text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+              className="bg-accent/10 hover:bg-accent/20 text-accent text-caption font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
+              <Plus className="w-3.5 h-3.5" strokeWidth={2} />
               Add Lead
             </button>
             <Link
               href="/dashboard"
-              className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+              className="text-caption font-medium px-3 py-1.5 rounded-lg transition-colors"
               style={{ color: 'var(--color-muted)', background: 'var(--color-elevated)' }}
             >
               &larr; Dashboard
@@ -560,19 +559,26 @@ export default function LeadsPage() {
               <button
                 key={key}
                 onClick={() => setQuickFilter(active ? 'all' : key)}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-caption font-semibold uppercase tracking-wide transition-colors"
                 style={
                   active
-                    ? { backgroundColor: 'var(--color-accent)', color: '#1a1209', border: '1px solid var(--color-accent)' }
+                    ? {
+                        backgroundColor: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
+                        color: 'var(--color-accent)',
+                        border: '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                      }
                     : { backgroundColor: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }
                 }
               >
                 {label}
                 <span
-                  className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-[11px] font-bold"
+                  className="inline-flex items-center justify-center min-w-[1.375rem] h-[1.125rem] px-1.5 rounded-full text-[12px] font-bold leading-none"
                   style={
                     active
-                      ? { backgroundColor: 'rgba(26,18,9,0.2)', color: '#1a1209' }
+                      ? {
+                          backgroundColor: 'color-mix(in srgb, var(--color-accent) 28%, transparent)',
+                          color: 'var(--color-accent)',
+                        }
                       : { backgroundColor: 'var(--color-elevated)', color: 'var(--color-dim)' }
                   }
                 >
@@ -587,12 +593,10 @@ export default function LeadsPage() {
         <div className="bg-card border border-border rounded-lg px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
           {/* Search */}
           <div className="relative flex-1 min-w-[200px]">
-            <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dim"
-              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dim pointer-events-none"
+              strokeWidth={2}
+            />
             <input
               type="text"
               placeholder="Search name, phone, city, email..."
@@ -647,7 +651,7 @@ export default function LeadsPage() {
           )}
 
           {/* Created date range */}
-          <div className="flex items-center gap-1.5 text-xs text-dim">
+          <div className="flex items-center gap-1.5 text-caption text-dim">
             <span className="hidden sm:inline">Created:</span>
             <input
               type="date"
@@ -688,7 +692,7 @@ export default function LeadsPage() {
           )}
 
           {/* Lead Count */}
-          <span className="text-xs text-dim ml-auto">
+          <span className="text-caption text-dim ml-auto">
             {displayedLeads.length} lead{displayedLeads.length !== 1 ? 's' : ''}
           </span>
         </div>
@@ -696,24 +700,20 @@ export default function LeadsPage() {
         {/* ─── Mobile Card List (<md) ─────────────────────────────────── */}
         <div className="md:hidden space-y-2">
           {displayedLeads.length === 0 ? (
-            <div className="bg-card border border-border rounded-lg px-4 py-12 text-center">
-              <div className="flex flex-col items-center gap-3">
-                <svg className="w-10 h-10 text-dim/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                </svg>
-                <div>
-                  <p className="text-muted text-sm font-medium">
-                    {search || statusFilter || assignedFilter || telecallerFilter
-                      ? 'No leads match your filters'
-                      : 'No leads yet'}
-                  </p>
-                  <p className="text-dim text-xs mt-1">
-                    {search || statusFilter || assignedFilter || telecallerFilter
-                      ? 'Try adjusting your search or clearing filters.'
-                      : 'New leads will appear here as they come in.'}
-                  </p>
-                </div>
-              </div>
+            <div className="bg-card border border-border rounded-lg">
+              <EmptyState
+                icon={<UserPlus className="w-10 h-10" strokeWidth={1.25} />}
+                title={
+                  search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
+                    ? 'No leads match these filters'
+                    : 'No leads yet'
+                }
+                hint={
+                  search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
+                    ? 'Try clearing filters or add a new lead.'
+                    : 'New leads will appear here as they come in.'
+                }
+              />
             </div>
           ) : (
             displayedLeads.map((lead) => {
@@ -748,18 +748,18 @@ export default function LeadsPage() {
                       <Link
                         href={`/leads/${lead.row_number}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="text-accent hover:text-accent-hover font-medium text-sm block truncate"
+                        className="text-accent hover:text-accent-hover font-medium text-body block truncate"
                       >
                         {lead.full_name || 'Unknown'}
                       </Link>
-                      <p className="text-[11px] text-dim mt-0.5 truncate">
+                      <p className="text-caption text-dim mt-0.5 truncate">
                         <span className="font-mono">{lead.phone}</span>
                         {lead.city && <> · {lead.city}{lead.state ? `, ${lead.state}` : ''}</>}
                       </p>
                     </div>
                     {lead.lead_score !== undefined && (
                       <span
-                        className="inline-flex items-center justify-center w-7 h-7 rounded-full text-[11px] font-bold flex-shrink-0"
+                        className="inline-flex items-center justify-center w-7 h-7 rounded-full text-caption font-bold flex-shrink-0"
                         style={{
                           backgroundColor: scoreBg(lead.lead_score),
                           color: scoreColor(lead.lead_score),
@@ -774,29 +774,16 @@ export default function LeadsPage() {
 
                   {/* Status pill row */}
                   <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                    <span
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded border"
-                      style={{
-                        backgroundColor: statusColor.bg,
-                        color: statusColor.text,
-                        borderColor: statusColor.border,
-                      }}
-                    >
+                    <Badge tone={statusTone(lead.lead_status)}>
                       {STATUS_LABELS[lead.lead_status] || lead.lead_status}
-                    </span>
+                    </Badge>
                     {lead.lead_priority && (
-                      <span
-                        className="text-[10px] font-semibold px-2 py-0.5 rounded border"
-                        style={(() => {
-                          const pc = PRIORITY_COLORS[lead.lead_priority] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
-                          return { backgroundColor: pc.bg, color: pc.text, borderColor: pc.border }
-                        })()}
-                      >
+                      <Badge tone={priorityTone(lead.lead_priority)}>
                         {lead.lead_priority}
-                      </span>
+                      </Badge>
                     )}
                     {followup.text !== '-' && (
-                      <span className={`text-[10px] font-medium ${followup.urgent ? 'text-danger' : 'text-muted'}`}>
+                      <span className={`text-caption font-medium ${followup.urgent ? 'text-danger' : 'text-muted'}`}>
                         {followup.text}
                       </span>
                     )}
@@ -811,7 +798,7 @@ export default function LeadsPage() {
                       : '💬→'
                     const snippet = ld.text.length > 90 ? ld.text.slice(0, 87) + '…' : ld.text
                     return (
-                      <p className="text-[11px] text-dim mt-2 italic line-clamp-2">
+                      <p className="text-caption text-dim mt-2 italic line-clamp-2">
                         <span className="not-italic mr-1">{icon}</span>
                         {snippet}
                       </p>
@@ -820,45 +807,27 @@ export default function LeadsPage() {
 
                   {/* Assigned + telecaller footer */}
                   <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-border/40">
-                    <span className="text-[10px] text-dim truncate flex items-center gap-1.5 flex-wrap">
+                    <span className="text-eyebrow text-dim truncate flex items-center gap-1.5 flex-wrap">
                       {lead.assigned_to ? (
                         <span>Assigned: <span className="text-muted">{lead.assigned_to}</span></span>
                       ) : (
                         <span className="text-accent/50 italic">Unassigned</span>
                       )}
                       {lead.is_delegated_to_me && (
-                        <span
-                          className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                          style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)' }}
-                          title="You are supporting this lead"
-                        >
-                          Supporting
-                        </span>
+                        <Badge tone="active">Supporting</Badge>
                       )}
                       {lead.telecaller_name && (
-                        <span
-                          className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                          style={{
-                            background: 'var(--color-accent-soft)',
-                            color: 'var(--color-accent)',
-                            border: '1px solid var(--color-accent)',
-                          }}
-                          title="Telecaller working this lead"
-                        >
-                          📞 {lead.telecaller_name}
-                        </span>
+                        <Badge tone="hot">📞 {lead.telecaller_name}</Badge>
                       )}
                     </span>
                     {lead.phone && (
                       <Link
                         href={`/inbox?phone=${lead.phone}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 text-[10px] text-dim hover:text-green-400 transition-colors px-2 py-1 rounded hover:bg-green-400/10 flex-shrink-0"
+                        className="inline-flex items-center gap-1 text-eyebrow text-dim hover:text-green-400 transition-colors px-2 py-1 rounded hover:bg-green-400/10 flex-shrink-0"
                         title="Open in Inbox"
                       >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                        </svg>
+                        <MessageSquare className="w-3 h-3" strokeWidth={1.5} />
                         Inbox
                       </Link>
                     )}
@@ -885,27 +854,27 @@ export default function LeadsPage() {
                       />
                     </th>
                   )}
-                  <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider w-10">#</th>
-                  <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider w-14">Score</th>
-                  <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Name</th>
-                  <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Phone</th>
-                  <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">City</th>
-                  <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Status</th>
-                  <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Priority</th>
-                  <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Assigned</th>
+                  <th className="px-3 py-3 text-center text-eyebrow font-semibold text-dim uppercase tracking-wider w-10">#</th>
+                  <th className="px-3 py-3 text-center text-eyebrow font-semibold text-dim uppercase tracking-wider w-14">Score</th>
+                  <th className="px-3 py-3 text-left text-eyebrow font-semibold text-dim uppercase tracking-wider">Name</th>
+                  <th className="px-3 py-3 text-left text-eyebrow font-semibold text-dim uppercase tracking-wider">Phone</th>
+                  <th className="px-3 py-3 text-left text-eyebrow font-semibold text-dim uppercase tracking-wider">City</th>
+                  <th className="px-3 py-3 text-left text-eyebrow font-semibold text-dim uppercase tracking-wider">Status</th>
+                  <th className="px-3 py-3 text-left text-eyebrow font-semibold text-dim uppercase tracking-wider">Priority</th>
+                  <th className="px-3 py-3 text-left text-eyebrow font-semibold text-dim uppercase tracking-wider">Assigned</th>
                   {user?.role === 'admin' && (
-                    <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Telecaller</th>
+                    <th className="px-3 py-3 text-left text-eyebrow font-semibold text-dim uppercase tracking-wider">Telecaller</th>
                   )}
-                  <th className="px-3 py-3 text-left text-[10px] font-semibold text-dim uppercase tracking-wider">Follow-up</th>
+                  <th className="px-3 py-3 text-left text-eyebrow font-semibold text-dim uppercase tracking-wider">Follow-up</th>
                   <th
-                    className="px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-wider cursor-pointer select-none transition-colors hover:text-accent"
+                    className="px-3 py-3 text-left text-eyebrow font-semibold uppercase tracking-wider cursor-pointer select-none transition-colors hover:text-accent"
                     style={{ color: sortBy === 'newest' || sortBy === 'oldest' ? 'var(--color-accent)' : 'var(--color-dim)' }}
                     onClick={() => setSortBy(sortBy === 'newest' ? 'oldest' : sortBy === 'oldest' ? 'score' : 'newest')}
                     title="Click to sort by create date"
                   >
                     Created {sortBy === 'newest' ? '↓' : sortBy === 'oldest' ? '↑' : ''}
                   </th>
-                  <th className="px-3 py-3 text-center text-[10px] font-semibold text-dim uppercase tracking-wider w-20">Actions</th>
+                  <th className="px-3 py-3 text-center text-eyebrow font-semibold text-dim uppercase tracking-wider w-20">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -913,25 +882,21 @@ export default function LeadsPage() {
                   <tr>
                     <td
                       colSpan={(showCheckboxColumn ? 12 : 11) + (user?.role === 'admin' ? 1 : 0)}
-                      className="px-3 py-16 text-center"
+                      className="px-3"
                     >
-                      <div className="flex flex-col items-center gap-3">
-                        <svg className="w-10 h-10 text-dim/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                        </svg>
-                        <div>
-                          <p className="text-muted text-sm font-medium">
-                            {search || statusFilter || assignedFilter || telecallerFilter
-                              ? 'No leads match your filters'
-                              : 'No leads yet'}
-                          </p>
-                          <p className="text-dim text-xs mt-1">
-                            {search || statusFilter || assignedFilter || telecallerFilter
-                              ? 'Try adjusting your search or clearing filters.'
-                              : 'New leads will appear here as they come in.'}
-                          </p>
-                        </div>
-                      </div>
+                      <EmptyState
+                        icon={<UserPlus className="w-10 h-10" strokeWidth={1.25} />}
+                        title={
+                          search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
+                            ? 'No leads match these filters'
+                            : 'No leads yet'
+                        }
+                        hint={
+                          search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
+                            ? 'Try clearing filters or add a new lead.'
+                            : 'New leads will appear here as they come in.'
+                        }
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -954,13 +919,13 @@ export default function LeadsPage() {
                         )}
 
                         {/* Serial Number */}
-                        <td className="px-3 py-2.5 text-center text-xs text-dim font-mono">{idx + 1}</td>
+                        <td className="px-3 py-2.5 text-center text-caption text-dim font-mono">{idx + 1}</td>
 
                         {/* Lead Score */}
                         <td className="px-3 py-2.5 text-center">
                           {lead.lead_score !== undefined && (
                             <span
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-full text-[11px] font-bold"
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-full text-caption font-bold"
                               style={{
                                 backgroundColor: scoreBg(lead.lead_score),
                                 color: scoreColor(lead.lead_score),
@@ -993,20 +958,20 @@ export default function LeadsPage() {
                             const snippet = ld.text.length > 70 ? ld.text.slice(0, 67) + '…' : ld.text
                             const tooltip = `${ld.source.replace('_', ' ')} · ${ld.by || 'system'} · ${ld.at}\n\n${ld.text}`
                             return (
-                              <p className="text-[11px] text-dim mt-0.5 italic truncate max-w-[28ch] sm:max-w-[42ch]" title={tooltip}>
+                              <p className="text-caption text-dim mt-0.5 italic truncate max-w-[28ch] sm:max-w-[42ch]" title={tooltip}>
                                 <span className="not-italic mr-1">{icon}</span>
                                 {snippet}
-                                <span className="not-italic text-[10px] ml-1 opacity-70">— {ld.by || 'system'}, {ago}</span>
+                                <span className="not-italic text-eyebrow ml-1 opacity-70">— {ld.by || 'system'}, {ago}</span>
                               </p>
                             )
                           })()}
                         </td>
 
                         {/* Phone */}
-                        <td className="px-3 py-2.5 text-body font-mono text-xs">{lead.phone}</td>
+                        <td className="px-3 py-2.5 text-body font-mono">{lead.phone}</td>
 
                         {/* City */}
-                        <td className="px-3 py-2.5 text-body text-xs">
+                        <td className="px-3 py-2.5 text-body">
                           {lead.city}
                           {lead.state ? `, ${lead.state}` : ''}
                         </td>
@@ -1053,38 +1018,24 @@ export default function LeadsPage() {
                         </td>
 
                         {/* Assigned */}
-                        <td className="px-3 py-2.5 text-body text-xs">
+                        <td className="px-3 py-2.5 text-body">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{lead.assigned_to || <span className="text-accent/50 italic">Unassigned</span>}</span>
                             {lead.is_delegated_to_me && (
-                              <span
-                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)' }}
-                                title="You are supporting this lead"
-                              >
-                                Supporting
-                              </span>
+                              <Badge tone="active">Supporting</Badge>
                             )}
                           </div>
                         </td>
 
                         {/* Telecaller (admin only) */}
                         {user?.role === 'admin' && (
-                          <td className="px-3 py-2.5 text-body text-xs">
+                          <td className="px-3 py-2.5 text-body">
                             {lead.telecaller_name ? (
-                              <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium"
-                                style={{
-                                  background: 'var(--color-accent-soft)',
-                                  color: 'var(--color-accent)',
-                                  border: '1px solid var(--color-accent)',
-                                }}
-                                title={lead.telecaller_assigned_at ? `Assigned ${timeAgo(lead.telecaller_assigned_at)}` : ''}
-                              >
+                              <Badge tone="hot" className="!normal-case !tracking-normal">
                                 📞 {lead.telecaller_name}
-                              </span>
+                              </Badge>
                             ) : (
-                              <span className="text-dim text-[11px]">—</span>
+                              <span className="text-dim text-caption">—</span>
                             )}
                           </td>
                         )}
@@ -1092,16 +1043,16 @@ export default function LeadsPage() {
                         {/* Follow-up */}
                         <td className="px-3 py-2.5">
                           {followup.text !== '-' ? (
-                            <span className={`text-xs font-medium ${followup.urgent ? 'text-danger' : 'text-muted'}`}>
+                            <span className={`text-caption font-medium ${followup.urgent ? 'text-danger' : 'text-muted'}`}>
                               {followup.text}
                             </span>
                           ) : (
-                            <span className="text-xs text-dim">-</span>
+                            <span className="text-caption text-dim">-</span>
                           )}
                         </td>
 
                         {/* Added */}
-                        <td className="px-3 py-2.5 text-dim text-xs">{timeAgo(lead.created_time)}</td>
+                        <td className="px-3 py-2.5 text-dim text-caption">{timeAgo(lead.created_time)}</td>
 
                         {/* Actions */}
                         <td className="px-3 py-2.5">
@@ -1124,28 +1075,22 @@ export default function LeadsPage() {
                               }`}
                               title="Quick note"
                             >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                              </svg>
+                              <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
                             </button>
                             <Link
                               href={`/leads/${lead.row_number}`}
-                              className="inline-flex items-center gap-1 text-xs text-dim hover:text-accent transition-colors px-1.5 py-1 rounded hover:bg-accent/10"
+                              className="inline-flex items-center gap-1 text-caption text-dim hover:text-accent transition-colors px-1.5 py-1 rounded hover:bg-accent/10"
                               title="View details"
                             >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                              </svg>
+                              <Eye className="w-3.5 h-3.5" strokeWidth={1.5} />
                             </Link>
                             {lead.phone && (
                               <Link
                                 href={`/inbox?phone=${lead.phone}`}
-                                className="inline-flex items-center gap-1 text-xs text-dim hover:text-green-400 transition-colors px-1.5 py-1 rounded hover:bg-green-400/10"
+                                className="inline-flex items-center gap-1 text-caption text-dim hover:text-green-400 transition-colors px-1.5 py-1 rounded hover:bg-green-400/10"
                                 title="Open in Inbox"
                               >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                                </svg>
+                                <MessageSquare className="w-3.5 h-3.5" strokeWidth={1.5} />
                               </Link>
                             )}
                           </div>
@@ -1202,7 +1147,7 @@ export default function LeadsPage() {
                 <span className="font-semibold text-accent">{selected.size}</span>{' '}
                 lead{selected.size !== 1 ? 's' : ''} selected
                 {!canBulkAction && (
-                  <span className="text-[11px] text-dim ml-2">(your leads only)</span>
+                  <span className="text-caption text-dim ml-2">(your leads only)</span>
                 )}
               </span>
 
@@ -1290,17 +1235,15 @@ export default function LeadsPage() {
 
       {/* Add Lead Modal */}
       {showAddLead && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { setShowAddLead(false); setAddLeadTouched({}) }}>
-          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => { setShowAddLead(false); setAddLeadTouched({}) }}>
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto animate-fade-in" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-              <h2 className="text-base font-semibold text-text">Add New Lead</h2>
+              <h2 className="text-heading font-semibold text-text">Add New Lead</h2>
               <button onClick={() => { setShowAddLead(false); setAddLeadTouched({}) }} className="text-dim hover:text-text transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <X className="w-5 h-5" strokeWidth={2} />
               </button>
             </div>
-            <div className="px-6 py-5 space-y-4">
+            <div className="p-6 space-y-4">
               {(() => {
                 const nameInvalid = addLeadTouched.full_name && !addLeadForm.full_name.trim()
                 const phoneDigits = addLeadForm.phone.replace(/\D/g, '')
@@ -1309,7 +1252,7 @@ export default function LeadsPage() {
                 return (
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label htmlFor="add-lead-name" className="text-xs text-dim block mb-1">Full Name <span className="text-danger">*</span></label>
+                  <label htmlFor="add-lead-name" className="text-caption text-dim block mb-1">Full Name <span className="text-danger">*</span></label>
                   <input
                     id="add-lead-name"
                     type="text"
@@ -1324,11 +1267,11 @@ export default function LeadsPage() {
                     autoFocus
                   />
                   {nameInvalid && (
-                    <p id="add-lead-name-err" className="text-danger text-[11px] mt-1">Full name is required</p>
+                    <p id="add-lead-name-err" className="text-danger text-caption mt-1">Full name is required</p>
                   )}
                 </div>
                 <div>
-                  <label htmlFor="add-lead-phone" className="text-xs text-dim block mb-1">Phone <span className="text-danger">*</span></label>
+                  <label htmlFor="add-lead-phone" className="text-caption text-dim block mb-1">Phone <span className="text-danger">*</span></label>
                   <input
                     id="add-lead-phone"
                     type="tel"
@@ -1342,29 +1285,29 @@ export default function LeadsPage() {
                     className={`w-full bg-elevated border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50 ${phoneInvalid ? 'border-danger' : 'border-border'}`}
                   />
                   {phoneInvalid && (
-                    <p id="add-lead-phone-err" className="text-danger text-[11px] mt-1">
+                    <p id="add-lead-phone-err" className="text-danger text-caption mt-1">
                       {phoneBadFormat ? 'Enter a valid 10-digit phone' : 'Phone is required'}
                     </p>
                   )}
                 </div>
                 <div>
-                  <label className="text-xs text-dim block mb-1">Email</label>
+                  <label className="text-caption text-dim block mb-1">Email</label>
                   <input type="email" value={addLeadForm.email} onChange={e => setAddLeadForm(f => ({ ...f, email: e.target.value }))} placeholder="john@example.com" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
                 </div>
                 <div>
-                  <label className="text-xs text-dim block mb-1">City</label>
+                  <label className="text-caption text-dim block mb-1">City</label>
                   <input type="text" value={addLeadForm.city} onChange={e => setAddLeadForm(f => ({ ...f, city: e.target.value }))} placeholder="Mumbai" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
                 </div>
                 <div>
-                  <label className="text-xs text-dim block mb-1">State</label>
+                  <label className="text-caption text-dim block mb-1">State</label>
                   <input type="text" value={addLeadForm.state} onChange={e => setAddLeadForm(f => ({ ...f, state: e.target.value }))} placeholder="Maharashtra" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
                 </div>
                 <div>
-                  <label className="text-xs text-dim block mb-1">Interest</label>
+                  <label className="text-caption text-dim block mb-1">Interest</label>
                   <input type="text" value={addLeadForm.model_interest} onChange={e => setAddLeadForm(f => ({ ...f, model_interest: e.target.value }))} placeholder="Kiosk / Shop" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
                 </div>
                 <div>
-                  <label className="text-xs text-dim block mb-1">Priority</label>
+                  <label className="text-caption text-dim block mb-1">Priority</label>
                   <select value={addLeadForm.lead_priority} onChange={e => setAddLeadForm(f => ({ ...f, lead_priority: e.target.value }))} className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50">
                     <option value="HOT">HOT</option>
                     <option value="WARM">WARM</option>
@@ -1372,11 +1315,11 @@ export default function LeadsPage() {
                   </select>
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs text-dim block mb-1">Source</label>
+                  <label className="text-caption text-dim block mb-1">Source</label>
                   <input type="text" value={addLeadForm.source} onChange={e => setAddLeadForm(f => ({ ...f, source: e.target.value }))} placeholder="Referral / Walk-in / Phone Call" className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50" />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs text-dim block mb-1">Notes</label>
+                  <label className="text-caption text-dim block mb-1">Notes</label>
                   <textarea value={addLeadForm.notes} onChange={e => setAddLeadForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any notes about this lead..." rows={2} className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50 resize-none" />
                 </div>
               </div>
@@ -1384,11 +1327,11 @@ export default function LeadsPage() {
               })()}
             </div>
             <div className="px-6 py-4 border-t border-border flex items-center justify-end gap-3">
-              <button onClick={() => { setShowAddLead(false); setAddLeadTouched({}) }} className="px-4 py-2 text-sm text-muted hover:text-text transition-colors">Cancel</button>
+              <button onClick={() => { setShowAddLead(false); setAddLeadTouched({}) }} className="px-4 py-2 text-body text-muted hover:text-text transition-colors">Cancel</button>
               <button
                 onClick={handleAddLead}
                 disabled={addLeadSaving || !addLeadForm.full_name.trim() || !addLeadForm.phone.trim() || addLeadForm.phone.replace(/\D/g, '').length < 10}
-                className="bg-accent hover:bg-accent-hover text-[#1a1209] px-5 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="bg-accent hover:bg-accent-hover text-[#1a1209] px-5 py-2 rounded-lg text-body font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {addLeadSaving ? (
                   <>

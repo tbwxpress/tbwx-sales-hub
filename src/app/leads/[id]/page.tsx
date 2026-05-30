@@ -13,6 +13,8 @@ import OpportunityCheckPrompt from '@/components/OpportunityCheckPrompt'
 import { LEAD_STATUSES, STATUS_LABELS } from '@/config/client'
 import Toast from '@/components/Toast'
 import { formatTime } from '@/lib/format'
+import Badge, { statusTone, priorityTone } from '@/components/ui/Badge'
+import { ChevronRight } from 'lucide-react'
 
 // Status and priority options
 const STATUSES = LEAD_STATUSES
@@ -98,7 +100,7 @@ function LeadNotes({ phone }: { phone: string }) {
           onChange={e => setNewNote(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
           placeholder="Add a note (e.g. wants Meerut, budget 5L)..."
-          className="flex-1 bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder:text-dim focus:outline-none focus:border-accent/50"
+          className="flex-1 bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder:text-dim"
         />
         <button
           onClick={handleSave}
@@ -778,12 +780,8 @@ export default function LeadDetailPage() {
           </button>
           <div className="hidden md:block w-px h-5 bg-border" />
           <h1 className="text-base md:text-lg font-semibold truncate max-w-[60vw] md:max-w-none">{lead.full_name}</h1>
-          <span className="text-xs px-2 py-0.5 rounded border" style={STATUS_COLORS[lead.lead_status] ? { background: STATUS_COLORS[lead.lead_status].bg, color: STATUS_COLORS[lead.lead_status].text, borderColor: STATUS_COLORS[lead.lead_status].border } : { background: 'var(--color-elevated)', color: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
-            {lead.lead_status}
-          </span>
-          <span className="text-xs px-2 py-0.5 rounded border" style={PRIORITY_COLORS[lead.lead_priority] ? { background: PRIORITY_COLORS[lead.lead_priority].bg, color: PRIORITY_COLORS[lead.lead_priority].text, borderColor: PRIORITY_COLORS[lead.lead_priority].border } : { background: 'var(--color-elevated)', color: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
-            {lead.lead_priority || '-'}
-          </span>
+          <Badge tone={statusTone(lead.lead_status)}>{lead.lead_status}</Badge>
+          <Badge tone={priorityTone(lead.lead_priority)}>{lead.lead_priority || '-'}</Badge>
         </div>
         <div className="flex items-center gap-2 text-xs text-dim">
           <span>Lead #{lead.row_number}</span>
@@ -807,8 +805,8 @@ export default function LeadDetailPage() {
           <div className="sticky top-0 z-30 bg-card border-b border-border px-4 md:px-6 py-2 flex items-center gap-3 flex-wrap">
             {/* Name + phone */}
             <div className="min-w-0 mr-1">
-              <p className="text-sm font-bold text-text leading-tight truncate max-w-[180px]">{lead.full_name}</p>
-              <p className="text-[11px] text-dim font-mono">{lead.phone}</p>
+              <p className="text-heading text-text leading-tight truncate max-w-[180px]">{lead.full_name}</p>
+              <p className="text-caption text-dim font-mono">{lead.phone}</p>
             </div>
 
             <div className="h-4 w-px bg-border hidden sm:block" />
@@ -827,12 +825,9 @@ export default function LeadDetailPage() {
                 ))}
               </select>
             ) : (
-              <span
-                className="text-xs px-2 py-1 rounded border font-medium"
-                style={sc ? { background: sc.bg, color: sc.text, borderColor: sc.border } : { background: 'var(--color-elevated)', color: 'var(--color-muted)', borderColor: 'var(--color-border)' }}
-              >
+              <Badge tone={statusTone(lead.lead_status)}>
                 {STATUS_LABELS[lead.lead_status] || lead.lead_status}
-              </span>
+              </Badge>
             )}
 
             {/* Priority */}
@@ -1085,9 +1080,7 @@ export default function LeadDetailPage() {
                     <span className="ml-1 text-[10px] text-muted">({agreements.length})</span>
                   )}
                 </span>
-                <svg className={`w-4 h-4 text-dim transition-transform ${agreementsOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
+                <ChevronRight className={`w-4 h-4 text-dim transition-transform ${agreementsOpen ? 'rotate-90' : ''}`} />
               </button>
               {agreementsOpen && (
                 <div className="px-4 pb-4 space-y-3 border-t border-border/60 pt-3">
@@ -1178,9 +1171,7 @@ export default function LeadDetailPage() {
                   </svg>
                   AI Voice Agent
                 </span>
-                <svg className={`w-4 h-4 text-dim transition-transform ${voiceOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
+                <ChevronRight className={`w-4 h-4 text-dim transition-transform ${voiceOpen ? 'rotate-90' : ''}`} />
               </button>
               {voiceOpen && (
                 <div className="border-t border-border/60">
@@ -1236,7 +1227,7 @@ export default function LeadDetailPage() {
                 if (canEditStatus) {
                   return (
                     <div>
-                      <label className="text-xs text-dim block mb-1">Status</label>
+                      <label className="text-eyebrow text-dim block mb-1">Status</label>
                       <select
                         value={lead.lead_status}
                         onChange={(e) => updateField('lead_status', e.target.value)}
@@ -1253,9 +1244,9 @@ export default function LeadDetailPage() {
 
                 return (
                   <div>
-                    <label className="text-xs text-dim block mb-1">Status</label>
+                    <label className="text-eyebrow text-dim block mb-1">Status</label>
                     <div className="w-full bg-elevated/40 border border-border/60 rounded-md px-3 py-2 text-sm text-text flex items-center justify-between">
-                      <span>{STATUS_LABELS[lead.lead_status] || lead.lead_status}</span>
+                      <Badge tone={statusTone(lead.lead_status)}>{STATUS_LABELS[lead.lead_status] || lead.lead_status}</Badge>
                       <span className="text-[10px] text-dim uppercase tracking-wider">Owner-only</span>
                     </div>
                     <p className="text-[10px] text-dim mt-1.5 leading-relaxed">
@@ -1267,7 +1258,7 @@ export default function LeadDetailPage() {
               })()}
 
               <div>
-                <label className="text-xs text-dim block mb-1">Priority</label>
+                <label className="text-eyebrow text-dim block mb-1">Priority</label>
                 <select
                   value={lead.lead_priority}
                   onChange={(e) => updateField('lead_priority', e.target.value)}
@@ -1282,7 +1273,7 @@ export default function LeadDetailPage() {
 
               {/* Assigned To */}
               <div>
-                <label className="text-xs text-dim block mb-1">Assigned To</label>
+                <label className="text-eyebrow text-dim block mb-1">Assigned To</label>
                 {users.length > 0 ? (
                   <select
                     value={lead.assigned_to}
@@ -1471,9 +1462,7 @@ export default function LeadDetailPage() {
                   </svg>
                   Payment Followups
                 </span>
-                <svg className={`w-4 h-4 text-dim transition-transform ${paymentOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
+                <ChevronRight className={`w-4 h-4 text-dim transition-transform ${paymentOpen ? 'rotate-90' : ''}`} />
               </button>
               {paymentOpen && (
                 <div className="border-t border-border/60 px-4 py-3">
@@ -1494,9 +1483,7 @@ export default function LeadDetailPage() {
                   </svg>
                   Activity Log
                 </span>
-                <svg className={`w-4 h-4 text-dim transition-transform ${activityOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
+                <ChevronRight className={`w-4 h-4 text-dim transition-transform ${activityOpen ? 'rotate-90' : ''}`} />
               </button>
               {activityOpen && (
                 <div className="border-t border-border/60 px-4 py-3">

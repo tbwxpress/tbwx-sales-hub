@@ -2,9 +2,12 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import { CheckCircle } from 'lucide-react'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
 import NeedsAttentionBanner from '@/components/NeedsAttentionBanner'
+import Badge, { statusTone } from '@/components/ui/Badge'
+import EmptyState from '@/components/ui/EmptyState'
 
 interface FeedItem {
   kind: 'hot_stale' | 'overdue_followup' | 'upcoming_followup' | 'telecaller_handoff' | 'unread_reply' | 'new_assignment'
@@ -66,8 +69,8 @@ export default function TodayPage() {
       <div className="max-w-4xl mx-auto px-4 py-6 flex-1 w-full">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h1 className="text-xl font-bold text-text">Today</h1>
-            <p className="text-sm text-dim mt-0.5">{items.length === 0 ? 'You’re all caught up.' : `${items.length} action${items.length === 1 ? '' : 's'} to take`}</p>
+            <h1 className="text-heading text-text">Today</h1>
+            <p className="text-body text-dim mt-0.5">{items.length === 0 ? 'You’re all caught up.' : `${items.length} action${items.length === 1 ? '' : 's'} to take`}</p>
           </div>
           <button onClick={fetchFeed} className="text-xs text-accent hover:underline">Refresh</button>
         </div>
@@ -83,9 +86,12 @@ export default function TodayPage() {
         ) : err ? (
           <p className="text-sm text-danger">{err}</p>
         ) : items.length === 0 ? (
-          <div className="rounded-xl p-6 text-center" style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}>
-            <p className="text-sm text-muted">Nothing urgent. Good time to reach out to a cold lead — open <Link href="/leads" className="text-accent hover:underline">Leads</Link>.</p>
-          </div>
+          <EmptyState
+            icon={<CheckCircle />}
+            title="You're all caught up"
+            hint="Nothing urgent right now. Open Leads to start outreach."
+            action={<Link href="/leads" className="text-body text-accent">Go to Leads →</Link>}
+          />
         ) : (
           <div className="space-y-6">
             {sectionOrder.map(kind => {
@@ -94,7 +100,7 @@ export default function TodayPage() {
               const meta = KIND_META[kind] || { label: kind, color: 'var(--color-muted)' }
               return (
                 <section key={kind}>
-                  <h2 className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: meta.color }}>
+                  <h2 className="text-eyebrow mb-2" style={{ color: meta.color }}>
                     {meta.label} · {list.length}
                   </h2>
                   <div className="space-y-2">
@@ -102,17 +108,17 @@ export default function TodayPage() {
                       <Link
                         key={`${item.kind}-${item.ref_lead_row}`}
                         href={`/leads/${item.ref_lead_row}`}
-                        className="block rounded-lg p-3 hover:bg-elevated/60 transition-colors"
+                        className="block rounded-lg p-3 hover:bg-elevated transition-colors"
                         style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-text truncate">{item.title}</p>
-                            <p className="text-xs text-dim mt-0.5 line-clamp-2">{item.subtitle}</p>
+                            <p className="text-body font-medium text-text truncate">{item.title}</p>
+                            <p className="text-caption text-dim mt-0.5 line-clamp-2">{item.subtitle}</p>
                           </div>
-                          <span className="text-[10px] font-semibold uppercase tracking-wider shrink-0" style={{ color: meta.color }}>
+                          <Badge tone={statusTone(item.status)} className="shrink-0">
                             {item.status}
-                          </span>
+                          </Badge>
                         </div>
                       </Link>
                     ))}
