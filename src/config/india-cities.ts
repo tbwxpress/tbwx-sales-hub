@@ -234,6 +234,20 @@ export const INDIA_CITIES: CityCoord[] = [
   // Chhattisgarh additions
   { name: 'Bhilai', state: 'Chhattisgarh', lat: 21.2090, lng: 81.4285 },
   { name: 'Korba', state: 'Chhattisgarh', lat: 22.3595, lng: 82.7501 },
+
+  // Latest unmapped-cities batch (2026-05-30)
+  { name: 'Amravati', state: 'Maharashtra', lat: 20.9333, lng: 77.7833 },
+  { name: 'Panvel', state: 'Maharashtra', lat: 18.9894, lng: 73.1175 },
+  { name: 'Ulhasnagar', state: 'Maharashtra', lat: 19.2215, lng: 73.1645 },
+  { name: 'Malegaon', state: 'Maharashtra', lat: 20.5579, lng: 74.5287 },
+  { name: 'Bhiwandi', state: 'Maharashtra', lat: 19.3002, lng: 73.0635 },
+  { name: 'Gurdaspur', state: 'Punjab', lat: 32.0419, lng: 75.4053 },
+  { name: 'Muzaffarnagar', state: 'Uttar Pradesh', lat: 29.4727, lng: 77.7085 },
+  { name: 'Roorkee', state: 'Uttarakhand', lat: 29.8543, lng: 77.8880 },
+  { name: 'Dharwad', state: 'Karnataka', lat: 15.4589, lng: 75.0078 },
+  { name: 'Banswara', state: 'Rajasthan', lat: 23.5461, lng: 74.4350 },
+  { name: 'Valsad', state: 'Gujarat', lat: 20.6101, lng: 72.9342 },
+  { name: 'Gohana', state: 'Haryana', lat: 29.1373, lng: 76.6997 },
 ]
 
 /**
@@ -286,6 +300,48 @@ const CITY_ALIASES: Record<string, string> = {
   // Others
   'pondicherry': 'Puducherry', 'puducherry': 'Puducherry',
   'nellore': 'Nellore', 'kakinada': 'Vijayawada',
+
+  // Misspellings of existing cities (2026-05-30 unmapped batch)
+  'gauhati': 'Guwahati',
+  'ahemdabad': 'Ahmedabad',
+  'amdavad': 'Ahmedabad',
+  'ahmadabad': 'Ahmedabad',
+
+  // State-name-as-city fallbacks — route to state capital so leads aren't lost
+  'bihar': 'Patna',
+  'maharashtra': 'Mumbai',
+  'gujarat': 'Ahmedabad',
+  'punjab': 'Chandigarh',
+  'haryana': 'Chandigarh',
+  'karnataka': 'Bangalore',
+  'tamil nadu': 'Chennai',
+  'tamilnadu': 'Chennai',
+  'kerala': 'Thiruvananthapuram',
+  'rajasthan': 'Jaipur',
+  'uttar pradesh': 'Lucknow',
+  'uttarpradesh': 'Lucknow',
+  'up': 'Lucknow',
+  'west bengal': 'Kolkata',
+  'westbengal': 'Kolkata',
+  'wb': 'Kolkata',
+  'andhra pradesh': 'Hyderabad',
+  'andhrapradesh': 'Hyderabad',
+  'ap': 'Hyderabad',
+  'telangana': 'Hyderabad',
+  'ts': 'Hyderabad',
+  'madhya pradesh': 'Bhopal',
+  'madhyapradesh': 'Bhopal',
+  'mp': 'Bhopal',
+  'chhattisgarh': 'Raipur',
+  'odisha': 'Bhubaneswar',
+  'orissa': 'Bhubaneswar',
+  'jharkhand': 'Ranchi',
+  'assam': 'Guwahati',
+  'uttarakhand': 'Dehradun',
+  'himachal pradesh': 'Shimla',
+  'himachalpradesh': 'Shimla',
+  'hp': 'Shimla',
+  'goa': 'Panaji',
 }
 
 /**

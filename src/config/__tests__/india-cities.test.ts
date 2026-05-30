@@ -63,6 +63,36 @@ describe('findCity', () => {
     expect(findCity('delhi ncr')?.name).toBe('Delhi')
     expect(findCity('south delhi')?.name).toBe('Delhi')
   })
+
+  it('matches all the missing tier-2 cities from the latest unmapped list', () => {
+    expect(findCity('Amravati')?.name).toBe('Amravati')
+    expect(findCity('Gurdaspur')?.name).toBe('Gurdaspur')
+    expect(findCity('Muzaffarnagar')?.name).toBe('Muzaffarnagar')
+    expect(findCity('Panvel')?.name).toBe('Panvel')
+    expect(findCity('Ulhasnagar')?.name).toBe('Ulhasnagar')
+    expect(findCity('Dharwad')?.name).toBe('Dharwad')
+    expect(findCity('Banswara')?.name).toBe('Banswara')
+    expect(findCity('Valsad')?.name).toBe('Valsad')
+    expect(findCity('Roorkee')?.name).toBe('Roorkee')
+    expect(findCity('Malegaon')?.name).toBe('Malegaon')
+    expect(findCity('Bhiwandi')?.name).toBe('Bhiwandi')
+    expect(findCity('Gohana')?.name).toBe('Gohana')
+  })
+
+  it('resolves common misspellings of existing cities', () => {
+    expect(findCity('Gauhati')?.name).toBe('Guwahati')
+    expect(findCity('ahemdabad')?.name).toBe('Ahmedabad')
+    expect(findCity('amdavad')?.name).toBe('Ahmedabad')
+  })
+
+  it('routes state names to their capital city', () => {
+    expect(findCity('Bihar')?.name).toBe('Patna')
+    expect(findCity('Maharashtra')?.name).toBe('Mumbai')
+    expect(findCity('Karnataka')?.name).toBe('Bangalore')
+    expect(findCity('Tamil Nadu')?.name).toBe('Chennai')
+    expect(findCity('Uttar Pradesh')?.name).toBe('Lucknow')
+    expect(findCity('UP')?.name).toBe('Lucknow')
+  })
 })
 
 describe('projectLatLng', () => {
