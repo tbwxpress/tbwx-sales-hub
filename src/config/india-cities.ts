@@ -147,6 +147,93 @@ export const INDIA_CITIES: CityCoord[] = [
   { name: 'Gangtok', state: 'Sikkim', lat: 27.3389, lng: 88.6065 },
   { name: 'Aizawl', state: 'Mizoram', lat: 23.1645, lng: 92.9376 },
   { name: 'Kohima', state: 'Nagaland', lat: 25.6751, lng: 94.1086 },
+
+  // Maharashtra tier-2/3 additions
+  { name: 'Chandrapur', state: 'Maharashtra', lat: 19.9550, lng: 79.2961 },
+  { name: 'Latur', state: 'Maharashtra', lat: 18.4088, lng: 76.5604 },
+  { name: 'Akola', state: 'Maharashtra', lat: 20.7059, lng: 77.0219 },
+  { name: 'Sangli', state: 'Maharashtra', lat: 16.8524, lng: 74.5815 },
+  { name: 'Yavatmal', state: 'Maharashtra', lat: 20.3897, lng: 78.1300 },
+  { name: 'Wardha', state: 'Maharashtra', lat: 20.7453, lng: 78.6022 },
+  { name: 'Ahmednagar', state: 'Maharashtra', lat: 19.0948, lng: 74.7480 },
+  { name: 'Jalgaon', state: 'Maharashtra', lat: 21.0077, lng: 75.5626 },
+
+  // Bihar additions
+  { name: 'Darbhanga', state: 'Bihar', lat: 26.1542, lng: 85.8918 },
+  { name: 'Purnia', state: 'Bihar', lat: 25.7771, lng: 87.4753 },
+  { name: 'Begusarai', state: 'Bihar', lat: 25.4180, lng: 86.1300 },
+  { name: 'Saharsa', state: 'Bihar', lat: 25.8800, lng: 86.5950 },
+
+  // Jharkhand additions
+  { name: 'Bokaro', state: 'Jharkhand', lat: 23.6693, lng: 86.1511 },
+  { name: 'Hazaribagh', state: 'Jharkhand', lat: 23.9960, lng: 85.3617 },
+
+  // Odisha additions
+  { name: 'Rourkela', state: 'Odisha', lat: 22.2604, lng: 84.8536 },
+  { name: 'Sambalpur', state: 'Odisha', lat: 21.4669, lng: 83.9756 },
+  { name: 'Berhampur', state: 'Odisha', lat: 19.3149, lng: 84.7941 },
+
+  // Rajasthan additions
+  { name: 'Bharatpur', state: 'Rajasthan', lat: 27.2152, lng: 77.4977 },
+  { name: 'Alwar', state: 'Rajasthan', lat: 27.5530, lng: 76.6346 },
+  { name: 'Sri Ganganagar', state: 'Rajasthan', lat: 29.9038, lng: 73.8772 },
+
+  // Madhya Pradesh additions
+  { name: 'Sagar', state: 'Madhya Pradesh', lat: 23.8388, lng: 78.7378 },
+  { name: 'Rewa', state: 'Madhya Pradesh', lat: 24.5373, lng: 81.3042 },
+  { name: 'Satna', state: 'Madhya Pradesh', lat: 24.5667, lng: 80.8333 },
+  { name: 'Dewas', state: 'Madhya Pradesh', lat: 22.9676, lng: 76.0534 },
+
+  // Gujarat additions
+  { name: 'Anand', state: 'Gujarat', lat: 22.5645, lng: 72.9289 },
+  { name: 'Junagadh', state: 'Gujarat', lat: 21.5222, lng: 70.4579 },
+  { name: 'Bhuj', state: 'Gujarat', lat: 23.2419, lng: 69.6669 },
+  { name: 'Jamnagar', state: 'Gujarat', lat: 22.4707, lng: 70.0577 },
+
+  // Tamil Nadu additions
+  { name: 'Vellore', state: 'Tamil Nadu', lat: 12.9165, lng: 79.1325 },
+  { name: 'Hosur', state: 'Tamil Nadu', lat: 12.7409, lng: 77.8253 },
+  { name: 'Kanchipuram', state: 'Tamil Nadu', lat: 12.8342, lng: 79.7036 },
+
+  // Karnataka additions
+  { name: 'Tumkur', state: 'Karnataka', lat: 13.3389, lng: 77.1010 },
+  { name: 'Davanagere', state: 'Karnataka', lat: 14.4663, lng: 75.9238 },
+  { name: 'Shimoga', state: 'Karnataka', lat: 13.9299, lng: 75.5681 },
+
+  // Andhra Pradesh additions
+  { name: 'Kurnool', state: 'Andhra Pradesh', lat: 15.8281, lng: 78.0373 },
+  { name: 'Anantapur', state: 'Andhra Pradesh', lat: 14.6819, lng: 77.6006 },
+  { name: 'Kadapa', state: 'Andhra Pradesh', lat: 14.4673, lng: 78.8242 },
+  { name: 'Eluru', state: 'Andhra Pradesh', lat: 16.7107, lng: 81.0950 },
+  { name: 'Nellore', state: 'Andhra Pradesh', lat: 14.4426, lng: 79.9865 },
+
+  // Telangana additions
+  { name: 'Karimnagar', state: 'Telangana', lat: 18.4386, lng: 79.1288 },
+  { name: 'Khammam', state: 'Telangana', lat: 17.2473, lng: 80.1514 },
+  { name: 'Nizamabad', state: 'Telangana', lat: 18.6725, lng: 78.0941 },
+
+  // Kerala additions
+  { name: 'Kollam', state: 'Kerala', lat: 8.8932, lng: 76.6141 },
+  { name: 'Alappuzha', state: 'Kerala', lat: 9.4981, lng: 76.3388 },
+
+  // Puducherry
+  { name: 'Puducherry', state: 'Puducherry', lat: 11.9416, lng: 79.8083 },
+
+  // Uttar Pradesh additions
+  { name: 'Mathura', state: 'Uttar Pradesh', lat: 27.4924, lng: 77.6737 },
+  { name: 'Firozabad', state: 'Uttar Pradesh', lat: 27.1591, lng: 78.3957 },
+  { name: 'Jhansi', state: 'Uttar Pradesh', lat: 25.4484, lng: 78.5685 },
+
+  // Haryana additions
+  { name: 'Yamunanagar', state: 'Haryana', lat: 30.1290, lng: 77.2674 },
+  { name: 'Bahadurgarh', state: 'Haryana', lat: 28.6909, lng: 76.9319 },
+
+  // Punjab additions
+  { name: 'Pathankot', state: 'Punjab', lat: 32.2746, lng: 75.6521 },
+
+  // Chhattisgarh additions
+  { name: 'Bhilai', state: 'Chhattisgarh', lat: 21.2090, lng: 81.4285 },
+  { name: 'Korba', state: 'Chhattisgarh', lat: 22.3595, lng: 82.7501 },
 ]
 
 /**
@@ -197,8 +284,8 @@ const CITY_ALIASES: Record<string, string> = {
   // Northeast
   'dimapur': 'Kohima', 'silchar': 'Guwahati',
   // Others
-  'pondicherry': 'Chennai', 'puducherry': 'Chennai',
-  'nellore': 'Guntur', 'kakinada': 'Vijayawada',
+  'pondicherry': 'Puducherry', 'puducherry': 'Puducherry',
+  'nellore': 'Nellore', 'kakinada': 'Vijayawada',
 }
 
 /**
@@ -213,6 +300,19 @@ export function findCity(name: string): CityCoord | null {
   // 1. Exact match
   const exact = INDIA_CITIES.find(c => c.name.toLowerCase() === clean)
   if (exact) return exact
+
+  // 1b. Try collapsing all whitespace and matching exactly
+  //     (handles "Dehra Dun" → "Dehradun", "Navi Mumbai" → "NaviMumbai" etc.)
+  const collapsed = clean.replace(/\s+/g, '')
+  if (collapsed && collapsed !== clean) {
+    const collapsedMatch = INDIA_CITIES.find(c => c.name.toLowerCase().replace(/\s+/g, '') === collapsed)
+    if (collapsedMatch) return collapsedMatch
+    const collapsedAlias = CITY_ALIASES[collapsed]
+    if (collapsedAlias) {
+      const found = INDIA_CITIES.find(c => c.name === collapsedAlias)
+      if (found) return found
+    }
+  }
 
   // 2. Alias lookup
   const aliasTarget = CITY_ALIASES[clean]

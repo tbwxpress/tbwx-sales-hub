@@ -37,6 +37,24 @@ describe('findCity', () => {
     expect(findCity('zzzzz')).toBeNull()
   })
 
+  it('handles internal-space variants of single-word canonical names', () => {
+    expect(findCity('Dehra Dun')?.name).toBe('Dehradun')
+    expect(findCity('Dehra  Dun')?.name).toBe('Dehradun')  // multiple spaces
+    expect(findCity('DEHRA DUN')?.name).toBe('Dehradun')
+  })
+
+  it('matches newly-added tier-2 cities', () => {
+    expect(findCity('Chandrapur')?.name).toBe('Chandrapur')
+    expect(findCity('Darbhanga')?.name).toBe('Darbhanga')
+    expect(findCity('Latur')?.name).toBe('Latur')
+    expect(findCity('Bhilai')?.name).toBe('Bhilai')
+  })
+
+  it('routes Puducherry to its own coordinates, not Chennai', () => {
+    expect(findCity('Puducherry')?.name).toBe('Puducherry')
+    expect(findCity('Pondicherry')?.name).toBe('Puducherry')
+  })
+
   it('handles "New Delhi" and "Delhi" variants', () => {
     // "New Delhi" is a separate entry that matches first via exact match
     const nd = findCity('new delhi')
