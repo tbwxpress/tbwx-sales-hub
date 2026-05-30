@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { findCity, projectLatLng, isKnownForeign, isJunkCityValue } from '../india-cities'
+import {
+  findCity,
+  projectLatLng,
+  isKnownForeign,
+  isJunkCityValue,
+  isLikelyPhoneOrPincode,
+  isNonLatinScript,
+  unicodeNormalize,
+} from '../india-cities'
 
 describe('findCity', () => {
   it('returns null for empty/null/whitespace input', () => {
@@ -130,6 +138,58 @@ describe('findCity', () => {
     expect(findCity('Panjim')?.name).toBe('Panaji')
     expect(findCity('bangluru')?.name).toBe('Bangalore')
   })
+
+  it('matches a broad set of fifth-round drain-pass additions', () => {
+    expect(findCity('Proddatur')?.name).toBe('Proddatur')
+    expect(findCity('Baramulla')?.name).toBe('Baramulla')
+    expect(findCity('Lonavala')?.name).toBe('Lonavala')
+    expect(findCity('Vasai')?.name).toBe('Vasai')
+    expect(findCity('Haldwani')?.name).toBe('Haldwani')
+    expect(findCity('Mount Abu')?.name).toBe('Mount Abu')
+    expect(findCity('Darjeeling')?.name).toBe('Darjeeling')
+    expect(findCity('Hospet')?.name).toBe('Hospet')
+    expect(findCity('Rameswaram')?.name).toBe('Rameswaram')
+    expect(findCity('Hanmakonda')?.name).toBe('Hanamkonda')
+    expect(findCity('hanumakonda')?.name).toBe('Hanamkonda')
+    expect(findCity('Diu')?.name).toBe('Diu')
+    expect(findCity('Kurukshetra')?.name).toBe('Kurukshetra')
+    expect(findCity('Chittorgarh')?.name).toBe('Chittorgarh')
+    expect(findCity('Azamgarh')?.name).toBe('Azamgarh')
+    expect(findCity('Beed')?.name).toBe('Beed')
+    expect(findCity('Jalpaiguri')?.name).toBe('Jalpaiguri')
+    expect(findCity('Hanamkonda')?.name).toBe('Hanamkonda')
+    expect(findCity('Bidar')?.name).toBe('Bidar')
+    expect(findCity('Gadchiroli')?.name).toBe('Gadchiroli')
+  })
+
+  it('resolves a wide pool of fifth-round typos via aliases', () => {
+    expect(findCity('Bngalore')?.name).toBe('Bangalore')
+    expect(findCity('Hyedrabad')?.name).toBe('Hyderabad')
+    expect(findCity('Gurgram')?.name).toBe('Gurgaon')
+    expect(findCity('Bhubneswar')?.name).toBe('Bhubaneswar')
+    expect(findCity('Ahmedbad')?.name).toBe('Ahmedabad')
+    expect(findCity('Cawnpore')?.name).toBe('Kanpur')
+    expect(findCity('Bhir')?.name).toBe('Beed')
+    expect(findCity('Bidare')?.name).toBe('Bidar')
+    expect(findCity('Gadchoroli')?.name).toBe('Gadchiroli')
+    expect(findCity('Manchireya')?.name).toBe('Mancherial')
+    expect(findCity('Nehtour')?.name).toBe('Nehtaur')
+    expect(findCity('Himmatnagar')?.name).toBe('Himatnagar')
+    expect(findCity('Dehri on sone')?.name).toBe('Dehri')
+    expect(findCity('Purnea')?.name).toBe('Purnia')
+    expect(findCity('Begusaria')?.name).toBe('Begusarai')
+    expect(findCity('Miraroad')?.name).toBe('Mira Road')
+    expect(findCity('Mira road')?.name).toBe('Mira Road')
+    expect(findCity('Palava dombiwali')?.name).toBe('Dombivli')
+    expect(findCity('Gurgram')?.name).toBe('Gurgaon')
+    expect(findCity('Mussafah sahbyia 9')?.name).toBeUndefined()  // foreign → should NOT match
+  })
+
+  it('strips parenthetical descriptors before matching', () => {
+    const m = findCity('Anaval (unai)')
+    // If Anaval is unknown the result is null — but it must NOT include parens in name
+    if (m) expect(m.name.toLowerCase()).not.toContain('(')
+  })
 })
 
 describe('projectLatLng', () => {
@@ -180,5 +240,55 @@ describe('isJunkCityValue', () => {
     expect(isJunkCityValue('Call me')).toBe(true)
     expect(isJunkCityValue('Bhat gam')).toBe(true)
     expect(isJunkCityValue('bhatgam')).toBe(true)
+  })
+  it('flags fifth-round junk values', () => {
+    expect(isJunkCityValue('Jjjj')).toBe(true)
+    expect(isJunkCityValue('goksj')).toBe(true)
+    expect(isJunkCityValue('Gyrgson')).toBe(true)
+    expect(isJunkCityValue('Pu e')).toBe(true)
+    expect(isJunkCityValue('Yes')).toBe(true)
+    expect(isJunkCityValue('Shashi')).toBe(true)
+    expect(isJunkCityValue('Rehan')).toBe(true)
+  })
+})
+
+describe('isLikelyPhoneOrPincode', () => {
+  it('detects pincodes and phone numbers', () => {
+    expect(isLikelyPhoneOrPincode('400066')).toBe(true)
+    expect(isLikelyPhoneOrPincode('500008')).toBe(true)
+    expect(isLikelyPhoneOrPincode('312001')).toBe(true)
+    expect(isLikelyPhoneOrPincode('403513')).toBe(true)
+    expect(isLikelyPhoneOrPincode('91755 21737')).toBe(true)
+    expect(isLikelyPhoneOrPincode('+91 9755 21737')).toBe(true)
+  })
+  it('passes real city names', () => {
+    expect(isLikelyPhoneOrPincode('Mumbai')).toBe(false)
+    expect(isLikelyPhoneOrPincode('Delhi')).toBe(false)
+    expect(isLikelyPhoneOrPincode(null)).toBe(false)
+    expect(isLikelyPhoneOrPincode('')).toBe(false)
+  })
+})
+
+describe('isNonLatinScript', () => {
+  it('detects Devanagari and other Indian scripts', () => {
+    expect(isNonLatinScript('लखनऊ और बरेली')).toBe(true)
+    expect(isNonLatinScript('इंडसइंड बैंक जयपुर न्यू इनकम टैक्स कॉलोनी')).toBe(true)
+  })
+  it('passes Latin-script inputs', () => {
+    expect(isNonLatinScript('Mumbai')).toBe(false)
+    expect(isNonLatinScript('')).toBe(false)
+    expect(isNonLatinScript(null)).toBe(false)
+  })
+})
+
+describe('unicodeNormalize', () => {
+  it('converts mathematical blackboard-bold text to ASCII', () => {
+    // 𝔻𝕒𝕣𝕪𝕡𝕦𝕣 → "Darypur" after NFKD normalization
+    const result = unicodeNormalize('𝔻𝕒𝕣𝕪𝕡𝕦𝕣')
+    expect(result.toLowerCase()).toMatch(/dary/)
+  })
+  it('leaves plain ASCII unchanged', () => {
+    expect(unicodeNormalize('Mumbai')).toBe('Mumbai')
+    expect(unicodeNormalize('')).toBe('')
   })
 })

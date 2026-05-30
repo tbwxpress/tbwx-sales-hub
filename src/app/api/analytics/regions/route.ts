@@ -2,7 +2,14 @@ import { apiError } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads } from '@/lib/sheets'
-import { findCity, isKnownForeign, isJunkCityValue } from '@/config/india-cities'
+import {
+  findCity,
+  isKnownForeign,
+  isJunkCityValue,
+  isLikelyPhoneOrPincode,
+  isNonLatinScript,
+  unicodeNormalize,
+} from '@/config/india-cities'
 
 /**
  * GET /api/analytics/regions
@@ -38,15 +45,28 @@ export async function GET() {
 
     for (const lead of leads) {
       if (!lead.city) continue
-      const coord = findCity(lead.city)
+      const raw = lead.city
+
+      // Filter out obviously non-actionable inputs FIRST
+      if (
+        isJunkCityValue(raw) ||
+        isKnownForeign(raw) ||
+        isLikelyPhoneOrPincode(raw) ||
+        isNonLatinScript(raw)
+      ) {
+        continue
+      }
+
+      let coord = findCity(raw)
+
+      // If no match, try a unicode-stripped version (handles stylized text like 𝔻𝕒𝕣𝕪𝕡𝕦𝕣)
+      if (!coord) {
+        const ascii = unicodeNormalize(raw)
+        if (ascii !== raw && ascii) coord = findCity(ascii)
+      }
 
       if (!coord) {
-        // Skip silently if the value is foreign or junk — they shouldn't pollute
-        // the "Unmapped cities" warning since they aren't actionable.
-        if (isKnownForeign(lead.city) || isJunkCityValue(lead.city)) {
-          continue
-        }
-        unmatchedCities.set(lead.city, (unmatchedCities.get(lead.city) || 0) + 1)
+        unmatchedCities.set(raw, (unmatchedCities.get(raw) || 0) + 1)
         continue
       }
 
