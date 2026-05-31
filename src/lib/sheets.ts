@@ -81,54 +81,107 @@ export async function getLeadByRow(rowNumber: number): Promise<Lead | null> {
   }
 }
 
-// In-memory cache for leads — avoids hammering Google Sheets API
-// TTL: 60 seconds. Invalidated on write operations (updateLead, bulkUpdateField)
-let _leadsCache: { data: Lead[]; ts: number } | null = null
-const LEADS_CACHE_TTL_MS = 60_000
+// --- Module-level in-memory caches for Sheets reads ---
+//
+// Pattern: store an in-flight Promise (not the resolved value) plus a timestamp.
+// - Concurrent callers within the TTL share the same Promise → single Sheets API
+//   call instead of one per caller (no thundering herd on first request).
+// - On error, the Promise is cleared so the next caller retries fresh.
+// - TTL ceiling is 30s per the perf-fix plan. Mutations call the matching
+//   invalidate* function below so writers see their own changes immediately.
+//
+// What IS cached: pure read functions whose result is shaped by the function
+// signature alone (no arguments, or args that filter an already-fetched payload).
+// What is NOT cached: getLeadByRow (single-row reads are already cheap and
+// callers may want absolute freshness), all write operations, and getConversation
+// (it's a composition of cached reads, so it inherits the cache for free).
+const SHEETS_CACHE_TTL_MS = 30_000
+
+type CacheEntry<T> = { promise: Promise<T>; ts: number }
+
+let _leadsCache: CacheEntry<Lead[]> | null = null
+// Sent/received messages are cached UNFILTERED. The optional `phone` arg
+// filters the already-fetched array in memory, so the cache key is the
+// function itself (not the phone number).
+let _sentMessagesCache: CacheEntry<Message[]> | null = null
+let _receivedMessagesCache: CacheEntry<Message[]> | null = null
+let _quickRepliesCache: CacheEntry<QuickReply[]> | null = null
+let _knowledgeBaseCache: CacheEntry<KnowledgeBaseEntry[]> | null = null
+
+function readThrough<T>(
+  entryRef: { get: () => CacheEntry<T> | null; set: (e: CacheEntry<T> | null) => void },
+  fetcher: () => Promise<T>
+): Promise<T> {
+  const cur = entryRef.get()
+  if (cur && Date.now() - cur.ts < SHEETS_CACHE_TTL_MS) {
+    return cur.promise
+  }
+  const promise = fetcher().catch(err => {
+    // Clear on failure so the next caller retries instead of returning a poisoned promise.
+    if (entryRef.get()?.promise === promise) entryRef.set(null)
+    throw err
+  })
+  entryRef.set({ promise, ts: Date.now() })
+  return promise
+}
 
 export function invalidateLeadsCache() {
   _leadsCache = null
 }
 
+export function invalidateSentMessagesCache() {
+  _sentMessagesCache = null
+}
+
+export function invalidateReceivedMessagesCache() {
+  _receivedMessagesCache = null
+}
+
+export function invalidateQuickRepliesCache() {
+  _quickRepliesCache = null
+}
+
+export function invalidateKnowledgeBaseCache() {
+  _knowledgeBaseCache = null
+}
+
 export async function getLeads(): Promise<Lead[]> {
-  if (_leadsCache && Date.now() - _leadsCache.ts < LEADS_CACHE_TTL_MS) {
-    return _leadsCache.data
-  }
-
-  const sheets = getSheets()
-  const tab = process.env.LEADS_TAB_NAME || T.leads
-  const res = await withRetry(() => sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.LEADS_SHEET_ID,
-    range: `${tab}!A2:${SHEETS.ranges.leadsEnd}`,
-  }))
-  const rows = res.data.values || []
-  const C = LEAD_COLUMN_MAP
-  const leads = rows.map((row, i) => ({
-    row_number: i + 2,
-    id: row[C.id] || '',
-    created_time: row[C.created_time] || '',
-    campaign_name: row[C.campaign_name] || '',
-    full_name: row[C.full_name] || '',
-    phone: (row[C.phone] || '').replace('p:', ''),
-    email: row[C.email] || '',
-    city: row[C.city] || '',
-    state: row[C.state] || '',
-    model_interest: row[C.model_interest] || '',
-    experience: row[C.experience] || '',
-    timeline: row[C.timeline] || '',
-    platform: row[C.platform] || '',
-    lead_status: (row[C.lead_status] || 'NEW') as LeadStatus,
-    attempted_contact: row[C.attempted_contact] || '',
-    first_call_date: row[C.first_call_date] || '',
-    wa_message_id: row[C.wa_message_id] || '',
-    lead_priority: row[C.lead_priority] || '',
-    assigned_to: row[C.assigned_to] || '',
-    next_followup: row[C.next_followup] || '',
-    notes: row[C.notes] || '',
-  }))
-
-  _leadsCache = { data: leads, ts: Date.now() }
-  return leads
+  return readThrough<Lead[]>(
+    { get: () => _leadsCache, set: e => { _leadsCache = e } },
+    async () => {
+      const sheets = getSheets()
+      const tab = process.env.LEADS_TAB_NAME || T.leads
+      const res = await withRetry(() => sheets.spreadsheets.values.get({
+        spreadsheetId: process.env.LEADS_SHEET_ID,
+        range: `${tab}!A2:${SHEETS.ranges.leadsEnd}`,
+      }))
+      const rows = res.data.values || []
+      const C = LEAD_COLUMN_MAP
+      return rows.map((row, i) => ({
+        row_number: i + 2,
+        id: row[C.id] || '',
+        created_time: row[C.created_time] || '',
+        campaign_name: row[C.campaign_name] || '',
+        full_name: row[C.full_name] || '',
+        phone: (row[C.phone] || '').replace('p:', ''),
+        email: row[C.email] || '',
+        city: row[C.city] || '',
+        state: row[C.state] || '',
+        model_interest: row[C.model_interest] || '',
+        experience: row[C.experience] || '',
+        timeline: row[C.timeline] || '',
+        platform: row[C.platform] || '',
+        lead_status: (row[C.lead_status] || 'NEW') as LeadStatus,
+        attempted_contact: row[C.attempted_contact] || '',
+        first_call_date: row[C.first_call_date] || '',
+        wa_message_id: row[C.wa_message_id] || '',
+        lead_priority: row[C.lead_priority] || '',
+        assigned_to: row[C.assigned_to] || '',
+        next_followup: row[C.next_followup] || '',
+        notes: row[C.notes] || '',
+      }))
+    }
+  )
 }
 
 export async function updateLeadField(rowNumber: number, column: string, value: string): Promise<void> {
@@ -207,6 +260,7 @@ export async function clearLeadRow(rowNumber: number): Promise<void> {
     spreadsheetId: process.env.LEADS_SHEET_ID!,
     range: `${tab}!A${rowNumber}:Z${rowNumber}`,
   })
+  invalidateLeadsCache()
 }
 
 // --- Create Lead ---
@@ -253,6 +307,7 @@ export async function createLead(data: {
     valueInputOption: 'RAW',
     requestBody: { values: [row] },
   })
+  invalidateLeadsCache()
 
   // Extract row number from the append response (e.g. "Leads!A255:AC255" → 255)
   const updatedRange = appendRes.data.updates?.updatedRange || ''
@@ -262,7 +317,8 @@ export async function createLead(data: {
 
 // --- Messages ---
 
-export async function getReceivedMessages(phone?: string): Promise<Message[]> {
+// Internal fetcher — gets the full unfiltered Replies tab from Sheets.
+async function fetchAllReceivedMessages(): Promise<Message[]> {
   const sheets = getSheets()
   const repliesTab = process.env.REPLIES_TAB_NAME || T.replies
   const res = await sheets.spreadsheets.values.get({
@@ -270,7 +326,7 @@ export async function getReceivedMessages(phone?: string): Promise<Message[]> {
     range: `${repliesTab}!${SHEETS.ranges.repliesRange}`,
   })
   const rows = res.data.values || []
-  let messages = rows
+  return rows
     .filter(row => (row[6] || '') === 'message')
     .map(row => ({
       timestamp: row[0] || '',
@@ -283,14 +339,23 @@ export async function getReceivedMessages(phone?: string): Promise<Message[]> {
       status: 'Received',
       template_used: '',
     }))
-  if (phone) {
-    const cleanPhone = phone.replace(/\D/g, '')
-    messages = messages.filter(m => m.phone.replace(/\D/g, '').includes(cleanPhone) || cleanPhone.includes(m.phone.replace(/\D/g, '')))
-  }
-  return messages
 }
 
-export async function getSentMessages(phone?: string): Promise<Message[]> {
+export async function getReceivedMessages(phone?: string): Promise<Message[]> {
+  // The cache holds the FULL unfiltered list; the optional phone filter is
+  // applied in-memory after the cached read. This means a hit for one phone
+  // is also a hit for any other phone in the same 30s window.
+  const all = await readThrough<Message[]>(
+    { get: () => _receivedMessagesCache, set: e => { _receivedMessagesCache = e } },
+    fetchAllReceivedMessages
+  )
+  if (!phone) return all
+  const cleanPhone = phone.replace(/\D/g, '')
+  return all.filter(m => m.phone.replace(/\D/g, '').includes(cleanPhone) || cleanPhone.includes(m.phone.replace(/\D/g, '')))
+}
+
+// Internal fetcher — gets the full unfiltered Sent Messages tab from Sheets.
+async function fetchAllSentMessages(): Promise<Message[]> {
   const sheets = getSheets()
   const sentTab = process.env.SENT_MESSAGES_TAB_NAME || T.sentMessages
   const res = await sheets.spreadsheets.values.get({
@@ -298,7 +363,7 @@ export async function getSentMessages(phone?: string): Promise<Message[]> {
     range: `${sentTab}!${SHEETS.ranges.sentRange}`,
   })
   const rows = res.data.values || []
-  let messages = rows.map(row => ({
+  return rows.map(row => ({
     timestamp: row[0] || '',
     phone: row[1] || '',
     name: row[2] || '',
@@ -309,11 +374,17 @@ export async function getSentMessages(phone?: string): Promise<Message[]> {
     status: row[6] || '',
     template_used: row[7] || '',
   }))
-  if (phone) {
-    const cleanPhone = phone.replace(/\D/g, '')
-    messages = messages.filter(m => m.phone.replace(/\D/g, '').includes(cleanPhone) || cleanPhone.includes(m.phone.replace(/\D/g, '')))
-  }
-  return messages
+}
+
+export async function getSentMessages(phone?: string): Promise<Message[]> {
+  // Same shape as getReceivedMessages — cache the unfiltered list, filter in-memory.
+  const all = await readThrough<Message[]>(
+    { get: () => _sentMessagesCache, set: e => { _sentMessagesCache = e } },
+    fetchAllSentMessages
+  )
+  if (!phone) return all
+  const cleanPhone = phone.replace(/\D/g, '')
+  return all.filter(m => m.phone.replace(/\D/g, '').includes(cleanPhone) || cleanPhone.includes(m.phone.replace(/\D/g, '')))
 }
 
 export async function getConversation(phone: string): Promise<Message[]> {
@@ -349,11 +420,14 @@ export async function logSentMessage(data: {
       ]],
     },
   })
+  // The just-appended row needs to be visible to the same request that wrote
+  // it (e.g. send-then-render flows).
+  invalidateSentMessagesCache()
 }
 
 // --- Quick Replies ---
 
-export async function getQuickReplies(): Promise<QuickReply[]> {
+async function fetchAllQuickReplies(): Promise<QuickReply[]> {
   const sheets = getSheets()
   const qrTab = process.env.QUICK_REPLIES_TAB_NAME || T.quickReplies
   const res = await sheets.spreadsheets.values.get({
@@ -371,6 +445,13 @@ export async function getQuickReplies(): Promise<QuickReply[]> {
   }))
 }
 
+export async function getQuickReplies(): Promise<QuickReply[]> {
+  return readThrough<QuickReply[]>(
+    { get: () => _quickRepliesCache, set: e => { _quickRepliesCache = e } },
+    fetchAllQuickReplies
+  )
+}
+
 export async function createQuickReply(qr: Omit<QuickReply, 'id' | 'created_at'>): Promise<string> {
   const sheets = getSheets()
   const qrTab = process.env.QUICK_REPLIES_TAB_NAME || T.quickReplies
@@ -383,6 +464,7 @@ export async function createQuickReply(qr: Omit<QuickReply, 'id' | 'created_at'>
       values: [[id, qr.category, qr.title, qr.message, qr.created_by, new Date().toISOString()]],
     },
   })
+  invalidateQuickRepliesCache()
   return id
 }
 
@@ -404,6 +486,7 @@ export async function updateQuickReply(qrId: string, fields: Partial<Pick<QuickR
       values: [[updated.id, updated.category, updated.title, updated.message, updated.created_by, updated.created_at]],
     },
   })
+  invalidateQuickRepliesCache()
 }
 
 export async function deleteQuickReply(qrId: string): Promise<void> {
@@ -435,6 +518,7 @@ export async function deleteQuickReply(qrId: string): Promise<void> {
       }],
     },
   })
+  invalidateQuickRepliesCache()
 }
 
 // --- Stats ---
@@ -483,7 +567,7 @@ export async function getLeadStats(filterAgent?: string): Promise<{
 
 // --- Knowledge Base ---
 
-export async function getKnowledgeBase(): Promise<KnowledgeBaseEntry[]> {
+async function fetchAllKnowledgeBase(): Promise<KnowledgeBaseEntry[]> {
   const sheets = getSheets()
   const kbTab = process.env.KNOWLEDGE_BASE_TAB_NAME || T.knowledgeBase
   const res = await sheets.spreadsheets.values.get({
@@ -502,6 +586,13 @@ export async function getKnowledgeBase(): Promise<KnowledgeBaseEntry[]> {
   }))
 }
 
+export async function getKnowledgeBase(): Promise<KnowledgeBaseEntry[]> {
+  return readThrough<KnowledgeBaseEntry[]>(
+    { get: () => _knowledgeBaseCache, set: e => { _knowledgeBaseCache = e } },
+    fetchAllKnowledgeBase
+  )
+}
+
 export async function createKnowledgeBaseEntry(entry: Omit<KnowledgeBaseEntry, 'id' | 'created_at'>): Promise<string> {
   const sheets = getSheets()
   const kbTab = process.env.KNOWLEDGE_BASE_TAB_NAME || T.knowledgeBase
@@ -514,6 +605,7 @@ export async function createKnowledgeBaseEntry(entry: Omit<KnowledgeBaseEntry, '
       values: [[id, entry.category, entry.title, entry.content, entry.link, entry.created_by, new Date().toISOString()]],
     },
   })
+  invalidateKnowledgeBaseCache()
   return id
 }
 
@@ -535,6 +627,7 @@ export async function updateKnowledgeBaseEntry(entryId: string, fields: Partial<
       values: [[updated.id, updated.category, updated.title, updated.content, updated.link, updated.created_by, updated.created_at]],
     },
   })
+  invalidateKnowledgeBaseCache()
 }
 
 export async function deleteKnowledgeBaseEntry(entryId: string): Promise<void> {
@@ -566,4 +659,5 @@ export async function deleteKnowledgeBaseEntry(entryId: string): Promise<void> {
       }],
     },
   })
+  invalidateKnowledgeBaseCache()
 }

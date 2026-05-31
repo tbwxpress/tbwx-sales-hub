@@ -1,12 +1,24 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import type { Lead, Message, QuickReply, ApiResponse, PaymentFollowup } from '@/lib/types'
 import UpdateRequestBanner from '@/components/UpdateRequestBanner'
-import VoiceAgentCard from '@/components/VoiceAgentCard'
-import AgreementForm from '@/components/AgreementForm'
-import LogCallModal from '@/components/LogCallModal'
+// Heavy interactive components — only mounted behind clicks/toggles.
+// Dynamic import keeps them out of the lead-detail first-load JS bundle.
+const VoiceAgentCard = dynamic(() => import('@/components/VoiceAgentCard'), {
+  loading: () => null,
+  ssr: false,
+})
+const AgreementForm = dynamic(() => import('@/components/AgreementForm'), {
+  loading: () => null,
+  ssr: false,
+})
+const LogCallModal = dynamic(() => import('@/components/LogCallModal'), {
+  loading: () => null,
+  ssr: false,
+})
 import CallHistory from '@/components/CallHistory'
 import ActivityLog from '@/components/ActivityLog'
 import OpportunityCheckPrompt from '@/components/OpportunityCheckPrompt'

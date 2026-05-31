@@ -1,10 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
-import MetaAdsDashboard from '@/components/MetaAdsDashboard'
+// Heavy below-the-fold dashboard — defer to keep /admin first-load JS lean.
+const MetaAdsDashboard = dynamic(() => import('@/components/MetaAdsDashboard'), {
+  loading: () => null,
+  ssr: false,
+})
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
 interface User {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
 import Navbar from '@/components/Navbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -10,9 +11,16 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SUGGESTED_REPLIES } from '@/config/suggested-replies'
-import LogCallModal from '@/components/LogCallModal'
+// Modal/popover-only components — defer their JS until first interaction.
+const LogCallModal = dynamic(() => import('@/components/LogCallModal'), {
+  loading: () => null,
+  ssr: false,
+})
+const VoiceAgentCard = dynamic(() => import('@/components/VoiceAgentCard'), {
+  loading: () => null,
+  ssr: false,
+})
 import CallHistory from '@/components/CallHistory'
-import VoiceAgentCard from '@/components/VoiceAgentCard'
 import ActivityLog from '@/components/ActivityLog'
 import EmptyState from '@/components/ui/EmptyState'
 import { Send, Paperclip, MessageSquare, ArrowLeft } from 'lucide-react'

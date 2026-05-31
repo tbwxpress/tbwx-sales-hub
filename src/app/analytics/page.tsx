@@ -1,9 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
-import IndiaHeatmap from '@/components/IndiaHeatmap'
+// IndiaHeatmap ships a large inline SVG path constant — defer it.
+const IndiaHeatmap = dynamic(() => import('@/components/IndiaHeatmap'), {
+  loading: () => null,
+  ssr: false,
+})
 
 interface FunnelItem { stage: string; count: number; pct: number; dropoff: number }
 interface SourceItem { source: string; count: number; pct: number }

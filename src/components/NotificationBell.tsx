@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Bell } from 'lucide-react'
 import PushToggle from './PushToggle'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { useVisiblePolling } from '@/lib/use-visible-polling'
 
 interface Notification {
   id: number
@@ -46,11 +47,8 @@ export default function NotificationBell() {
     } catch { /* silent */ }
   }, [])
 
-  useEffect(() => {
-    fetchAll()
-    const i = setInterval(fetchAll, 30_000)
-    return () => clearInterval(i)
-  }, [fetchAll])
+  // Visibility-aware: pauses while tab is backgrounded.
+  useVisiblePolling(fetchAll, 30_000)
 
   useEffect(() => {
     function onClick(e: MouseEvent) {

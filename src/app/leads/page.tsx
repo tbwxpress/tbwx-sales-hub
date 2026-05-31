@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Search, UserPlus, Download, Eye, MessageSquare, Pencil, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react'
@@ -159,7 +159,7 @@ export default function LeadsPage() {
   const [quickNoteText, setQuickNoteText] = useState('')
   const [savingNote, setSavingNote] = useState(false)
 
-  async function handleQuickNote(phone: string) {
+  const handleQuickNote = useCallback(async (phone: string) => {
     if (!quickNoteText.trim()) return
     setSavingNote(true)
     try {
@@ -176,7 +176,7 @@ export default function LeadsPage() {
       }
     } catch { /* silent */ }
     setSavingNote(false)
-  }
+  }, [quickNoteText])
 
   // Filters — initialize from URL params to preserve state on back navigation
   const [search, setSearch] = useState(() => getInitialParam('q'))
@@ -362,9 +362,15 @@ export default function LeadsPage() {
   }, [])
 
   // Priority dropdown still uses inline select → fire-and-update.
-  async function updateLeadPriority(rowNum: number, value: string) {
-    const previous = leads.find(l => l.row_number === rowNum)?.lead_priority
-    setLeads(prev => prev.map(l => (l.row_number === rowNum ? { ...l, lead_priority: value } : l)))
+  const updateLeadPriority = useCallback(async (rowNum: number, value: string) => {
+    let previous: string | undefined
+    setLeads(prev => prev.map(l => {
+      if (l.row_number === rowNum) {
+        previous = l.lead_priority
+        return { ...l, lead_priority: value }
+      }
+      return l
+    }))
     try {
       const res = await fetch(`/api/leads/${rowNum}`, {
         method: 'PATCH',
@@ -382,7 +388,7 @@ export default function LeadsPage() {
       setLeads(prev => prev.map(l => (l.row_number === rowNum ? { ...l, lead_priority: previous || '' } : l)))
       toast.error('Update failed')
     }
-  }
+  }, [])
 
   async function bulkStatusChange(selectedRows: number[]) {
     if (!bulkStatus || selectedRows.length === 0) return
@@ -479,15 +485,30 @@ export default function LeadsPage() {
     setAddLeadSaving(false)
   }
 
-  // Quick filter pill counts — always computed from the full fetched leads list
-  const today = istToday()
-  const pillCounts = {
-    all: leads.length,
-    mine: leads.filter(l => l.assigned_to === user?.name).length,
-    hot: leads.filter(l => l.lead_priority === 'HOT').length,
-    unassigned: leads.filter(l => !l.assigned_to).length,
-    due_today: leads.filter(l => l.next_followup?.startsWith(today)).length,
-  }
+  // Quick filter pill counts — always computed from the full fetched leads list.
+  // Memoized so typing in the search box (which updates other state) doesn't
+  // force 5 fresh O(n) filter passes per keystroke.
+  const today = useMemo(() => istToday(), [])
+  const pillCounts = useMemo(() => {
+    let mine = 0
+    let hot = 0
+    let unassigned = 0
+    let dueToday = 0
+    const userName = user?.name
+    for (const l of leads) {
+      if (l.assigned_to === userName) mine++
+      if (l.lead_priority === 'HOT') hot++
+      if (!l.assigned_to) unassigned++
+      if (l.next_followup?.startsWith(today)) dueToday++
+    }
+    return {
+      all: leads.length,
+      mine,
+      hot,
+      unassigned,
+      due_today: dueToday,
+    }
+  }, [leads, user?.name, today])
 
   // Apply quick filter on top of the already-fetched leads
   const displayedLeads = useMemo(() => {
@@ -498,9 +519,42 @@ export default function LeadsPage() {
     return leads.filter(l => l.next_followup?.startsWith(today))
   }, [leads, quickFilter, user?.name, today])
 
-  const assignedNames = [...new Set(leads.map(l => l.assigned_to).filter(Boolean))]
+  // Mirror the latest displayedLeads into a ref so handleExportCsv stays
+  // stable but still exports the currently-visible set.
+  const displayedLeadsRef = useRef(displayedLeads)
+  useEffect(() => {
+    displayedLeadsRef.current = displayedLeads
+  }, [displayedLeads])
+
+  // CSV export — stabilized so the header button doesn't churn on every render.
+  const handleExportCsv = useCallback(() => {
+    const headers = ['Name', 'Phone', 'Email', 'City', 'State', 'Status', 'Priority', 'Assigned', 'Score', 'Created', 'Follow-up']
+    const rows = displayedLeadsRef.current.map(l => [
+      l.full_name, l.phone, l.email, l.city, l.state,
+      l.lead_status, l.lead_priority, l.assigned_to,
+      l.lead_score !== undefined ? String(l.lead_score) : '',
+      l.created_time, l.next_followup
+    ])
+    const csv = [headers, ...rows].map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `tbwx-leads-${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [])
+
+  const assignedNames = useMemo(
+    () => [...new Set(leads.map(l => l.assigned_to).filter(Boolean))],
+    [leads]
+  )
+  const hasTelecallers = useMemo(() => agents.some(a => a.is_telecaller), [agents])
+  const telecallerAgents = useMemo(
+    () => agents.filter(a => a.is_telecaller),
+    [agents]
+  )
   const canBulkAction = user?.role === 'admin' || user?.can_assign
-  const hasTelecallers = agents.some(a => a.is_telecaller)
   const canBulkTelecaller = !!user && hasTelecallers
   const showCheckboxColumn = !!(canBulkAction || canBulkTelecaller)
   const isAdmin = user?.role === 'admin'
@@ -789,7 +843,7 @@ export default function LeadsPage() {
     })
 
     return cols
-  }, [showCheckboxColumn, isAdmin, applyLocalStatus, quickNotePhone])
+  }, [showCheckboxColumn, isAdmin, applyLocalStatus, updateLeadPriority, quickNotePhone])
 
   const table = useReactTable({
     data: displayedLeads,
@@ -869,23 +923,7 @@ export default function LeadsPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                const headers = ['Name', 'Phone', 'Email', 'City', 'State', 'Status', 'Priority', 'Assigned', 'Score', 'Created', 'Follow-up']
-                const rows = displayedLeads.map(l => [
-                  l.full_name, l.phone, l.email, l.city, l.state,
-                  l.lead_status, l.lead_priority, l.assigned_to,
-                  l.lead_score !== undefined ? String(l.lead_score) : '',
-                  l.created_time, l.next_followup
-                ])
-                const csv = [headers, ...rows].map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\n')
-                const blob = new Blob([csv], { type: 'text/csv' })
-                const url = URL.createObjectURL(blob)
-                const a = document.createElement('a')
-                a.href = url
-                a.download = `tbwx-leads-${new Date().toISOString().split('T')[0]}.csv`
-                a.click()
-                URL.revokeObjectURL(url)
-              }}
+              onClick={handleExportCsv}
               className="bg-elevated hover:bg-border text-muted text-caption font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
               title="Download filtered leads as CSV"
             >
@@ -997,7 +1035,7 @@ export default function LeadsPage() {
             </select>
           )}
 
-          {user?.role === 'admin' && agents.some(a => a.is_telecaller) && (
+          {user?.role === 'admin' && hasTelecallers && (
             <select
               value={telecallerFilter}
               onChange={e => setTelecallerFilter(e.target.value)}
@@ -1006,7 +1044,7 @@ export default function LeadsPage() {
             >
               <option value="">All Telecallers</option>
               <option value="__NONE__">— No telecaller —</option>
-              {agents.filter(a => a.is_telecaller).map(a => (
+              {telecallerAgents.map(a => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
@@ -1333,7 +1371,7 @@ export default function LeadsPage() {
                   </>
                 )}
 
-                {agents.some(a => a.is_telecaller) && (
+                {hasTelecallers && (
                   <>
                     <select
                       value={tcAssignToId}
@@ -1341,7 +1379,7 @@ export default function LeadsPage() {
                       className="bg-card border border-border rounded-md px-3 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50"
                     >
                       <option value="">Telecaller...</option>
-                      {agents.filter(a => a.is_telecaller).map(a => (
+                      {telecallerAgents.map(a => (
                         <option key={a.id} value={a.id}>{a.name}</option>
                       ))}
                     </select>

@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
+import { useVisiblePolling } from '@/lib/use-visible-polling'
 import {
   Calendar,
   LayoutDashboard,
@@ -49,6 +50,7 @@ export default function Navbar() {
   const moreRef = useRef<HTMLDivElement>(null)
   const avatarRef = useRef<HTMLDivElement>(null)
 
+  // Fetch current user ONCE on mount — auth/me does not need polling.
   useEffect(() => {
     fetch('/api/auth/me')
       .then(r => r.json())
@@ -56,18 +58,15 @@ export default function Navbar() {
       .catch(() => {})
   }, [])
 
-  // Poll unread count
-  useEffect(() => {
-    function fetchUnread() {
-      fetch('/api/inbox/unread')
-        .then(r => r.json())
-        .then(d => { if (d.success) setUnreadCount(d.data.count) })
-        .catch(() => {})
-    }
-    fetchUnread()
-    const interval = setInterval(fetchUnread, 10000)
-    return () => clearInterval(interval)
+  // Poll inbox unread count — visibility-aware. Backgrounded tabs do not fetch.
+  // Was 10s (too aggressive); 20s is plenty for a badge.
+  const fetchUnread = useCallback(() => {
+    fetch('/api/inbox/unread')
+      .then(r => r.json())
+      .then(d => { if (d.success) setUnreadCount(d.data.count) })
+      .catch(() => {})
   }, [])
+  useVisiblePolling(fetchUnread, 20_000)
 
   // Close mobile menu on outside click
   useEffect(() => {

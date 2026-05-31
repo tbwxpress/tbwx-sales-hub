@@ -1,6 +1,7 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useVisiblePolling } from '@/lib/use-visible-polling'
 
 export default function UpdateRequestsBadge() {
   const [count, setCount] = useState(0)
@@ -13,16 +14,15 @@ export default function UpdateRequestsBadge() {
       .catch(() => {})
   }, [])
 
-  useEffect(() => {
-    if (role !== 'admin') return
-    const tick = () => fetch('/api/update-requests/mark-seen')
+  // Admin-only badge — poll only while tab is visible. 60s cadence preserved
+  // (audit said keep, and it's a soft notification badge).
+  const tick = useCallback(() => {
+    fetch('/api/update-requests/mark-seen')
       .then(r => r.json())
       .then(d => { if (d.success) setCount(d.data.count) })
       .catch(() => {})
-    tick()
-    const i = setInterval(tick, 60000)
-    return () => clearInterval(i)
-  }, [role])
+  }, [])
+  useVisiblePolling(tick, 60_000, role === 'admin')
 
   if (role !== 'admin') return null
 

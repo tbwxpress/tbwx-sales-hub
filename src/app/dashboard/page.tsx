@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
@@ -100,6 +100,22 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string
 const STATUS_OPTIONS = ['NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'DELAYED', 'LOST', 'ARCHIVED']
 const PRIORITY_OPTIONS = ['HOT', 'WARM', 'COLD']
 
+// Map stat card labels to status filter values. Module-scope so React
+// reference-equality stays stable across renders.
+const STAT_FILTER_MAP: Record<string, string> = {
+  'Total': '__ALL__',
+  'New': 'NEW',
+  'Deck Sent': 'DECK_SENT',
+  'Replied': 'REPLIED',
+  'No Response': 'NO_RESPONSE',
+  'HOT': 'HOT',
+  'Converted': 'CONVERTED',
+  'Delayed': 'DELAYED',
+  'Lost': 'LOST',
+  'Unassigned': '__UNASSIGNED__',
+  'Overdue': '__OVERDUE__',
+}
+
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -144,7 +160,7 @@ function computeAvgResponseHours(leads: Lead[]): string {
 
 // ─── Admin Header Component ──────────────────────────────────────────────────
 
-function AdminHeader({
+const AdminHeader = memo(function AdminHeader({
   user,
   stats,
   leads,
@@ -155,50 +171,79 @@ function AdminHeader({
   leads: Lead[]
   agents: AgentUser[]
 }) {
+  // Greeting + date are time-of-day dependent; recompute per mount/render is fine
+  // (cheap; if leads change while open at the stroke of noon the greeting updates).
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata' })
 
-  const featuredStats = [
-    {
-      label: 'Total Leads',
-      value: stats?.total ?? 0,
-      color: 'var(--color-accent)',
-      sub: `${stats?.new ?? 0} new today`,
-    },
-    {
-      label: 'Replied',
-      value: stats?.replied ?? 0,
-      color: 'var(--color-success)',
-      sub: 'awaiting response',
-    },
-    {
-      label: 'Hot Leads',
-      value: leads.filter(l => l.lead_priority === 'HOT' && !['CONVERTED', 'LOST'].includes(l.lead_status)).length,
-      color: 'var(--color-hot)',
-      sub: 'need attention now',
-    },
-    {
-      label: 'Converted',
-      value: stats?.converted ?? 0,
-      color: 'var(--color-status-converted)',
-      sub: `${stats?.lost ?? 0} lost`,
-    },
-  ]
+  // All four below are O(n) on leads/agents — memoize so a parent re-render
+  // (poll tick, focus, unrelated state) doesn't redo the work.
+  const hotLeadCount = useMemo(
+    () =>
+      leads.filter(l => l.lead_priority === 'HOT' && !['CONVERTED', 'LOST'].includes(l.lead_status)).length,
+    [leads]
+  )
 
-  const agentPerf = agents.map(agent => {
-    const assigned = leads.filter(l => l.assigned_to?.toLowerCase() === agent.name.toLowerCase())
-    const contacted = assigned.filter(l => !['NEW', 'DECK_SENT'].includes(l.lead_status))
-    const pct = assigned.length > 0 ? Math.round((contacted.length / assigned.length) * 100) : 0
-    return { name: agent.name, pct, contacted: contacted.length, total: assigned.length }
-  }).filter(a => a.total > 0).sort((a, b) => b.pct - a.pct)
+  const featuredStats = useMemo(
+    () => [
+      {
+        label: 'Total Leads',
+        value: stats?.total ?? 0,
+        color: 'var(--color-accent)',
+        sub: `${stats?.new ?? 0} new today`,
+      },
+      {
+        label: 'Replied',
+        value: stats?.replied ?? 0,
+        color: 'var(--color-success)',
+        sub: 'awaiting response',
+      },
+      {
+        label: 'Hot Leads',
+        value: hotLeadCount,
+        color: 'var(--color-hot)',
+        sub: 'need attention now',
+      },
+      {
+        label: 'Converted',
+        value: stats?.converted ?? 0,
+        color: 'var(--color-status-converted)',
+        sub: `${stats?.lost ?? 0} lost`,
+      },
+    ],
+    [stats?.total, stats?.new, stats?.replied, stats?.converted, stats?.lost, hotLeadCount]
+  )
 
-  const staleLeads = leads.filter(l => {
-    if (['CONVERTED', 'LOST', 'DELAYED'].includes(l.lead_status)) return false
-    if (!l.next_followup) return false
-    const daysPast = (Date.now() - new Date(l.next_followup).getTime()) / (1000 * 60 * 60 * 24)
-    return daysPast > 3
-  }).slice(0, 5)
+  const agentPerf = useMemo(
+    () =>
+      agents.map(agent => {
+        const assigned = leads.filter(l => l.assigned_to?.toLowerCase() === agent.name.toLowerCase())
+        const contacted = assigned.filter(l => !['NEW', 'DECK_SENT'].includes(l.lead_status))
+        const pct = assigned.length > 0 ? Math.round((contacted.length / assigned.length) * 100) : 0
+        return { name: agent.name, pct, contacted: contacted.length, total: assigned.length }
+      }).filter(a => a.total > 0).sort((a, b) => b.pct - a.pct),
+    [agents, leads]
+  )
+
+  const staleLeads = useMemo(
+    () =>
+      leads.filter(l => {
+        if (['CONVERTED', 'LOST', 'DELAYED'].includes(l.lead_status)) return false
+        if (!l.next_followup) return false
+        const daysPast = (Date.now() - new Date(l.next_followup).getTime()) / (1000 * 60 * 60 * 24)
+        return daysPast > 3
+      }).slice(0, 5),
+    [leads]
+  )
+
+  const recent = useMemo(
+    () =>
+      [...leads]
+        .sort((a, b) => new Date(b.created_time).getTime() - new Date(a.created_time).getTime())
+        .slice(0, 8),
+    [leads]
+  )
 
   return (
     <div className="mb-6">
@@ -233,7 +278,6 @@ function AdminHeader({
 
       {/* Recent Leads mini-table */}
       {(() => {
-        const recent = [...leads].sort((a, b) => new Date(b.created_time).getTime() - new Date(a.created_time).getTime()).slice(0, 8)
         return (
           <div className="rounded-xl border mb-3 overflow-hidden" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
             <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
@@ -355,7 +399,7 @@ function AdminHeader({
       </div>
     </div>
   )
-}
+})
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -604,22 +648,21 @@ export default function DashboardPage() {
     setSortBy('score')
   }
 
-  function toggleSelect(rowNum: number) {
+  const toggleSelect = useCallback((rowNum: number) => {
     setSelected(prev => {
       const next = new Set(prev)
       if (next.has(rowNum)) next.delete(rowNum)
       else next.add(rowNum)
       return next
     })
-  }
+  }, [])
 
-  function toggleSelectAll() {
-    if (selected.size === leads.length) {
-      setSelected(new Set())
-    } else {
-      setSelected(new Set(leads.map(l => l.row_number)))
-    }
-  }
+  const toggleSelectAll = useCallback(() => {
+    setSelected(prev => {
+      if (prev.size === leads.length) return new Set()
+      return new Set(leads.map(l => l.row_number))
+    })
+  }, [leads])
 
   // Inline status change
   async function updateLeadField(rowNum: number, field: string, value: string) {
@@ -741,33 +784,28 @@ export default function DashboardPage() {
 
   // ─── Unique assigned names for filter dropdown ───────────────────────────
 
-  const assignedNames = [...new Set(leads.map(l => l.assigned_to).filter(Boolean))]
+  const assignedNames = useMemo(
+    () => [...new Set(leads.map(l => l.assigned_to).filter(Boolean))],
+    [leads]
+  )
 
   // ─── Stale Leads ─────────────────────────────────────────────────────────
 
-  const staleLeads = leads.filter(l => {
-    if (['CONVERTED', 'LOST', 'DELAYED'].includes(l.lead_status)) return false
-    if (!l.created_time) return false
-    const daysSince = hoursSinceCreation(l.created_time) / 24
-    return daysSince > 14
-  })
+  const staleLeads = useMemo(
+    () =>
+      leads.filter(l => {
+        if (['CONVERTED', 'LOST', 'DELAYED'].includes(l.lead_status)) return false
+        if (!l.created_time) return false
+        const daysSince = hoursSinceCreation(l.created_time) / 24
+        return daysSince > 14
+      }),
+    [leads]
+  )
+
+  // Avg response time — O(n) reducer; memoize so filter typing doesn't recompute.
+  const avgResponseHours = useMemo(() => computeAvgResponseHours(leads), [leads])
 
   // ─── Stat Cards Config ───────────────────────────────────────────────────
-
-  // Map stat card labels to status filter values
-  const STAT_FILTER_MAP: Record<string, string> = {
-    'Total': '__ALL__',
-    'New': 'NEW',
-    'Deck Sent': 'DECK_SENT',
-    'Replied': 'REPLIED',
-    'No Response': 'NO_RESPONSE',
-    'HOT': 'HOT',
-    'Converted': 'CONVERTED',
-    'Delayed': 'DELAYED',
-    'Lost': 'LOST',
-    'Unassigned': '__UNASSIGNED__',
-    'Overdue': '__OVERDUE__',
-  }
 
   function handleStatClick(label: string) {
     const filterValue = STAT_FILTER_MAP[label]
@@ -784,21 +822,25 @@ export default function DashboardPage() {
     setStatusFilter(prev => prev === filterValue ? '' : filterValue)
   }
 
-  const statCards = stats
-    ? [
-        { label: 'Total', value: stats.total, color: 'text-text', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
-        { label: 'New', value: stats.new, color: 'text-blue-400', icon: 'M12 6v6m0 0v6m0-6h6m-6 0H6' },
-        { label: 'Deck Sent', value: stats.deck_sent, color: 'text-purple-400', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
-        { label: 'Replied', value: stats.replied, color: 'text-green-400', icon: 'M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6' },
-        { label: 'No Response', value: stats.no_response, color: 'text-yellow-400', icon: 'M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z' },
-        { label: 'HOT', value: stats.hot, color: 'text-orange-400', icon: 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z' },
-        { label: 'Converted', value: stats.converted, color: 'text-emerald-400', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
-        { label: 'Delayed', value: stats.delayed, color: 'text-amber-400', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
-        { label: 'Lost', value: stats.lost, color: 'text-red-400', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z' },
-        { label: 'Unassigned', value: stats.unassigned, color: 'text-accent', icon: 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636' },
-        { label: 'Overdue', value: stats.overdue_followups, color: 'text-red-400', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
-      ]
-    : []
+  const statCards = useMemo(
+    () =>
+      stats
+        ? [
+            { label: 'Total', value: stats.total, color: 'text-text', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
+            { label: 'New', value: stats.new, color: 'text-blue-400', icon: 'M12 6v6m0 0v6m0-6h6m-6 0H6' },
+            { label: 'Deck Sent', value: stats.deck_sent, color: 'text-purple-400', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+            { label: 'Replied', value: stats.replied, color: 'text-green-400', icon: 'M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6' },
+            { label: 'No Response', value: stats.no_response, color: 'text-yellow-400', icon: 'M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z' },
+            { label: 'HOT', value: stats.hot, color: 'text-orange-400', icon: 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z' },
+            { label: 'Converted', value: stats.converted, color: 'text-emerald-400', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+            { label: 'Delayed', value: stats.delayed, color: 'text-amber-400', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+            { label: 'Lost', value: stats.lost, color: 'text-red-400', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z' },
+            { label: 'Unassigned', value: stats.unassigned, color: 'text-accent', icon: 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636' },
+            { label: 'Overdue', value: stats.overdue_followups, color: 'text-red-400', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+          ]
+        : [],
+    [stats]
+  )
 
   // ─── Role-Aware: Agents see action queue ────────────────────────────────
 
@@ -1106,7 +1148,7 @@ export default function DashboardPage() {
               <Clock className="w-4 h-4 text-dim" strokeWidth={1.5} />
               <p className="text-eyebrow text-dim">Avg Response Time</p>
             </div>
-            <p className="text-display text-accent">{computeAvgResponseHours(leads)}</p>
+            <p className="text-display text-accent">{avgResponseHours}</p>
             <p className="text-caption text-dim mt-1">Based on lead age at first status change</p>
           </div>
           )}
