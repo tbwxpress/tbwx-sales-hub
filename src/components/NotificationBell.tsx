@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Bell } from 'lucide-react'
 import PushToggle from './PushToggle'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
 interface Notification {
   id: number
@@ -85,19 +86,23 @@ export default function NotificationBell() {
 
   return (
     <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="relative p-2 rounded-md hover:bg-elevated transition-colors text-muted hover:text-text"
-        aria-label="Notifications"
-        title="Notifications"
-      >
-        <Bell className="w-5 h-5" strokeWidth={1.8} />
-        {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-accent text-caption font-bold flex items-center justify-center" style={{ color: '#1a1209' }}>
-            {unread > 99 ? '99+' : unread}
-          </span>
-        )}
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={() => setOpen(v => !v)}
+            className="relative p-2 rounded-md hover:bg-elevated transition-colors text-muted hover:text-text"
+            aria-label="Notifications"
+          >
+            <Bell className="w-5 h-5" strokeWidth={1.8} />
+            {unread > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-accent text-caption font-bold flex items-center justify-center" style={{ color: '#1a1209' }}>
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>notifications</TooltipContent>
+      </Tooltip>
 
       {open && (
         <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-lg border border-border bg-card shadow-2xl z-50 overflow-hidden">

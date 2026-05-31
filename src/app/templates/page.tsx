@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import Navbar from '@/components/Navbar'
 
 interface Template {
@@ -31,7 +32,6 @@ export default function TemplatesPage() {
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null)
   const [showCreate, setShowCreate] = useState(false)
-  const [toast, setToast] = useState('')
   const [deleting, setDeleting] = useState('')
 
   // Create form state
@@ -49,13 +49,6 @@ export default function TemplatesPage() {
     })
     fetchTemplates()
   }, [router])
-
-  useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(''), 4000)
-      return () => clearTimeout(t)
-    }
-  }, [toast])
 
   async function fetchTemplates() {
     try {
@@ -91,15 +84,15 @@ export default function TemplatesPage() {
       const data = await res.json()
 
       if (data.success) {
-        setToast(`Template "${newName}" created (${data.data.status})`)
+        toast.success(`Template "${newName}" created (${data.data.status})`)
         setShowCreate(false)
         setNewName(''); setNewBody(''); setNewHeader(''); setNewExampleParams('')
         fetchTemplates()
       } else {
-        setToast(`Error: ${data.error}`)
+        toast.error(`Error: ${data.error}`)
       }
     } catch {
-      setToast('Network error')
+      toast.error('Network error')
     }
     setCreating(false)
   }
@@ -117,13 +110,13 @@ export default function TemplatesPage() {
       const data = await res.json()
 
       if (data.success) {
-        setToast(`Template "${name}" deleted`)
+        toast.success(`Template "${name}" deleted`)
         fetchTemplates()
       } else {
-        setToast(`Error: ${data.error}`)
+        toast.error(`Error: ${data.error}`)
       }
     } catch {
-      setToast('Network error')
+      toast.error('Network error')
     }
     setDeleting('')
   }
@@ -139,15 +132,6 @@ export default function TemplatesPage() {
   return (
     <div className="min-h-screen bg-bg flex flex-col">
       <Navbar />
-
-      {/* Toast */}
-      {toast && (
-        <div className={`fixed top-16 right-4 z-50 bg-card text-text text-sm px-4 py-2.5 rounded-lg shadow-xl shadow-black/30 animate-slide-in border ${
-          toast.toLowerCase().includes('error') ? 'border-red-500/50 text-red-300' : 'border-border'
-        }`}>
-          {toast}
-        </div>
-      )}
 
       <div className="max-w-5xl mx-auto px-4 py-6 flex-1 w-full">
         {/* Header */}

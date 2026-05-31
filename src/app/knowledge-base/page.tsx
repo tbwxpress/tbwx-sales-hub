@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
-import Toast from '@/components/Toast'
+import { toast } from 'sonner'
 
 interface KBEntry {
   id: string; category: string; title: string; content: string;
@@ -54,7 +54,6 @@ export default function KnowledgeBasePage() {
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   // Form state
   const [formTitle, setFormTitle] = useState('')
@@ -115,7 +114,7 @@ export default function KnowledgeBasePage() {
 
   async function handleSave() {
     if (!formTitle.trim() || !formContent.trim()) {
-      setToast({ message: 'Title and content are required', type: 'error' })
+      toast.error('Title and content are required')
       return
     }
     setSaving(true)
@@ -128,11 +127,11 @@ export default function KnowledgeBasePage() {
         })
         const data = await res.json()
         if (data.success) {
-          setToast({ message: 'Entry created', type: 'success' })
+          toast.success('Entry created')
           clearEditor()
           await fetchEntries()
         } else {
-          setToast({ message: data.error || 'Failed to create', type: 'error' })
+          toast.error(data.error || 'Failed to create')
         }
       } else if (selectedId) {
         const res = await fetch('/api/knowledge-base', {
@@ -142,14 +141,14 @@ export default function KnowledgeBasePage() {
         })
         const data = await res.json()
         if (data.success) {
-          setToast({ message: 'Entry updated', type: 'success' })
+          toast.success('Entry updated')
           await fetchEntries()
         } else {
-          setToast({ message: data.error || 'Failed to update', type: 'error' })
+          toast.error(data.error || 'Failed to update')
         }
       }
     } catch {
-      setToast({ message: 'Something went wrong', type: 'error' })
+      toast.error('Something went wrong')
     }
     setSaving(false)
   }
@@ -161,14 +160,14 @@ export default function KnowledgeBasePage() {
       const res = await fetch(`/api/knowledge-base?id=${selectedId}`, { method: 'DELETE' })
       const data = await res.json()
       if (data.success) {
-        setToast({ message: 'Entry deleted', type: 'success' })
+        toast.success('Entry deleted')
         clearEditor()
         await fetchEntries()
       } else {
-        setToast({ message: data.error || 'Failed to delete', type: 'error' })
+        toast.error(data.error || 'Failed to delete')
       }
     } catch {
-      setToast({ message: 'Something went wrong', type: 'error' })
+      toast.error('Something went wrong')
     }
   }
 
@@ -499,7 +498,6 @@ export default function KnowledgeBasePage() {
 
       <PoweredBy />
 
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   )
 }

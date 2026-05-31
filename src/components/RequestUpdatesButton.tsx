@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import RequestUpdatesModal from './RequestUpdatesModal'
 
 interface Props {
@@ -9,7 +10,6 @@ interface Props {
 
 export default function RequestUpdatesButton({ agentId, agentName }: Props) {
   const [open, setOpen] = useState(false)
-  const [toast, setToast] = useState('')
 
   return (
     <>
@@ -24,14 +24,8 @@ export default function RequestUpdatesButton({ agentId, agentName }: Props) {
         onClose={() => setOpen(false)}
         agentId={agentId}
         agentName={agentName}
-        onSent={(n) => setToast(`Sent ${n} update requests to ${agentName}`)}
+        onSent={(n) => toast.success(`Sent ${n} update requests to ${agentName}`)}
       />
-      {toast && (
-        <div className="fixed bottom-4 right-4 bg-success/20 border border-success/40 text-success text-xs px-3 py-2 rounded-md z-50">
-          {toast}
-          <button onClick={() => setToast('')} className="ml-2 text-success/70">×</button>
-        </div>
-      )}
     </>
   )
 }

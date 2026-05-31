@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { toast } from 'sonner'
 import Navbar from '@/components/Navbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -89,7 +90,6 @@ export default function InboxPage() {
   const [msgLoading, setMsgLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showUnreadOnly, setShowUnreadOnly] = useState(false)
-  const [toast, setToast] = useState('')
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
   const [showQuickReplies, setShowQuickReplies] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
@@ -321,7 +321,7 @@ export default function InboxPage() {
         .then(d => {
           if (d.success && (d.data.contacts_created > 0 || d.data.messages_imported > 0)) {
             fetchContacts()
-            setToast(`Auto-synced: ${d.data.contacts_created} contacts, ${d.data.messages_imported} messages`)
+            toast.success(`Auto-synced: ${d.data.contacts_created} contacts, ${d.data.messages_imported} messages`)
           }
         })
         .catch(() => {})
@@ -333,15 +333,6 @@ export default function InboxPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
-
-  // Toast auto-dismiss (longer for errors)
-  useEffect(() => {
-    if (toast) {
-      const isError = toast.toLowerCase().includes('error') || toast.toLowerCase().includes('failed') || toast.toLowerCase().includes('not delivered')
-      const t = setTimeout(() => setToast(''), isError ? 6000 : 3000)
-      return () => clearTimeout(t)
-    }
-  }, [toast])
 
   // Open conversation
   function openConversation(contact: Contact) {
@@ -388,16 +379,16 @@ export default function InboxPage() {
       })
       const json = await res.json()
       if (json.success) {
-        setToast('Help requested')
+        toast.success('Help requested')
         setShowInboxDelegateModal(false)
         setInboxDelegateToId('')
         setInboxDelegateMessage('')
         setInboxDelegateExpires('')
         setInboxActiveDelegation({ id: json.data.id, from_agent_name: json.data.from_agent_name, to_agent_name: json.data.to_agent_name, expires_at: json.data.expires_at })
       } else {
-        setToast(json.error || 'Failed to delegate')
+        toast.error(json.error || 'Failed to delegate')
       }
-    } catch { setToast('Failed to delegate') }
+    } catch { toast.error('Failed to delegate') }
     setInboxDelegating(false)
   }
 
@@ -407,9 +398,9 @@ export default function InboxPage() {
     try {
       const res = await fetch(`/api/delegations/${inboxActiveDelegation.id}/end`, { method: 'POST' })
       const json = await res.json()
-      if (json.success) { setToast('Delegation ended'); setInboxActiveDelegation(null) }
-      else setToast(json.error || 'Failed to end delegation')
-    } catch { setToast('Failed to end delegation') }
+      if (json.success) { toast.success('Delegation ended'); setInboxActiveDelegation(null) }
+      else toast.error(json.error || 'Failed to end delegation')
+    } catch { toast.error('Failed to end delegation') }
     setInboxEndingDelegation(false)
   }
 
@@ -427,12 +418,12 @@ export default function InboxPage() {
       if (data.success) {
         setLeadInfo(prev => prev ? { ...prev, [field]: value } : null)
         const labels: Record<string, string> = { lead_status: 'Status', lead_priority: 'Priority', full_name: 'Name', email: 'Email', city: 'City', state: 'State', model_interest: 'Model interest' }
-        setToast(`${labels[field] || field} updated`)
+        toast.success(`${labels[field] || field} updated`)
       } else {
-        setToast(data.error || 'Update failed')
+        toast.error(data.error || 'Update failed')
       }
     } catch {
-      setToast('Update failed')
+      toast.error('Update failed')
     }
     setUpdatingLead(false)
   }
@@ -460,13 +451,13 @@ export default function InboxPage() {
         fetchMessages(activePhone)
         fetchContacts()
       } else if (data.needs_template) {
-        setToast('Outside 24hr window — use a template')
+        toast.info('Outside 24hr window — use a template')
         setShowTemplates(true)
       } else {
-        setToast(data.error || 'Send failed')
+        toast.error(data.error || 'Send failed')
       }
     } catch {
-      setToast('Network error')
+      toast.error('Network error')
     }
     setSending(false)
   }
@@ -503,12 +494,12 @@ export default function InboxPage() {
         setShowTemplates(false)
         fetchMessages(activePhone)
         fetchContacts()
-        setToast('Template sent')
+        toast.success('Template sent')
       } else {
-        setToast(data.error || 'Template send failed')
+        toast.error(data.error || 'Template send failed')
       }
     } catch {
-      setToast('Network error')
+      toast.error('Network error')
     }
     setSending(false)
   }
@@ -520,13 +511,13 @@ export default function InboxPage() {
       const res = await fetch('/api/inbox/sync', { method: 'POST' })
       const data = await res.json()
       if (data.success) {
-        setToast(`Synced: ${data.data.contacts_created} contacts, ${data.data.messages_imported} messages (${data.data.leads_skipped || 0} leads skipped — no template sent)`)
+        toast.success(`Synced: ${data.data.contacts_created} contacts, ${data.data.messages_imported} messages (${data.data.leads_skipped || 0} leads skipped — no template sent)`)
         fetchContacts()
       } else {
-        setToast(data.error || 'Sync failed')
+        toast.error(data.error || 'Sync failed')
       }
     } catch {
-      setToast('Sync failed')
+      toast.error('Sync failed')
     }
     setSyncing(false)
   }
@@ -535,7 +526,7 @@ export default function InboxPage() {
   function startNewChat() {
     const phone = newChatPhone.replace(/\D/g, '')
     if (!phone || phone.length < 10) {
-      setToast('Enter a valid phone number')
+      toast.error('Enter a valid phone number')
       return
     }
     const fullPhone = phone.length === 10 ? `91${phone}` : phone
@@ -586,12 +577,12 @@ export default function InboxPage() {
           .then(r => r.json())
           .then(d => { if (d.success) setLeadNotes(d.data) })
           .catch(() => {})
-        setToast('Note saved')
+        toast.success('Note saved')
       } else {
-        setToast('Error: ' + (data.error || 'Failed to save note'))
+        toast.error('Error: ' + (data.error || 'Failed to save note'))
       }
     } catch {
-      setToast('Network error')
+      toast.error('Network error')
     }
     setSavingNote(false)
   }
@@ -617,12 +608,12 @@ export default function InboxPage() {
         setReminderTitle('')
         setReminderDate('')
         setReminderTime('10:00')
-        setToast('Reminder set')
+        toast.success('Reminder set')
       } else {
-        setToast('Error: ' + (data.error || 'Failed to set reminder'))
+        toast.error('Error: ' + (data.error || 'Failed to set reminder'))
       }
     } catch {
-      setToast('Network error')
+      toast.error('Network error')
     }
     setSavingReminder(false)
   }
@@ -688,17 +679,6 @@ export default function InboxPage() {
         </div>
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-card text-text text-sm px-4 py-2.5 rounded-lg shadow-xl shadow-black/30 animate-slide-in border ${
-          toast.toLowerCase().includes('error') || toast.toLowerCase().includes('failed') || toast.toLowerCase().includes('not delivered')
-            ? 'border-red-500/50 text-red-300'
-            : 'border-border'
-        }`}>
-          {toast}
-        </div>
-      )}
-
       {/* Reminder Modal — shadcn Dialog */}
       <Dialog open={showReminderModal} onOpenChange={setShowReminderModal}>
         <DialogContent className="sm:max-w-sm" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
@@ -749,7 +729,7 @@ export default function InboxPage() {
           open={showCallModal}
           onClose={() => setShowCallModal(false)}
           onLogged={() => {
-            setToast('Call logged')
+            toast.success('Call logged')
             setCallHistoryKey(k => k + 1)
           }}
         />
@@ -1883,8 +1863,7 @@ export default function InboxPage() {
                       setForwardSrc(null)
                       setForwardTarget('')
                       setForwardCaption('')
-                      setToast(`Forwarded to ${data.data?.to || forwardTarget}`)
-                      setTimeout(() => setToast(''), 3000)
+                      toast.success(`Forwarded to ${data.data?.to || forwardTarget}`)
                     } else {
                       alert(`Forward failed: ${data.error || 'unknown'}`)
                     }

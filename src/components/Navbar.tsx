@@ -22,12 +22,12 @@ import {
   LogOut,
   Menu,
   X,
-  Sparkles,
   type LucideIcon,
 } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
 import NotificationBell from './NotificationBell'
 import UpdateRequestsBadge from './UpdateRequestsBadge'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
 interface User {
   name: string
@@ -136,7 +136,6 @@ export default function Navbar() {
     { href: '/agent-stats', label: user?.role === 'admin' ? 'Agent Stats' : 'My Stats', Icon: ChartColumn },
     ...(user?.role === 'admin' ? [
       { href: '/admin', label: 'Admin', Icon: Settings } as NavLink,
-      { href: '/v2/dashboard', label: '✨ Preview v2', Icon: Sparkles } as NavLink,
     ] : []),
   ]
 
@@ -248,35 +247,44 @@ export default function Navbar() {
           {/* RIGHT: Controls */}
           <div className="flex items-center justify-end gap-2">
             {/* Search trigger */}
-            <button
-              onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors duration-150"
-              style={{ color: 'var(--color-muted)' }}
-              title="Search (⌘K)"
-            >
-              <Search className="w-3.5 h-3.5" strokeWidth={2} />
-              <kbd className="text-[9px] font-mono px-1 py-0.5 rounded hidden lg:inline" style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)' }}>⌘K</kbd>
-            </button>
-            <button
-              onClick={() => {
-                const event = new KeyboardEvent('keydown', { key: '?' })
-                window.dispatchEvent(event)
-              }}
-              className="w-6 h-6 flex items-center justify-center rounded-md text-caption transition-colors duration-150"
-              style={{ color: 'var(--color-dim)' }}
-              title="Keyboard shortcuts"
-              aria-label="Keyboard shortcuts"
-              onMouseEnter={e => {
-                e.currentTarget.style.color = 'var(--color-text)'
-                e.currentTarget.style.background = 'var(--color-elevated)'
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.color = 'var(--color-dim)'
-                e.currentTarget.style.background = 'transparent'
-              }}
-            >
-              ?
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors duration-150"
+                  style={{ color: 'var(--color-muted)' }}
+                  aria-label="Search"
+                >
+                  <Search className="w-3.5 h-3.5" strokeWidth={2} />
+                  <kbd className="text-[9px] font-mono px-1 py-0.5 rounded hidden lg:inline" style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)' }}>⌘K</kbd>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>search (⌘K)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => {
+                    const event = new KeyboardEvent('keydown', { key: '?' })
+                    window.dispatchEvent(event)
+                  }}
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-caption transition-colors duration-150"
+                  style={{ color: 'var(--color-dim)' }}
+                  aria-label="Keyboard shortcuts"
+                  onMouseEnter={e => {
+                    e.currentTarget.style.color = 'var(--color-text)'
+                    e.currentTarget.style.background = 'var(--color-elevated)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.color = 'var(--color-dim)'
+                    e.currentTarget.style.background = 'transparent'
+                  }}
+                >
+                  ?
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>shortcuts (?)</TooltipContent>
+            </Tooltip>
             <UpdateRequestsBadge />
             <NotificationBell />
             <ThemeToggle />
@@ -343,17 +351,22 @@ export default function Navbar() {
           <div className="flex items-center gap-1">
             <NotificationBell />
             <ThemeToggle />
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="flex items-center justify-center w-10 h-10 rounded-md transition-colors duration-200"
-              style={{ color: 'var(--color-muted)' }}
-              aria-label="Toggle menu"
-            >
-              {mobileMenuOpen
-                ? <X className="w-5 h-5" strokeWidth={1.5} />
-                : <Menu className="w-5 h-5" strokeWidth={1.5} />
-              }
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className="flex items-center justify-center w-10 h-10 rounded-md transition-colors duration-200"
+                  style={{ color: 'var(--color-muted)' }}
+                  aria-label="Toggle menu"
+                >
+                  {mobileMenuOpen
+                    ? <X className="w-5 h-5" strokeWidth={1.5} />
+                    : <Menu className="w-5 h-5" strokeWidth={1.5} />
+                  }
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{mobileMenuOpen ? 'close menu' : 'open menu'}</TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </div>

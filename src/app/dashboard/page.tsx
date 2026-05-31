@@ -8,7 +8,7 @@ import PoweredBy from '@/components/PoweredBy'
 import AgentQueue from '@/components/AgentQueue'
 import NeedsAttentionBanner from '@/components/NeedsAttentionBanner'
 import UpdateRequestWidget from '@/components/UpdateRequestWidget'
-import Toast from '@/components/Toast'
+import { toast } from 'sonner'
 import { timeAgo, followupLabel } from '@/lib/format'
 import { scoreColor, scoreBg, scoreBorder } from '@/lib/score-colors'
 import Badge, { statusTone, priorityTone } from '@/components/ui/Badge'
@@ -369,7 +369,6 @@ export default function DashboardPage() {
   const [agents, setAgents] = useState<AgentUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [toast, setToast] = useState('')
 
   // Per-section loading states
   const [loadingStats, setLoadingStats] = useState(true)
@@ -636,7 +635,7 @@ export default function DashboardPage() {
         setLeads(prev => prev.map(l =>
           l.row_number === rowNum ? { ...l, [field]: value } : l
         ))
-        setToast(`${field === 'lead_status' ? 'Status' : 'Priority'} updated to ${value}`)
+        toast.success(`${field === 'lead_status' ? 'Status' : 'Priority'} updated to ${value}`)
         // Refresh stats in background
         fetchStats()
       } else {
@@ -664,7 +663,7 @@ export default function DashboardPage() {
       setLeads(prev => prev.map(l =>
         selected.has(l.row_number) ? { ...l, lead_status: bulkStatus } : l
       ))
-      setToast(`${selected.size} leads updated to ${bulkStatus.replace('_', ' ')}`)
+      toast.success(`${selected.size} leads updated to ${bulkStatus.replace('_', ' ')}`)
       setSelected(new Set())
       setBulkStatus('')
       fetchStats()
@@ -687,7 +686,7 @@ export default function DashboardPage() {
       if (data.success) {
         setSelected(new Set())
         setAssignTo('')
-        setToast(`${selected.size} leads assigned to ${assignTo}`)
+        toast.success(`${selected.size} leads assigned to ${assignTo}`)
         await Promise.all([fetchLeads(), fetchStats()])
       } else {
         setError(data.error || 'Assignment failed')
@@ -714,7 +713,7 @@ export default function DashboardPage() {
       if (data.success) {
         setShowAddLead(false)
         setAddLeadForm({ full_name: '', phone: '', email: '', city: '', state: '', model_interest: '', lead_priority: 'WARM', notes: '', source: '' })
-        setToast('Lead added successfully')
+        toast.success('Lead added successfully')
         await Promise.all([fetchLeads(), fetchStats()])
       } else {
         setError(data.error || 'Failed to add lead')
@@ -733,7 +732,7 @@ export default function DashboardPage() {
         body: JSON.stringify({ id: taskId }),
       })
       setTasks(prev => prev.filter(t => t.id !== taskId))
-      setToast('Task completed')
+      toast.success('Task completed')
     } catch {
       setError('Failed to complete task')
     }
@@ -925,7 +924,7 @@ export default function DashboardPage() {
                           const json = await res.json()
                           if (json.success) {
                             setPendingDelegations(prev => prev.filter(x => x.id !== d.id))
-                            setToast('Accepted - lead is now in your list')
+                            toast.success('Accepted - lead is now in your list')
                           } else {
                             setError(json.error || 'Failed')
                           }
@@ -950,7 +949,7 @@ export default function DashboardPage() {
                           const json = await res.json()
                           if (json.success) {
                             setPendingDelegations(prev => prev.filter(x => x.id !== d.id))
-                            setToast('Declined')
+                            toast.info('Declined')
                           } else {
                             setError(json.error || 'Failed')
                           }
@@ -1226,13 +1225,13 @@ export default function DashboardPage() {
                     const data = await res.json()
                     if (data.success) {
                       setBackfillResult(data.data)
-                      setToast(`Synced ${data.data.synced} leads, ${data.data.missing_count} missing WA message`)
+                      toast.success(`Synced ${data.data.synced} leads, ${data.data.missing_count} missing WA message`)
                       fetchWaStats()
                     } else {
-                      setToast(data.error || 'Backfill failed')
+                      toast.error(data.error || 'Backfill failed')
                     }
                   } catch {
-                    setToast('Backfill request failed')
+                    toast.error('Backfill request failed')
                   }
                   setBackfilling(false)
                 }}
@@ -1921,7 +1920,6 @@ export default function DashboardPage() {
       )}
 
       {/* Toast */}
-      {toast && <Toast message={toast} onClose={() => setToast('')} />}
     </div>
   )
 }

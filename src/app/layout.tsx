@@ -3,6 +3,8 @@ import './globals.css'
 import { BRAND } from '@/config/client'
 import CommandPalette from '@/components/CommandPalette'
 import KeyboardShortcutsHelp from '@/components/KeyboardShortcutsHelp'
+import { Toaster } from '@/components/ui/sonner'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 import Script from 'next/script';
@@ -41,9 +43,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem('theme');if(t){var cl=document.documentElement.classList;cl.remove('dark','light');cl.add(t)}}catch(e){}` }} />
       </head>
       <body className="min-h-screen antialiased transition-colors duration-200">
-        <CommandPalette />
-        <KeyboardShortcutsHelp />
-        {children}
+        <TooltipProvider>
+          <CommandPalette />
+          <KeyboardShortcutsHelp />
+          <Toaster position="top-right" richColors closeButton />
+          {children}
+        </TooltipProvider>
         <Script id="sw-register" strategy="afterInteractive">{`
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Copy, Check, Inbox } from 'lucide-react'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
-import Toast from '@/components/Toast'
+import { toast } from 'sonner'
 import Badge, { statusTone } from '@/components/ui/Badge'
 import EmptyState from '@/components/ui/EmptyState'
 import { timeAgo } from '@/lib/format'
@@ -165,7 +165,6 @@ export default function PipelinePage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [toast, setToast] = useState('')
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<{ name: string; role: string; can_assign: boolean } | null>(null)
   const [agents, setAgents] = useState<{ name: string }[]>([])
@@ -232,7 +231,7 @@ export default function PipelinePage() {
         setLeads(prev =>
           prev.map(l => (l.row_number === rowNum ? { ...l, lead_status: newStatus } : l))
         )
-        setToast(`Moved to ${STAGE_LABELS[newStatus] || newStatus}`)
+        toast.success(`Moved to ${STAGE_LABELS[newStatus] || newStatus}`)
       } else {
         setError(data.error || 'Move failed')
       }
@@ -434,7 +433,6 @@ export default function PipelinePage() {
       <PoweredBy />
 
       {/* Toast */}
-      {toast && <Toast message={toast} onClose={() => setToast('')} />}
     </div>
   )
 }

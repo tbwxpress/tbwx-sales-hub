@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
-import Toast from '@/components/Toast'
+import { toast } from 'sonner'
 
 interface QuickReply {
   id: string; category: string; title: string; message: string;
@@ -73,7 +73,6 @@ export default function QuickRepliesPage() {
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [loadingStarters, setLoadingStarters] = useState(false)
 
   // Form state
@@ -123,7 +122,7 @@ export default function QuickRepliesPage() {
 
   async function handleSave() {
     if (!formTitle.trim() || !formMessage.trim()) {
-      setToast({ message: 'Title and message are required', type: 'error' })
+      toast.error('Title and message are required')
       return
     }
     setSaving(true)
@@ -136,11 +135,11 @@ export default function QuickRepliesPage() {
         })
         const data = await res.json()
         if (data.success) {
-          setToast({ message: 'Quick reply created', type: 'success' })
+          toast.success('Quick reply created')
           clearEditor()
           await fetchReplies()
         } else {
-          setToast({ message: data.error || 'Failed to create', type: 'error' })
+          toast.error(data.error || 'Failed to create')
         }
       } else if (selectedId) {
         const res = await fetch('/api/quick-replies', {
@@ -150,14 +149,14 @@ export default function QuickRepliesPage() {
         })
         const data = await res.json()
         if (data.success) {
-          setToast({ message: 'Quick reply updated', type: 'success' })
+          toast.success('Quick reply updated')
           await fetchReplies()
         } else {
-          setToast({ message: data.error || 'Failed to update', type: 'error' })
+          toast.error(data.error || 'Failed to update')
         }
       }
     } catch {
-      setToast({ message: 'Something went wrong', type: 'error' })
+      toast.error('Something went wrong')
     }
     setSaving(false)
   }
@@ -169,14 +168,14 @@ export default function QuickRepliesPage() {
       const res = await fetch(`/api/quick-replies?id=${selectedId}`, { method: 'DELETE' })
       const data = await res.json()
       if (data.success) {
-        setToast({ message: 'Quick reply deleted', type: 'success' })
+        toast.success('Quick reply deleted')
         clearEditor()
         await fetchReplies()
       } else {
-        setToast({ message: data.error || 'Failed to delete', type: 'error' })
+        toast.error(data.error || 'Failed to delete')
       }
     } catch {
-      setToast({ message: 'Something went wrong', type: 'error' })
+      toast.error('Something went wrong')
     }
   }
 
@@ -190,10 +189,10 @@ export default function QuickRepliesPage() {
           body: JSON.stringify(qr),
         })
       }
-      setToast({ message: `${DEFAULT_QUICK_REPLIES.length} starter templates created!`, type: 'success' })
+      toast.success(`${DEFAULT_QUICK_REPLIES.length} starter templates created!`)
       await fetchReplies()
     } catch {
-      setToast({ message: 'Failed to create starter templates', type: 'error' })
+      toast.error('Failed to create starter templates')
     }
     setLoadingStarters(false)
   }
@@ -503,7 +502,6 @@ export default function QuickRepliesPage() {
       <PoweredBy />
 
       {/* Toast */}
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   )
 }

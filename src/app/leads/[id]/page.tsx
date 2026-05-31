@@ -10,14 +10,15 @@ import LogCallModal from '@/components/LogCallModal'
 import CallHistory from '@/components/CallHistory'
 import ActivityLog from '@/components/ActivityLog'
 import OpportunityCheckPrompt from '@/components/OpportunityCheckPrompt'
-import { LEAD_STATUSES, STATUS_LABELS } from '@/config/client'
-import Toast from '@/components/Toast'
+import { STATUS_LABELS } from '@/config/client'
+import { toast } from 'sonner'
 import { formatTime } from '@/lib/format'
 import Badge, { statusTone, priorityTone } from '@/components/ui/Badge'
 import { ChevronRight } from 'lucide-react'
+import StatusEditPopover from './_components/StatusEditPopover'
+import FollowupDatePicker from './_components/FollowupDatePicker'
 
 // Status and priority options
-const STATUSES = LEAD_STATUSES
 const PRIORITIES = ['HOT', 'WARM', 'COLD'] as const
 
 // Available WhatsApp templates
@@ -33,19 +34,6 @@ function makeStatusVars(cssVar: string): { bg: string; text: string; border: str
     text: cssVar,
     border: `color-mix(in srgb, ${cssVar} 30%, transparent)`,
   }
-}
-
-const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  NEW:                  makeStatusVars('var(--color-status-new)'),
-  DECK_SENT:            makeStatusVars('var(--color-status-deck-sent)'),
-  REPLIED:              makeStatusVars('var(--color-status-replied)'),
-  NO_RESPONSE:          makeStatusVars('var(--color-status-no-response)'),
-  CALL_DONE_INTERESTED: makeStatusVars('var(--color-status-call-done-interested)'),
-  HOT:                  makeStatusVars('var(--color-status-hot)'),
-  FINAL_NEGOTIATION:    makeStatusVars('var(--color-status-final-negotiation)'),
-  CONVERTED:            makeStatusVars('var(--color-status-converted)'),
-  DELAYED:              makeStatusVars('var(--color-status-delayed)'),
-  LOST:                 makeStatusVars('var(--color-status-lost)'),
 }
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -233,7 +221,6 @@ export default function LeadDetailPage() {
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [toast, setToast] = useState('')
 
   // Assignment history
   const [assignHistory, setAssignHistory] = useState<{ from_agent: string; to_agent: string; assigned_by: string; created_at: string }[]>([])
@@ -390,9 +377,9 @@ export default function LeadDetailPage() {
         setTcSelected('')
         await fetchTelecallerAssignment()
       } else {
-        setToast(json.error || 'Failed to assign')
+        toast.error(json.error || 'Failed to assign')
       }
-    } catch (e) { setToast(String(e)) }
+    } catch (e) { toast.error(String(e)) }
     setTcSaving(false)
   }
 
@@ -402,8 +389,8 @@ export default function LeadDetailPage() {
       const res = await fetch(`/api/leads/${id}/telecaller`, { method: 'DELETE' })
       const json = await res.json()
       if (json.success) await fetchTelecallerAssignment()
-      else setToast(json.error || 'Failed to unassign')
-    } catch (e) { setToast(String(e)) }
+      else toast.error(json.error || 'Failed to unassign')
+    } catch (e) { toast.error(String(e)) }
     setTcSaving(false)
   }
 
@@ -456,7 +443,7 @@ export default function LeadDetailPage() {
       const json = await res.json()
       if (json.success) {
         await fetchDripState()
-        setToast(dripState?.enabled ? 'Drip sequence paused' : 'Drip sequence resumed')
+        toast.success(dripState?.enabled ? 'Drip sequence paused' : 'Drip sequence resumed')
       }
     } catch { /* silent */ }
     setTogglingDrip(false)
@@ -469,13 +456,13 @@ export default function LeadDetailPage() {
       const res = await fetch(`/api/leads/${id}`, { method: 'DELETE' })
       const json = await res.json()
       if (json.success) {
-        setToast('Lead deleted')
+        toast.success('Lead deleted')
         setTimeout(() => router.push('/dashboard'), 500)
       } else {
-        setToast(json.error || 'Failed to delete')
+        toast.error(json.error || 'Failed to delete')
       }
     } catch {
-      setToast('Failed to delete lead')
+      toast.error('Failed to delete lead')
     }
     setDeleting(false)
     setShowDeleteConfirm(false)
@@ -499,7 +486,7 @@ export default function LeadDetailPage() {
     setVerifying(true)
     await fetchAutoMsgStatus()
     setVerifying(false)
-    setToast('Message status refreshed')
+    toast.success('Message status refreshed')
   }
 
   // Initial load
@@ -537,16 +524,16 @@ export default function LeadDetailPage() {
       })
       const json = await res.json()
       if (json.success) {
-        setToast('Help requested')
+        toast.success('Help requested')
         setShowDelegateModal(false)
         setDelegateToId('')
         setDelegateMessage('')
         setDelegateExpires('')
         await fetchActiveDelegation()
       } else {
-        setToast(json.error || 'Failed to delegate')
+        toast.error(json.error || 'Failed to delegate')
       }
-    } catch { setToast('Failed to delegate') }
+    } catch { toast.error('Failed to delegate') }
     setDelegating(false)
   }
 
@@ -558,12 +545,12 @@ export default function LeadDetailPage() {
       const res = await fetch(`/api/delegations/${activeDelegation.id}/end`, { method: 'POST' })
       const json = await res.json()
       if (json.success) {
-        setToast('Delegation ended')
+        toast.success('Delegation ended')
         setActiveDelegation(null)
       } else {
-        setToast(json.error || 'Failed to end delegation')
+        toast.error(json.error || 'Failed to end delegation')
       }
-    } catch { setToast('Failed to end delegation') }
+    } catch { toast.error('Failed to end delegation') }
     setEndingDelegation(false)
   }
 
@@ -637,7 +624,7 @@ export default function LeadDetailPage() {
           notes: 'Notes',
           next_followup: 'Follow-up date',
         }
-        setToast(`${labels[field] || field} updated`)
+        toast.success(`${labels[field] || field} updated`)
         if (field === 'assigned_to') fetchAssignHistory()
       }
     } catch {
@@ -799,7 +786,6 @@ export default function LeadDetailPage() {
         const canEditStatus =
           sessionUser?.role === 'admin' ||
           (lead.assigned_to && sessionUser?.name === lead.assigned_to)
-        const sc = STATUS_COLORS[lead.lead_status]
         const pc = PRIORITY_COLORS[lead.lead_priority]
         return (
           <div className="sticky top-0 z-30 bg-card border-b border-border px-4 md:px-6 py-2 flex items-center gap-3 flex-wrap">
@@ -813,17 +799,13 @@ export default function LeadDetailPage() {
 
             {/* Status */}
             {canEditStatus ? (
-              <select
+              <StatusEditPopover
+                leadId={id}
                 value={lead.lead_status}
-                onChange={e => updateField('lead_status', e.target.value)}
+                size="sm"
                 disabled={savingField === 'lead_status'}
-                className="text-xs rounded border px-2 py-1 bg-elevated focus:outline-none focus:border-accent/50 disabled:opacity-50"
-                style={sc ? { color: sc.text, borderColor: sc.border, background: sc.bg } : {}}
-              >
-                {STATUSES.map(s => (
-                  <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
-                ))}
-              </select>
+                onChange={(next) => setLead(prev => prev ? { ...prev, lead_status: next } : prev)}
+              />
             ) : (
               <Badge tone={statusTone(lead.lead_status)}>
                 {STATUS_LABELS[lead.lead_status] || lead.lead_status}
@@ -1207,7 +1189,7 @@ export default function LeadDetailPage() {
               phone={lead.phone}
               leadStatus={lead.lead_status}
               leadName={lead.full_name}
-              onActed={() => setToast('Opportunity check saved')}
+              onActed={() => toast.success('Opportunity check saved')}
             />
 
             {/* Manage Card */}
@@ -1228,16 +1210,13 @@ export default function LeadDetailPage() {
                   return (
                     <div>
                       <label className="text-eyebrow text-dim block mb-1">Status</label>
-                      <select
+                      <StatusEditPopover
+                        leadId={id}
                         value={lead.lead_status}
-                        onChange={(e) => updateField('lead_status', e.target.value)}
                         disabled={savingField === 'lead_status'}
-                        className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50 disabled:opacity-50"
-                      >
-                        {STATUSES.map(s => (
-                          <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
-                        ))}
-                      </select>
+                        className="w-full justify-between bg-elevated border border-border !px-3 !py-2 !rounded-md"
+                        onChange={(next) => setLead(prev => prev ? { ...prev, lead_status: next } : prev)}
+                      />
                     </div>
                   )
                 }
@@ -1433,12 +1412,10 @@ export default function LeadDetailPage() {
               {/* Follow-up date picker */}
               <div>
                 <label className="text-xs text-dim block mb-1">Next Follow-up</label>
-                <input
-                  type="date"
+                <FollowupDatePicker
                   value={lead.next_followup || ''}
-                  onChange={(e) => updateField('next_followup', e.target.value)}
                   disabled={savingField === 'next_followup'}
-                  className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50 disabled:opacity-50"
+                  onChange={(next) => updateField('next_followup', next)}
                 />
                 {savingField === 'next_followup' && (
                   <p className="text-xs text-dim mt-1">Saving...</p>
@@ -1817,7 +1794,6 @@ export default function LeadDetailPage() {
       )}
 
       {/* Toast */}
-      {toast && <Toast message={toast} onClose={() => setToast('')} />}
     </div>
   )
 }

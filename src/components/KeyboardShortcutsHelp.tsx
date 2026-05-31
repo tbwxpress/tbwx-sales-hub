@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
 interface Shortcut { key: string; description: string }
 interface Section { title: string; shortcuts: Shortcut[] }
@@ -57,13 +58,18 @@ export default function KeyboardShortcutsHelp() {
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-text">Keyboard Shortcuts</h2>
-          <button
-            onClick={() => setOpen(false)}
-            className="text-dim hover:text-text text-lg leading-none"
-            aria-label="Close"
-          >
-            ×
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setOpen(false)}
+                className="text-dim hover:text-text text-lg leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>close (esc)</TooltipContent>
+          </Tooltip>
         </div>
         <div className="space-y-4">
           {SECTIONS.map(section => (

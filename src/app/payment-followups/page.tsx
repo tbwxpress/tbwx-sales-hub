@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
-import Toast from '@/components/Toast'
+import { toast } from 'sonner'
 import type { PaymentFollowup, PaymentFollowupUpdate, PaymentFollowupStatus } from '@/lib/types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -560,7 +560,6 @@ export default function PaymentFollowupsPage() {
   const [agentFilter, setAgentFilter] = useState('')
   const [showNew, setShowNew] = useState(false)
   const [selected, setSelected] = useState<PaymentFollowup | null>(null)
-  const [toast, setToast] = useState('')
 
   const fetchUser = useCallback(async () => {
     const res = await fetch('/api/auth/me')
@@ -608,13 +607,13 @@ export default function PaymentFollowupsPage() {
   function handleSaved(updated: PaymentFollowup) {
     setFollowups(prev => prev.map(f => f.id === updated.id ? updated : f))
     setSelected(updated)
-    setToast('Saved')
+    toast.success('Saved')
   }
 
   function handleDeleted(id: number) {
     setFollowups(prev => prev.filter(f => f.id !== id))
     setSelected(null)
-    setToast('Deleted')
+    toast.success('Deleted')
   }
 
   return (
@@ -750,7 +749,7 @@ export default function PaymentFollowupsPage() {
         <NewFollowupModal
           agents={agents}
           onClose={() => setShowNew(false)}
-          onCreated={() => { fetchFollowups(); setToast('Followup created') }}
+          onCreated={() => { fetchFollowups(); toast.success('Followup created') }}
         />
       )}
 
@@ -766,7 +765,6 @@ export default function PaymentFollowupsPage() {
         />
       )}
 
-      {toast && <Toast message={toast} onClose={() => setToast('')} />}
     </div>
   )
 }

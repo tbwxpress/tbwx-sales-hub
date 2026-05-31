@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import Navbar from '@/components/Navbar'
 
 interface DripStep { day: number; template: string; description: string }
@@ -24,7 +25,6 @@ export default function DripSettingsPage() {
   const [sequences, setSequences] = useState<DripSequence[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState('')
   // Editing state
   const [editBand, setEditBand] = useState<string | null>(null)
   const [editSteps, setEditSteps] = useState<DripStep[]>([])
@@ -82,7 +82,7 @@ export default function DripSettingsPage() {
       })
       const data = await res.json()
       if (data.success) {
-        setToast(`${editBand} sequence saved`)
+        toast.success(`${editBand} sequence saved`)
         setEditBand(null)
         // Refresh
         const refresh = await fetch('/api/drip/sequences')
@@ -91,7 +91,6 @@ export default function DripSettingsPage() {
       }
     } catch { /* ignore */ }
     setSaving(false)
-    setTimeout(() => setToast(''), 2500)
   }
 
   if (loading) {
@@ -253,17 +252,6 @@ export default function DripSettingsPage() {
         </div>
       </main>
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] toast-enter">
-          <div className="bg-accent text-[#1a1209] px-5 py-2.5 rounded-lg shadow-xl text-sm font-medium flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            {toast}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
