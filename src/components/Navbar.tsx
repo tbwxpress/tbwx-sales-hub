@@ -22,6 +22,7 @@ import {
   LogOut,
   Menu,
   X,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
@@ -135,6 +136,7 @@ export default function Navbar() {
     { href: '/agent-stats', label: user?.role === 'admin' ? 'Agent Stats' : 'My Stats', Icon: ChartColumn },
     ...(user?.role === 'admin' ? [
       { href: '/admin', label: 'Admin', Icon: Settings } as NavLink,
+      { href: '/v2/dashboard', label: '✨ Preview v2', Icon: Sparkles } as NavLink,
     ] : []),
   ]
 

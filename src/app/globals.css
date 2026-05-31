@@ -549,3 +549,69 @@ input:focus, textarea:focus, select:focus {
   .text-caption { font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.02em; }
   .text-eyebrow { font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   V2 preview theme — Operator Newsstand (franchise deck brand)
+   Scoped via .theme-newsstand on the /v2/* layout root.
+   ═══════════════════════════════════════════════════════════ */
+.theme-newsstand {
+  --color-bg: #FEF6D8;
+  --color-card: #FFFAE6;
+  --color-elevated: #F7E9B8;
+  --color-border: #1A1209;
+  --color-border-light: rgba(26, 18, 9, 0.18);
+  --color-text: #1A1209;
+  --color-body: #2D1F12;
+  --color-muted: #4D3D28;
+  --color-dim: #6B5640;
+  --color-accent: #F5C518;
+  --color-accent-hover: #E6B800;
+  --color-accent-soft: rgba(245, 197, 24, 0.18);
+  --color-success: #5FB83A;
+  --color-warning: #FFD84D;
+  --color-danger: #FF6B35;
+
+  /* shadcn token mapping */
+  --background: 49 91% 92%;        /* cream */
+  --foreground: 27 35% 8%;          /* ink */
+  --card: 47 100% 95%;
+  --card-foreground: 27 35% 8%;
+  --popover: 47 100% 95%;
+  --popover-foreground: 27 35% 8%;
+  --primary: 27 35% 8%;             /* ink — primary actions are ink-on-yellow */
+  --primary-foreground: 49 91% 92%;
+  --secondary: 49 50% 85%;
+  --secondary-foreground: 27 35% 8%;
+  --muted: 49 50% 88%;
+  --muted-foreground: 27 30% 25%;
+  --accent: 49 91% 55%;             /* tbwx yellow */
+  --accent-foreground: 27 35% 8%;
+  --destructive: 14 100% 60%;       /* orange */
+  --destructive-foreground: 49 91% 92%;
+  --border: 27 35% 8%;              /* ink borders, 2px */
+  --input: 27 35% 8%;
+  --ring: 49 91% 55%;               /* yellow focus */
+
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-geist), system-ui, sans-serif;
+}
+
+.theme-newsstand h1,
+.theme-newsstand h2,
+.theme-newsstand h3,
+.theme-newsstand .display {
+  font-family: var(--font-bricolage), Georgia, serif;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.theme-newsstand .handwritten {
+  font-family: var(--font-caveat), cursive;
+  font-weight: 600;
+}
+
+.theme-newsstand .editorial-border {
+  border-bottom: 2px solid var(--color-border);
+}
