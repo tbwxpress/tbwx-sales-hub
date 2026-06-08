@@ -14,6 +14,7 @@ import { scoreColor, scoreBg, scoreBorder } from '@/lib/score-colors'
 import {
   useReactTable,
   getCoreRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
   getFilteredRowModel,
   flexRender,
@@ -301,7 +302,7 @@ export default function LeadsPage() {
     }
   }, [search, statusFilter, assignedFilter, telecallerFilter, sortByQuery, dateFrom, dateTo])
 
-  const fetchAgents = useCallback(async (_currentUser: SessionUser) => {
+  const fetchAgents = useCallback(async () => {
     try {
       const res = await fetch('/api/users')
       const data = await res.json()
@@ -312,10 +313,10 @@ export default function LeadsPage() {
   useEffect(() => {
     async function init() {
       setLoading(true)
-      const currentUser = await fetchUser()
-      if (currentUser) {
-        await Promise.all([fetchLeads(), fetchAgents(currentUser)])
-      }
+      // Fire auth + leads + agents in PARALLEL. fetchLeads/fetchAgents don't depend
+      // on the user object (the API does its own session check), so gating them on
+      // fetchUser() was a wasted sequential round-trip before any data could paint.
+      await Promise.all([fetchUser(), fetchLeads(), fetchAgents()])
       setLoading(false)
     }
     init()
@@ -571,8 +572,8 @@ export default function LeadsPage() {
         size: 36,
         header: ({ table }) => (
           <Checkbox
-            checked={table.getIsAllPageRowsSelected() || table.getIsSomePageRowsSelected()}
-            onCheckedChange={(checked) => table.toggleAllPageRowsSelected(!!checked)}
+            checked={table.getIsAllRowsSelected() || table.getIsSomeRowsSelected()}
+            onCheckedChange={(checked) => table.toggleAllRowsSelected(!!checked)}
             aria-label="Select all"
             onClick={(e) => e.stopPropagation()}
           />
@@ -855,6 +856,8 @@ export default function LeadsPage() {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageSize: 50 } },
     getRowId: (row) => String(row.row_number),
     enableRowSelection: showCheckboxColumn,
   })
@@ -1095,7 +1098,7 @@ export default function LeadsPage() {
 
         {/* ─── Mobile Card List (<md) ─────────────────────────────────── */}
         <div className="md:hidden space-y-2">
-          {displayedLeads.length === 0 ? (
+          {table.getRowModel().rows.length === 0 ? (
             <div className="bg-card border border-border rounded-lg">
               <EmptyState
                 icon={<UserPlus className="w-10 h-10" strokeWidth={1.25} />}
@@ -1112,7 +1115,8 @@ export default function LeadsPage() {
               />
             </div>
           ) : (
-            displayedLeads.map((lead) => {
+            table.getRowModel().rows.map((row) => {
+              const lead = row.original
               const followup = followupLabel(lead.next_followup)
               const isChecked = !!rowSelection[String(lead.row_number)]
               return (
@@ -1332,6 +1336,30 @@ export default function LeadsPage() {
             </Table>
           </div>
         </div>
+
+        {/* ─── Pagination (renders ~50 rows/page instead of the whole list) ─── */}
+        {table.getPageCount() > 1 && (
+          <div className="flex items-center justify-center gap-3 mt-4 text-sm">
+            <button
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+              className="px-3 py-1.5 rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-elevated transition-colors"
+            >
+              Prev
+            </button>
+            <span className="text-dim tabular-nums">
+              Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+              <span className="hidden sm:inline"> · {displayedLeads.length} leads</span>
+            </span>
+            <button
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+              className="px-3 py-1.5 rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-elevated transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </main>
 
       {/* ─── Floating Bulk Action Bar ─────────────────────────────────── */}

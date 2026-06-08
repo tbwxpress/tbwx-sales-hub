@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SUGGESTED_REPLIES } from '@/config/suggested-replies'
+import { useVisiblePolling } from '@/lib/use-visible-polling'
 // Modal/popover-only components — defer their JS until first interaction.
 const LogCallModal = dynamic(() => import('@/components/LogCallModal'), {
   loading: () => null,
@@ -144,7 +145,6 @@ export default function InboxPage() {
   const [inboxAgents, setInboxAgents] = useState<{ id: string; name: string; role: string; active: boolean }[]>([])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const pollRef = useRef<NodeJS.Timeout | null>(null)
   const prevMsgCountRef = useRef(0)
 
   // Keyboard shortcuts
@@ -307,19 +307,13 @@ export default function InboxPage() {
       .catch(() => {})
   }, [])
 
-  // Initial load
-  useEffect(() => {
+  // Load contacts on mount, then poll while the tab is VISIBLE (pauses when
+  // hidden, refreshes on return). 8s was constant background churn; 20s is plenty
+  // for a CRM inbox and cuts background network + re-renders by ~60%.
+  useVisiblePolling(() => {
     fetchContacts()
-  }, [fetchContacts])
-
-  // Poll for new messages (8s)
-  useEffect(() => {
-    pollRef.current = setInterval(() => {
-      fetchContacts()
-      if (activePhone) fetchMessages(activePhone)
-    }, 8000)
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [activePhone, fetchContacts, fetchMessages])
+    if (activePhone) fetchMessages(activePhone)
+  }, 20000)
 
   // Auto-sync from Google Sheets every 2 minutes
   useEffect(() => {
