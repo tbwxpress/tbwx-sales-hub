@@ -434,6 +434,18 @@ export default function DashboardPage() {
 
   // Selection
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [dashPage, setDashPage] = useState(0)
+  // Render the leads table 50/page. It was rendering the ENTIRE list, mounting
+  // every row to the DOM — cost grew linearly with lead count (the main reason
+  // the dashboard felt slow as leads accumulated).
+  const pagedLeads = useMemo(
+    () => leads.slice(dashPage * 50, dashPage * 50 + 50),
+    [leads, dashPage],
+  )
+  const dashPageCount = Math.max(1, Math.ceil(leads.length / 50))
+  useEffect(() => {
+    if (dashPage >= dashPageCount) setDashPage(Math.max(0, dashPageCount - 1))
+  }, [dashPageCount, dashPage])
   const [assignTo, setAssignTo] = useState('')
   const [assigning, setAssigning] = useState(false)
 
@@ -615,15 +627,17 @@ export default function DashboardPage() {
   useEffect(() => {
     async function init() {
       setLoading(true)
+      // User-independent data starts IMMEDIATELY, in parallel with the auth check
+      // (these APIs self-authenticate) — no more gating every fetch on /api/auth/me.
+      fetchStats()
+      fetchLeads()
+      fetchTasks()
+      fetchWaStats()
+      fetchPendingDelegations()
+      // Only the two role-dependent fetches need the resolved user.
       const currentUser = await fetchUser()
       if (currentUser) {
-        // Fire all fetches in parallel — each manages its own loading state
-        fetchStats()
-        fetchLeads()
         fetchAgents(currentUser)
-        fetchTasks()
-        fetchWaStats()
-        fetchPendingDelegations()
         fetchPaymentFollowups(currentUser)
       }
       setLoading(false)
@@ -636,6 +650,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) return
+    setDashPage(0)
     fetchLeads()
   }, [search, statusFilter, assignedFilter, sortBy, fetchLeads, user])
 
@@ -1454,7 +1469,7 @@ export default function DashboardPage() {
                     </td>
                   </tr>
                 ) : (
-                  leads.map((lead, idx) => {
+                  pagedLeads.map((lead, idx) => {
                     const statusColor = STATUS_COLORS[lead.lead_status] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
                     const priorityColor = PRIORITY_COLORS[lead.lead_priority] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
                     const followup = followupLabel(lead.next_followup)
@@ -1473,7 +1488,7 @@ export default function DashboardPage() {
                         )}
 
                         {/* Serial Number */}
-                        <td className="px-3 py-2.5 text-center text-xs text-dim font-mono">{idx + 1}</td>
+                        <td className="px-3 py-2.5 text-center text-xs text-dim font-mono">{dashPage * 50 + idx + 1}</td>
 
                         {/* Lead Score */}
                         <td className="px-3 py-2.5 text-center">
@@ -1630,6 +1645,29 @@ export default function DashboardPage() {
             </table>
           </div>
         </div>
+        )}
+
+        {!loadingLeads && dashPageCount > 1 && (
+          <div className="flex items-center justify-center gap-3 mt-4 text-sm">
+            <button
+              onClick={() => setDashPage(p => Math.max(0, p - 1))}
+              disabled={dashPage === 0}
+              className="px-3 py-1.5 rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-elevated transition-colors"
+            >
+              Prev
+            </button>
+            <span className="text-dim tabular-nums">
+              Page {dashPage + 1} of {dashPageCount}
+              <span className="hidden sm:inline"> · {leads.length} leads</span>
+            </span>
+            <button
+              onClick={() => setDashPage(p => Math.min(dashPageCount - 1, p + 1))}
+              disabled={dashPage >= dashPageCount - 1}
+              className="px-3 py-1.5 rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-elevated transition-colors"
+            >
+              Next
+            </button>
+          </div>
         )}
 
         {/* ─── WA Backfill Results ───────────────────────────────────── */}

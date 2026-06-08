@@ -95,7 +95,14 @@ export async function getLeadByRow(rowNumber: number): Promise<Lead | null> {
 // What is NOT cached: getLeadByRow (single-row reads are already cheap and
 // callers may want absolute freshness), all write operations, and getConversation
 // (it's a composition of cached reads, so it inherits the cache for free).
-const SHEETS_CACHE_TTL_MS = 30_000
+// 2 min: every write (updateLead/createLead/etc.) calls invalidate*, so a longer
+// TTL never serves stale data after an edit — it just makes the slow full-sheet
+// cold read 4x rarer for read-only navigation (e.g. dashboard/leads page loads).
+const SHEETS_CACHE_TTL_MS = 120_000
+// Inbound replies (Replies tab) are written by n8n OUTSIDE this module, so they
+// have NO write-driven invalidation — keep their cache short so agents still see
+// customer replies within ~30s in the inbox even though the general TTL is 2 min.
+const RECEIVED_MESSAGES_TTL_MS = 30_000
 
 type CacheEntry<T> = { promise: Promise<T>; ts: number }
 
@@ -110,10 +117,11 @@ let _knowledgeBaseCache: CacheEntry<KnowledgeBaseEntry[]> | null = null
 
 function readThrough<T>(
   entryRef: { get: () => CacheEntry<T> | null; set: (e: CacheEntry<T> | null) => void },
-  fetcher: () => Promise<T>
+  fetcher: () => Promise<T>,
+  ttlMs: number = SHEETS_CACHE_TTL_MS,
 ): Promise<T> {
   const cur = entryRef.get()
-  if (cur && Date.now() - cur.ts < SHEETS_CACHE_TTL_MS) {
+  if (cur && Date.now() - cur.ts < ttlMs) {
     return cur.promise
   }
   const promise = fetcher().catch(err => {
@@ -347,7 +355,8 @@ export async function getReceivedMessages(phone?: string): Promise<Message[]> {
   // is also a hit for any other phone in the same 30s window.
   const all = await readThrough<Message[]>(
     { get: () => _receivedMessagesCache, set: e => { _receivedMessagesCache = e } },
-    fetchAllReceivedMessages
+    fetchAllReceivedMessages,
+    RECEIVED_MESSAGES_TTL_MS,
   )
   if (!phone) return all
   const cleanPhone = phone.replace(/\D/g, '')
