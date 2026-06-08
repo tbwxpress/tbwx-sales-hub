@@ -22,6 +22,11 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  compress: true,
+  experimental: {
+    // Tree-shake heavy barrel imports so per-route client JS is smaller.
+    optimizePackageImports: ['lucide-react', 'date-fns', '@tanstack/react-table'],
+  },
   async headers() {
     return [
       {

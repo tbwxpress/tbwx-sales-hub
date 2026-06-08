@@ -5,7 +5,7 @@ import { getLeads, getLeadStats, createLead } from '@/lib/sheets'
 import { computeLeadScore } from '@/lib/scoring'
 import { STATUS_MIGRATION } from '@/config/client'
 import { getTelecallerVisibleLeadRows, getAllAssignments } from '@/lib/telecaller'
-import { getOptedOutPhones, getLastDiscussionByPhone, normalizePhone, upsertContact, getActiveDelegationsFor, getActiveDelegationForLead } from '@/lib/db'
+import { getOptedOutPhones, getLastDiscussionByPhone, normalizePhone, upsertContact, getActiveDelegationsFor, getAllActiveDelegations } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   try {
@@ -131,13 +131,10 @@ export async function GET(req: NextRequest) {
     }
 
     // Per-lead active delegation (for all leads visible to admin)
-    const leadDelegationCache = new Map<number, Awaited<ReturnType<typeof getActiveDelegationForLead>>>()
+    let leadDelegationCache: Awaited<ReturnType<typeof getAllActiveDelegations>> = new Map()
     if (session!.role === 'admin') {
-      // Fetch active delegation for each lead in batch — one query per lead is acceptable at this scale
-      await Promise.all(leads.map(async l => {
-        const d = await getActiveDelegationForLead(l.row_number)
-        leadDelegationCache.set(l.row_number, d)
-      }))
+      // One query for ALL active delegations instead of one per lead (was an N+1).
+      leadDelegationCache = await getAllActiveDelegations()
     }
 
     // Attach computed scores + telecaller assignment metadata + last discussion + delegation metadata

@@ -830,6 +830,37 @@ export async function getBulkAutoMessageStatus(): Promise<
   return map
 }
 
+// Latest message per phone (one row per phone), keyed by last-10-digits.
+// Single GROUP-BY read that replaces per-lead getMessages() N+1 loops (e.g. /api/today).
+export async function getLastMessageByPhone(): Promise<Map<string, { direction: string; timestamp: string; text: string }>> {
+  try {
+    const db = await ensureInit()
+    const result = await db.execute(`
+      SELECT m.phone, m.direction, m.text, m.timestamp
+      FROM messages m
+      INNER JOIN (
+        SELECT phone, MAX(timestamp) AS last_ts FROM messages GROUP BY phone
+      ) last ON m.phone = last.phone AND m.timestamp = last.last_ts
+    `)
+    const map = new Map<string, { direction: string; timestamp: string; text: string }>()
+    for (const row of result.rows) {
+      const key = String(row.phone || '').replace(/\D/g, '').slice(-10)
+      if (!key) continue
+      const candidate = {
+        direction: String(row.direction || ''),
+        timestamp: String(row.timestamp || ''),
+        text: String(row.text || ''),
+      }
+      const existing = map.get(key)
+      if (!existing || candidate.timestamp > existing.timestamp) map.set(key, candidate)
+    }
+    return map
+  } catch (err) {
+    console.error('[getLastMessageByPhone] non-critical:', err)
+    return new Map()
+  }
+}
+
 // --- Call log operations ---
 
 export async function insertCallLog(data: {
@@ -1817,6 +1848,20 @@ export async function getActiveDelegationForLead(lead_row: number): Promise<Dele
   })
   if (result.rows.length === 0) return null
   return rowToDelegation(serializeRow(result.rows[0]))
+}
+
+// All active delegations in ONE query, keyed by lead_row (most recent wins).
+// Replaces the per-lead getActiveDelegationForLead() N+1 on the admin leads list.
+export async function getAllActiveDelegations(): Promise<Map<number, Delegation>> {
+  const db = await ensureInit()
+  const result = await db.execute(
+    `SELECT * FROM lead_delegations WHERE status = 'active' ORDER BY created_at DESC`
+  )
+  const map = new Map<number, Delegation>()
+  for (const d of serializeRows(result.rows).map(rowToDelegation)) {
+    if (!map.has(d.lead_row)) map.set(d.lead_row, d) // DESC → first seen = most recent
+  }
+  return map
 }
 
 export async function getDelegationsForLead(lead_row: number): Promise<Delegation[]> {

@@ -19,13 +19,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
-# Copy standalone output
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+# Copy standalone output, owned by the runtime user so Next can write its caches.
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# SQLite data directory
-RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+# Writable dirs. Without /app/.next/cache being writable, the non-root user hits
+# EACCES on every request (image-opt + ISR/data cache writes) -> unhandledRejection.
+RUN mkdir -p /app/.next/cache /app/data && chown -R nextjs:nodejs /app/.next /app/data
 ENV SQLITE_PATH=/app/data/saleshub.db
 
 USER nextjs
