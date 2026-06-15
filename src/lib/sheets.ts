@@ -1,6 +1,10 @@
 import { google } from 'googleapis'
 import type { Lead, LeadStatus, QuickReply, Message, KnowledgeBaseEntry } from './types'
 import { LEAD_COLUMN_MAP, LEAD_WRITE_COLUMNS, SHEETS } from '@/config/client'
+import {
+  dbGetLeads, dbGetLeadByRow, dbInsertLead, dbInsertLeadsIfAbsent,
+  dbUpdateLeadFields, dbDeleteLead, dbCountLeads, dbGetMaxRow,
+} from './leads-db'
 
 // --- Auth setup ---
 function getAuth() {
@@ -40,21 +44,15 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
 const T = SHEETS.tabs
 
 // --- Lead operations ---
+//
+// The leads system of record is now the local SQLite `leads` table (see
+// leads-db.ts). The Google Sheet is INTAKE + BACKUP: new rows are synced in
+// from the sheet, agent edits are written to the DB first and mirrored back to
+// the sheet. The raw sheet readers/writers below are used by the sync + mirror;
+// the public getLeads/getLeadByRow/updateLead/createLead read & write the DB.
 
-/**
- * Get a single lead by row number — reads only that one row instead of all leads.
- * Use this when you need just one lead (e.g. to get a name for a message).
- */
-export async function getLeadByRow(rowNumber: number): Promise<Lead | null> {
-  const sheets = getSheets()
-  const tab = process.env.LEADS_TAB_NAME || T.leads
-  const res = await withRetry(() => sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.LEADS_SHEET_ID,
-    range: `${tab}!A${rowNumber}:${SHEETS.ranges.leadsEnd}${rowNumber}`,
-  }))
-  const rows = res.data.values || []
-  if (rows.length === 0) return null
-  const row = rows[0]
+// Shared row → Lead mapper for raw sheet reads.
+function mapSheetRowToLead(row: string[], rowNumber: number): Lead {
   const C = LEAD_COLUMN_MAP
   return {
     row_number: rowNumber,
@@ -79,6 +77,48 @@ export async function getLeadByRow(rowNumber: number): Promise<Lead | null> {
     next_followup: row[C.next_followup] || '',
     notes: row[C.notes] || '',
   }
+}
+
+// Raw: read EVERY lead row from the sheet (the slow full-range read). Used for
+// the one-time seed and the safety fallback.
+async function readAllLeadsFromSheet(): Promise<Lead[]> {
+  const sheets = getSheets()
+  const tab = process.env.LEADS_TAB_NAME || T.leads
+  const res = await withRetry(() => sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.LEADS_SHEET_ID,
+    range: `${tab}!A2:${SHEETS.ranges.leadsEnd}`,
+  }))
+  const rows = res.data.values || []
+  return rows.map((row, i) => mapSheetRowToLead(row, i + 2))
+}
+
+// Raw: read only the sheet rows from `startRow` downward (cheap — used by the
+// incremental sync to pull newly-appended leads). Skips fully-blank rows.
+async function readLeadsFromSheetStartingAt(startRow: number): Promise<Lead[]> {
+  if (startRow < 2) startRow = 2
+  const sheets = getSheets()
+  const tab = process.env.LEADS_TAB_NAME || T.leads
+  const res = await withRetry(() => sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.LEADS_SHEET_ID,
+    range: `${tab}!A${startRow}:${SHEETS.ranges.leadsEnd}`,
+  }))
+  const rows = res.data.values || []
+  return rows
+    .map((row, i) => mapSheetRowToLead(row, startRow + i))
+    .filter(l => l.id || l.phone || l.full_name)
+}
+
+// Raw: read a single lead row from the sheet (fallback for getLeadByRow).
+async function readLeadRowFromSheet(rowNumber: number): Promise<Lead | null> {
+  const sheets = getSheets()
+  const tab = process.env.LEADS_TAB_NAME || T.leads
+  const res = await withRetry(() => sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.LEADS_SHEET_ID,
+    range: `${tab}!A${rowNumber}:${SHEETS.ranges.leadsEnd}${rowNumber}`,
+  }))
+  const rows = res.data.values || []
+  if (rows.length === 0) return null
+  return mapSheetRowToLead(rows[0], rowNumber)
 }
 
 // --- Module-level in-memory caches for Sheets reads ---
@@ -106,7 +146,9 @@ const RECEIVED_MESSAGES_TTL_MS = 30_000
 
 type CacheEntry<T> = { promise: Promise<T>; ts: number; refreshing?: boolean }
 
-let _leadsCache: CacheEntry<Lead[]> | null = null
+// NOTE: leads are no longer cached in-memory here — they're served from the
+// local `leads` table (instant), so this cache layer now only covers the
+// message / quick-reply / knowledge-base sheet reads.
 // Sent/received messages are cached UNFILTERED. The optional `phone` arg
 // filters the already-fetched array in memory, so the cache key is the
 // function itself (not the phone number).
@@ -151,35 +193,76 @@ function readThrough<T>(
   return promise
 }
 
-export function invalidateLeadsCache() {
-  _leadsCache = null
+// Kept for backward-compat with callers that still import it (e.g. the
+// auto-send cron). Leads are no longer cached in this module, so this is a
+// no-op — the DB is always current.
+export function invalidateLeadsCache() { /* no-op: leads served from DB */ }
+
+// --- Leads sheet → DB sync ---
+// The sheet is intake-only: new leads append at the bottom. We seed the DB once
+// (full read) and then pull only newly-appended rows incrementally (cheap read
+// from maxRow+1 down). Sync runs opportunistically in the BACKGROUND from
+// getLeads(), so a reader is never blocked on a sheet round-trip.
+const LEADS_SYNC_INTERVAL_MS = 90_000
+let _leadsSyncing = false
+let _lastLeadsSyncTs = 0
+let _seedPromise: Promise<void> | null = null
+
+async function doSeedLeads(): Promise<void> {
+  const count = await dbCountLeads()
+  if (count === 0) {
+    const all = await readAllLeadsFromSheet()
+    if (all.length) await dbInsertLeadsIfAbsent(all)
+  }
+  _lastLeadsSyncTs = Date.now()
 }
 
-// Keep the leads cache WARM across writes. The old behaviour dumped all ~3,000
-// cached rows whenever a single lead changed, which forced the NEXT reader to
-// re-download the entire sheet (multi-second on the 1-vCPU box) — and with
-// several agents editing, the cache was almost never warm, so nearly every
-// page load paid that cost. Instead, re-read just the one changed row and
-// splice it into the cached array, so the other ~2,999 rows stay hot. Falls
-// back to a full invalidation only if the cache looks inconsistent.
-async function refreshCachedLeadRow(rowNumber: number): Promise<void> {
-  const cur = _leadsCache
-  if (!cur) return // nothing cached — the next read fetches fresh anyway
-  try {
-    const [updated, leads] = await Promise.all([getLeadByRow(rowNumber), cur.promise])
-    const idx = leads.findIndex(l => l.row_number === rowNumber)
-    if (updated && (updated.id || updated.full_name || updated.phone)) {
-      if (idx >= 0) leads[idx] = updated
-      else leads.push(updated)
-    } else if (idx >= 0) {
-      // Row was cleared / soft-deleted — drop it from the cached list.
-      leads.splice(idx, 1)
-    }
-    _leadsCache = { promise: Promise.resolve(leads), ts: Date.now() }
-  } catch {
-    // On any inconsistency, fall back to a full refresh on the next read.
-    _leadsCache = null
+// Idempotent first-run import. Concurrent callers share one seed promise.
+function ensureLeadsSeeded(): Promise<void> {
+  if (!_seedPromise) {
+    _seedPromise = doSeedLeads().catch(err => {
+      _seedPromise = null // allow a retry on the next read if the seed failed
+      throw err
+    })
   }
+  return _seedPromise
+}
+
+// Pull only newly-appended sheet rows into the DB.
+async function syncNewLeads(): Promise<number> {
+  const maxRow = await dbGetMaxRow()
+  const newRows = await readLeadsFromSheetStartingAt(maxRow + 1)
+  const inserted = newRows.length ? await dbInsertLeadsIfAbsent(newRows) : 0
+  _lastLeadsSyncTs = Date.now()
+  return inserted
+}
+
+// Fire-and-forget background sync, throttled to LEADS_SYNC_INTERVAL_MS.
+function maybeSyncNewLeads(): void {
+  if (_leadsSyncing) return
+  if (Date.now() - _lastLeadsSyncTs < LEADS_SYNC_INTERVAL_MS) return
+  _leadsSyncing = true
+  syncNewLeads()
+    .catch(err => console.error('[leads-sync] background sync failed:', err))
+    .finally(() => { _leadsSyncing = false })
+}
+
+// Mirror lead-field changes back to the sheet (backup). Async + retried; the DB
+// stays the source of truth, so a mirror failure never fails the agent's edit.
+function mirrorLeadFieldsToSheet(rowNumber: number, fields: Array<[string, string]>): void {
+  const tab = process.env.LEADS_TAB_NAME || T.leads
+  const data = fields
+    .filter(([field]) => LEAD_WRITE_COLUMNS[field])
+    .map(([field, value]) => ({
+      range: `${tab}!${LEAD_WRITE_COLUMNS[field]}${rowNumber}`,
+      values: [[value]],
+    }))
+  if (data.length === 0) return
+  const sheets = getSheets()
+  withRetry(() => sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: process.env.LEADS_SHEET_ID!,
+    requestBody: { valueInputOption: 'RAW', data },
+  })).catch(err => console.error(`[leads-mirror] row ${rowNumber} mirror failed:`, err))
 }
 
 export function invalidateSentMessagesCache() {
@@ -199,116 +282,104 @@ export function invalidateKnowledgeBaseCache() {
 }
 
 export async function getLeads(): Promise<Lead[]> {
-  return readThrough<Lead[]>(
-    { get: () => _leadsCache, set: e => { _leadsCache = e } },
-    async () => {
-      const sheets = getSheets()
-      const tab = process.env.LEADS_TAB_NAME || T.leads
-      const res = await withRetry(() => sheets.spreadsheets.values.get({
-        spreadsheetId: process.env.LEADS_SHEET_ID,
-        range: `${tab}!A2:${SHEETS.ranges.leadsEnd}`,
-      }))
-      const rows = res.data.values || []
-      const C = LEAD_COLUMN_MAP
-      return rows.map((row, i) => ({
-        row_number: i + 2,
-        id: row[C.id] || '',
-        created_time: row[C.created_time] || '',
-        campaign_name: row[C.campaign_name] || '',
-        full_name: row[C.full_name] || '',
-        phone: (row[C.phone] || '').replace('p:', ''),
-        email: row[C.email] || '',
-        city: row[C.city] || '',
-        state: row[C.state] || '',
-        model_interest: row[C.model_interest] || '',
-        experience: row[C.experience] || '',
-        timeline: row[C.timeline] || '',
-        platform: row[C.platform] || '',
-        lead_status: (row[C.lead_status] || 'NEW') as LeadStatus,
-        attempted_contact: row[C.attempted_contact] || '',
-        first_call_date: row[C.first_call_date] || '',
-        wa_message_id: row[C.wa_message_id] || '',
-        lead_priority: row[C.lead_priority] || '',
-        assigned_to: row[C.assigned_to] || '',
-        next_followup: row[C.next_followup] || '',
-        notes: row[C.notes] || '',
-      }))
-    }
-  )
+  try {
+    await ensureLeadsSeeded()
+    maybeSyncNewLeads() // background, never blocks this read
+    const leads = await dbGetLeads()
+    if (leads.length > 0) return leads
+    // DB empty even after a seed attempt → fall back to a direct sheet read so
+    // the app can never show an empty leads list.
+    return await readAllLeadsFromSheet()
+  } catch (err) {
+    console.error('[getLeads] DB path failed; falling back to sheet read:', err)
+    return await readAllLeadsFromSheet()
+  }
+}
+
+export async function getLeadByRow(rowNumber: number): Promise<Lead | null> {
+  try {
+    const lead = await dbGetLeadByRow(rowNumber)
+    if (lead) return lead
+  } catch (err) {
+    console.error(`[getLeadByRow] DB read failed for row ${rowNumber}; falling back to sheet:`, err)
+  }
+  // Not in the DB (yet) or DB error → read the single row from the sheet.
+  return await readLeadRowFromSheet(rowNumber)
+}
+
+// Reverse of LEAD_WRITE_COLUMNS: column letter → Lead field name. Lets the
+// column-based updateLeadField apply the same change to the DB.
+const WRITE_COLUMN_TO_FIELD: Record<string, string> = Object.fromEntries(
+  Object.entries(LEAD_WRITE_COLUMNS).map(([field, col]) => [col, field]),
+)
+
+// Write lead-field changes to the DB. If the row isn't in the DB yet (e.g. a
+// sheet lead that hasn't synced in), pull the full row from the sheet, apply
+// the change, and insert it — so an edit is NEVER silently lost.
+async function writeLeadFieldsToDb(rowNumber: number, fields: Partial<Record<string, string>>): Promise<void> {
+  const affected = await dbUpdateLeadFields(rowNumber, fields)
+  if (affected > 0) return
+  const base = await readLeadRowFromSheet(rowNumber)
+  if (base) {
+    await dbInsertLead({ ...base, ...(fields as Partial<Lead>) })
+  } else {
+    console.warn(`[writeLeadFieldsToDb] row ${rowNumber} not in DB or sheet — update not persisted`)
+  }
 }
 
 export async function updateLeadField(rowNumber: number, column: string, value: string): Promise<void> {
-  const sheets = getSheets()
-  const tab = process.env.LEADS_TAB_NAME || T.leads
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: process.env.LEADS_SHEET_ID,
-    range: `${tab}!${column}${rowNumber}`,
-    valueInputOption: 'RAW',
-    requestBody: { values: [[value]] },
-  })
-  // Patch just this row into the cache (keeps the writer seeing their own change
-  // immediately) instead of nuking all 3,000 cached rows.
-  await refreshCachedLeadRow(rowNumber)
+  const field = WRITE_COLUMN_TO_FIELD[column]
+  if (!field) {
+    console.warn(`[updateLeadField] unknown column "${column}" — write skipped`)
+    return
+  }
+  // DB is the source of truth — write it first so the agent sees the change.
+  await writeLeadFieldsToDb(rowNumber, { [field]: value })
+  // Mirror to the sheet as a backup (async, retried, non-fatal).
+  mirrorLeadFieldsToSheet(rowNumber, [[field, value]])
 }
 
 export async function updateLead(rowNumber: number, fields: Partial<Record<string, string>>): Promise<void> {
-  const entries = Object.entries(fields).filter(([field, value]) => LEAD_WRITE_COLUMNS[field] && value !== undefined)
+  const entries = Object.entries(fields).filter(
+    ([field, value]) => LEAD_WRITE_COLUMNS[field] && value !== undefined,
+  ) as Array<[string, string]>
   if (entries.length === 0) return
-
-  // Single field — use simple update (1 API call). updateLeadField warms the cache itself.
-  if (entries.length === 1) {
-    const [field, value] = entries[0]
-    await updateLeadField(rowNumber, LEAD_WRITE_COLUMNS[field], value!)
-    return
-  }
-
-  // Multiple fields — batch into single batchUpdate call (1 API call instead of N)
-  const sheets = getSheets()
-  const tab = process.env.LEADS_TAB_NAME || T.leads
-  const data = entries.map(([field, value]) => ({
-    range: `${tab}!${LEAD_WRITE_COLUMNS[field]}${rowNumber}`,
-    values: [[value]],
-  }))
-
-  await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId: process.env.LEADS_SHEET_ID!,
-    requestBody: { valueInputOption: 'RAW', data },
-  })
-  // Patch just this row into the cache instead of nuking all 3,000 rows.
-  await refreshCachedLeadRow(rowNumber)
+  // DB first (source of truth), then mirror all changed fields to the sheet.
+  await writeLeadFieldsToDb(rowNumber, Object.fromEntries(entries))
+  mirrorLeadFieldsToSheet(rowNumber, entries)
 }
 
 /**
- * Batch update a single field across multiple rows in one API call.
- * Uses batchUpdate to stay within Google Sheets rate limits.
+ * Set a single field across multiple leads. Writes the DB then mirrors to the
+ * sheet in one batchUpdate.
  */
 export async function bulkUpdateField(rowNumbers: number[], field: string, value: string): Promise<void> {
-  invalidateLeadsCache()
-  const col = LEAD_WRITE_COLUMNS[field]
-  if (!col) throw new Error(`Unknown field: ${field}`)
-
-  const sheets = getSheets()
+  if (!LEAD_WRITE_COLUMNS[field]) throw new Error(`Unknown field: ${field}`)
+  // DB first (insert-if-missing so a not-yet-synced row is never skipped).
+  for (const rowNum of rowNumbers) {
+    await writeLeadFieldsToDb(rowNum, { [field]: value })
+  }
+  // Mirror to the sheet in a single batchUpdate (one call for all rows).
   const tab = process.env.LEADS_TAB_NAME || T.leads
-
-  // Google Sheets batchUpdate accepts multiple value ranges in one call
+  const col = LEAD_WRITE_COLUMNS[field]
   const data = rowNumbers.map(rowNum => ({
     range: `${tab}!${col}${rowNum}`,
     values: [[value]],
   }))
-
-  await sheets.spreadsheets.values.batchUpdate({
+  const sheets = getSheets()
+  withRetry(() => sheets.spreadsheets.values.batchUpdate({
     spreadsheetId: process.env.LEADS_SHEET_ID!,
-    requestBody: {
-      valueInputOption: 'RAW',
-      data,
-    },
-  })
+    requestBody: { valueInputOption: 'RAW', data },
+  })).catch(err => console.error('[bulkUpdateField] sheet mirror failed:', err))
 }
 
 /**
  * Clear all data in a lead row (soft-delete — preserves row numbers).
  */
 export async function clearLeadRow(rowNumber: number): Promise<void> {
+  // Remove from the DB (source of truth) first.
+  await dbDeleteLead(rowNumber)
+  // Then clear the sheet row (backup).
   const sheets = getSheets()
   const tab = process.env.LEADS_TAB_NAME || T.leads
   // Clear columns A through Z for the row
@@ -316,7 +387,6 @@ export async function clearLeadRow(rowNumber: number): Promise<void> {
     spreadsheetId: process.env.LEADS_SHEET_ID!,
     range: `${tab}!A${rowNumber}:Z${rowNumber}`,
   })
-  invalidateLeadsCache()
 }
 
 // --- Create Lead ---
@@ -357,6 +427,8 @@ export async function createLead(data: {
   row[C.assigned_to] = data.assigned_to || ''
   row[C.notes] = data.notes || ''
 
+  // Append to the sheet first — this allocates the canonical row number that we
+  // reuse as the DB primary key (keeps DB rows aligned with sheet rows).
   const appendRes = await sheets.spreadsheets.values.append({
     spreadsheetId: process.env.LEADS_SHEET_ID,
     range: `${tab}!A:${SHEETS.ranges.leadsEnd}`,
@@ -368,9 +440,15 @@ export async function createLead(data: {
   const updatedRange = appendRes.data.updates?.updatedRange || ''
   const rowMatch = updatedRange.match(/(\d+)$/)
   const newRow = rowMatch ? parseInt(rowMatch[1]) : 0
-  // Append the new lead into the warm cache rather than discarding all rows.
-  if (newRow) await refreshCachedLeadRow(newRow)
-  else invalidateLeadsCache()
+
+  // Insert into the DB (source of truth) so it shows up immediately.
+  if (newRow) {
+    await dbInsertLead(mapSheetRowToLead(row, newRow))
+  } else {
+    // Couldn't resolve the appended row number — the lead is in the sheet and
+    // the background sync will pull it into the DB shortly.
+    console.warn('[createLead] could not resolve appended row number; DB insert deferred to sync')
+  }
   return newRow
 }
 

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { sendTemplate } from '@/lib/whatsapp'
 import { sendFranchiseEmail } from '@/lib/email'
-import { logSentMessage, updateLead, getLeads, invalidateLeadsCache } from '@/lib/sheets'
+import { logSentMessage, updateLead, getLeads } from '@/lib/sheets'
 import { upsertContact, insertMessage, getMessages, getSetting, setSetting } from '@/lib/db'
 import { getUsers } from '@/lib/users'
 import { getOptInTemplateName } from '@/lib/template-settings'
@@ -154,31 +154,41 @@ function pickAgentByCounter(pool: PoolAgent[], counter: number): string {
 
 // --- Update the correct tab ---
 async function markContacted(lead: RawLead, waMessageId: string, assignedTo: string) {
-  const sheets = getSheets()
-  const tabName = lead.source_tab === 'old'
-    ? (process.env.OLD_LEADS_TAB_NAME || 'Previous campaign leads')
-    : (process.env.LEADS_TAB_NAME || 'AI Campaign Leads')
-
   // Follow-up: DECK_SENT gets +1 day
   const followup = new Date()
   followup.setDate(followup.getDate() + 1)
   const followupStr = followup.toISOString().split('T')[0]
 
-  // Update: lead_status (V), wa_message_id (Y), lead_priority (Z), assigned_to (AA), next_followup (AB)
-  const data = [
-    { range: `${tabName}!V${lead.row_number}`, values: [['DECK_SENT']] },
-    { range: `${tabName}!Y${lead.row_number}`, values: [[waMessageId]] },
-    { range: `${tabName}!Z${lead.row_number}`, values: [[lead.lead_priority]] },
-    { range: `${tabName}!AB${lead.row_number}`, values: [[followupStr]] },
-  ]
-  if (assignedTo) {
-    data.push({ range: `${tabName}!AA${lead.row_number}`, values: [[assignedTo]] })
+  if (lead.source_tab === 'new') {
+    // New-tab leads live in the DB (source of truth). updateLead writes the DB
+    // and mirrors the same fields back to the sheet.
+    const fields: Record<string, string> = {
+      lead_status: 'DECK_SENT',
+      wa_message_id: waMessageId,
+      lead_priority: lead.lead_priority,
+      next_followup: followupStr,
+    }
+    if (assignedTo) fields.assigned_to = assignedTo
+    await updateLead(lead.row_number, fields)
+  } else {
+    // Old-tab leads ("Previous campaign leads") are NOT in the DB — write
+    // directly to that sheet tab as before.
+    const sheets = getSheets()
+    const tabName = process.env.OLD_LEADS_TAB_NAME || 'Previous campaign leads'
+    const data = [
+      { range: `${tabName}!V${lead.row_number}`, values: [['DECK_SENT']] },
+      { range: `${tabName}!Y${lead.row_number}`, values: [[waMessageId]] },
+      { range: `${tabName}!Z${lead.row_number}`, values: [[lead.lead_priority]] },
+      { range: `${tabName}!AB${lead.row_number}`, values: [[followupStr]] },
+    ]
+    if (assignedTo) {
+      data.push({ range: `${tabName}!AA${lead.row_number}`, values: [[assignedTo]] })
+    }
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: process.env.LEADS_SHEET_ID!,
+      requestBody: { valueInputOption: 'RAW', data },
+    })
   }
-
-  await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId: process.env.LEADS_SHEET_ID!,
-    requestBody: { valueInputOption: 'RAW', data },
-  })
 
   // Audit-log the DECK_SENT transition so daily activity attributes the system action
   try {
@@ -193,9 +203,6 @@ async function markContacted(lead: RawLead, waMessageId: string, assignedTo: str
       source: 'auto-send',
     })
   } catch { /* audit log non-critical */ }
-
-  // Invalidate cache so next getLeads() reads fresh data
-  invalidateLeadsCache()
 }
 
 export async function POST(request: NextRequest) {
@@ -232,20 +239,36 @@ export async function POST(request: NextRequest) {
       error?: string
     }> = []
 
-    // Force fresh read — don't use stale cache from a previous request
-    invalidateLeadsCache()
-
     // Resolve opt-in template name from DB settings (admin-configurable, no redeploy needed)
     const TEMPLATE_NAME = await getOptInTemplateName()
 
-    // 1. Read both tabs
-    const newTabName = process.env.LEADS_TAB_NAME || 'AI Campaign Leads'
+    // 1. Read leads. New-tab leads now come from the DB (source of truth), so a
+    //    lead is guaranteed present before markContacted updates it. Old-tab
+    //    leads ("Previous campaign leads") aren't in the DB → read the sheet.
     const oldTabName = process.env.OLD_LEADS_TAB_NAME || 'Previous campaign leads'
 
-    const [newLeads, oldLeads] = await Promise.all([
-      readTab(newTabName, 'new'),
+    const [dbLeads, oldLeads] = await Promise.all([
+      getLeads(),
       readTab(oldTabName, 'old'),
     ])
+    const newLeads: RawLead[] = dbLeads.map(l => {
+      const phone = l.phone || ''
+      return {
+        row_number: l.row_number,
+        full_name: l.full_name || 'there',
+        phone,
+        phone_formatted: phone.replace(/\D/g, '').replace(/^0+/, ''),
+        email: l.email || '',
+        city: l.city || '',
+        state: l.state || '',
+        lead_status: l.lead_status || '',
+        experience: l.experience || '',
+        timeline: l.timeline || '',
+        model_interest: l.model_interest || '',
+        lead_priority: l.lead_priority || '',
+        source_tab: 'new',
+      }
+    })
 
     // 2. Merge
     const allLeads = [...newLeads, ...oldLeads]

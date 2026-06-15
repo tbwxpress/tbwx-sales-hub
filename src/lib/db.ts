@@ -378,6 +378,38 @@ export async function ensureInit(): Promise<Client> {
         FOREIGN KEY (followup_id) REFERENCES payment_followups(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_pfu_followup ON payment_followup_updates(followup_id, created_at);
+
+      -- Leads system of record. Mirrors the Google Sheet (which is now intake-only):
+      -- new rows are synced IN from the sheet; agent edits are written here first and
+      -- mirrored back to the sheet as a backup. row_number is the sheet row and the
+      -- shared key used by lead_telecaller_assignments / lead_status_changes / etc.
+      CREATE TABLE IF NOT EXISTS leads (
+        row_number INTEGER PRIMARY KEY,
+        id TEXT DEFAULT '',
+        created_time TEXT DEFAULT '',
+        campaign_name TEXT DEFAULT '',
+        full_name TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        city TEXT DEFAULT '',
+        state TEXT DEFAULT '',
+        model_interest TEXT DEFAULT '',
+        experience TEXT DEFAULT '',
+        timeline TEXT DEFAULT '',
+        platform TEXT DEFAULT '',
+        lead_status TEXT DEFAULT 'NEW',
+        attempted_contact TEXT DEFAULT '',
+        first_call_date TEXT DEFAULT '',
+        wa_message_id TEXT DEFAULT '',
+        lead_priority TEXT DEFAULT '',
+        assigned_to TEXT DEFAULT '',
+        next_followup TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(lead_status);
+      CREATE INDEX IF NOT EXISTS idx_leads_assigned ON leads(assigned_to);
+      CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone);
     `)
 
     await db.execute(`
