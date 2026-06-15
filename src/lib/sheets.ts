@@ -104,7 +104,7 @@ const SHEETS_CACHE_TTL_MS = 120_000
 // customer replies within ~30s in the inbox even though the general TTL is 2 min.
 const RECEIVED_MESSAGES_TTL_MS = 30_000
 
-type CacheEntry<T> = { promise: Promise<T>; ts: number }
+type CacheEntry<T> = { promise: Promise<T>; ts: number; refreshing?: boolean }
 
 let _leadsCache: CacheEntry<Lead[]> | null = null
 // Sent/received messages are cached UNFILTERED. The optional `phone` arg
@@ -121,9 +121,27 @@ function readThrough<T>(
   ttlMs: number = SHEETS_CACHE_TTL_MS,
 ): Promise<T> {
   const cur = entryRef.get()
-  if (cur && Date.now() - cur.ts < ttlMs) {
+  if (cur) {
+    // Stale-while-revalidate: if we already have a value, ALWAYS serve it
+    // immediately — even if stale — so no caller ever blocks on a multi-second
+    // full-sheet download. When it's past the TTL, kick off a single background
+    // refresh (deduped via `refreshing`) and let the next caller pick up the
+    // fresh result. This is the key fix for "slow for everyone": after the very
+    // first load, reads are instant regardless of how often the sheet changes.
+    if (Date.now() - cur.ts >= ttlMs && !cur.refreshing) {
+      cur.refreshing = true
+      fetcher()
+        .then(val => { entryRef.set({ promise: Promise.resolve(val), ts: Date.now() }) })
+        .catch(() => {
+          // Keep serving the last good value, but allow another attempt next read.
+          const e = entryRef.get()
+          if (e) e.refreshing = false
+        })
+    }
     return cur.promise
   }
+  // Truly cold (nothing cached yet) — fetch once and await. Concurrent cold
+  // callers share this same in-flight promise (no thundering herd).
   const promise = fetcher().catch(err => {
     // Clear on failure so the next caller retries instead of returning a poisoned promise.
     if (entryRef.get()?.promise === promise) entryRef.set(null)
@@ -135,6 +153,33 @@ function readThrough<T>(
 
 export function invalidateLeadsCache() {
   _leadsCache = null
+}
+
+// Keep the leads cache WARM across writes. The old behaviour dumped all ~3,000
+// cached rows whenever a single lead changed, which forced the NEXT reader to
+// re-download the entire sheet (multi-second on the 1-vCPU box) — and with
+// several agents editing, the cache was almost never warm, so nearly every
+// page load paid that cost. Instead, re-read just the one changed row and
+// splice it into the cached array, so the other ~2,999 rows stay hot. Falls
+// back to a full invalidation only if the cache looks inconsistent.
+async function refreshCachedLeadRow(rowNumber: number): Promise<void> {
+  const cur = _leadsCache
+  if (!cur) return // nothing cached — the next read fetches fresh anyway
+  try {
+    const [updated, leads] = await Promise.all([getLeadByRow(rowNumber), cur.promise])
+    const idx = leads.findIndex(l => l.row_number === rowNumber)
+    if (updated && (updated.id || updated.full_name || updated.phone)) {
+      if (idx >= 0) leads[idx] = updated
+      else leads.push(updated)
+    } else if (idx >= 0) {
+      // Row was cleared / soft-deleted — drop it from the cached list.
+      leads.splice(idx, 1)
+    }
+    _leadsCache = { promise: Promise.resolve(leads), ts: Date.now() }
+  } catch {
+    // On any inconsistency, fall back to a full refresh on the next read.
+    _leadsCache = null
+  }
 }
 
 export function invalidateSentMessagesCache() {
@@ -193,7 +238,6 @@ export async function getLeads(): Promise<Lead[]> {
 }
 
 export async function updateLeadField(rowNumber: number, column: string, value: string): Promise<void> {
-  invalidateLeadsCache()
   const sheets = getSheets()
   const tab = process.env.LEADS_TAB_NAME || T.leads
   await sheets.spreadsheets.values.update({
@@ -202,14 +246,16 @@ export async function updateLeadField(rowNumber: number, column: string, value: 
     valueInputOption: 'RAW',
     requestBody: { values: [[value]] },
   })
+  // Patch just this row into the cache (keeps the writer seeing their own change
+  // immediately) instead of nuking all 3,000 cached rows.
+  await refreshCachedLeadRow(rowNumber)
 }
 
 export async function updateLead(rowNumber: number, fields: Partial<Record<string, string>>): Promise<void> {
-  invalidateLeadsCache()
   const entries = Object.entries(fields).filter(([field, value]) => LEAD_WRITE_COLUMNS[field] && value !== undefined)
   if (entries.length === 0) return
 
-  // Single field — use simple update (1 API call)
+  // Single field — use simple update (1 API call). updateLeadField warms the cache itself.
   if (entries.length === 1) {
     const [field, value] = entries[0]
     await updateLeadField(rowNumber, LEAD_WRITE_COLUMNS[field], value!)
@@ -228,6 +274,8 @@ export async function updateLead(rowNumber: number, fields: Partial<Record<strin
     spreadsheetId: process.env.LEADS_SHEET_ID!,
     requestBody: { valueInputOption: 'RAW', data },
   })
+  // Patch just this row into the cache instead of nuking all 3,000 rows.
+  await refreshCachedLeadRow(rowNumber)
 }
 
 /**
@@ -315,12 +363,15 @@ export async function createLead(data: {
     valueInputOption: 'RAW',
     requestBody: { values: [row] },
   })
-  invalidateLeadsCache()
 
   // Extract row number from the append response (e.g. "Leads!A255:AC255" → 255)
   const updatedRange = appendRes.data.updates?.updatedRange || ''
   const rowMatch = updatedRange.match(/(\d+)$/)
-  return rowMatch ? parseInt(rowMatch[1]) : 0
+  const newRow = rowMatch ? parseInt(rowMatch[1]) : 0
+  // Append the new lead into the warm cache rather than discarding all rows.
+  if (newRow) await refreshCachedLeadRow(newRow)
+  else invalidateLeadsCache()
+  return newRow
 }
 
 // --- Messages ---
