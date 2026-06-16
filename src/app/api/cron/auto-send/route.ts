@@ -251,7 +251,12 @@ export async function POST(request: NextRequest) {
       getLeads(),
       readTab(oldTabName, 'old'),
     ])
-    const newLeads: RawLead[] = dbLeads.map(l => {
+    const newLeads: RawLead[] = dbLeads
+      // Skip manually-entered leads (telecaller-sourced, e.g. Apurva's). They must
+      // NOT receive the automated franchise opt-in/deck and must NOT be rotated
+      // away from their owner — only genuine inbound campaign leads are auto-handled.
+      .filter(l => (l.campaign_name || '').trim().toLowerCase() !== 'manual entry')
+      .map(l => {
       const phone = l.phone || ''
       return {
         row_number: l.row_number,
@@ -349,13 +354,28 @@ export async function POST(request: NextRequest) {
       try {
         // Double-check: skip if we already sent to this phone (prevents duplicates
         // when Google Sheet update is slow and cron runs again before status propagates)
-        const existingMsgs = await getMessages(lead.phone_formatted, 10, 0)
+        const existingMsgs = await getMessages(lead.phone_formatted, 20, 0)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const alreadySent = (existingMsgs || []).some(
-          (m: any) => m.direction === 'sent' && m.template_used === TEMPLATE_NAME
+        const sentMsgs = (existingMsgs || []).filter((m: any) => m.direction === 'sent')
+        // Anti-double-text: if a HUMAN agent already reached out, leave the lead to
+        // them — do NOT auto-message, mark, or rotate it.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const manuallyEngaged = sentMsgs.some((m: any) =>
+          m.sent_by && !['auto-send', 'System (Auto)', ''].includes(String(m.sent_by))
         )
+        if (manuallyEngaged) {
+          results.push({
+            phone: lead.phone_formatted,
+            name: lead.full_name,
+            status: 'skipped',
+            error: 'Agent already engaged — left for the agent',
+          })
+          continue
+        }
+        // If our own opt-in already went out, mark/assign but don't re-send.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const alreadySent = sentMsgs.some((m: any) => m.template_used === TEMPLATE_NAME)
         if (alreadySent) {
-          // Also mark sheet if it wasn't updated
           try { await markContacted(lead, 'already-sent', assignedTo) } catch {}
           results.push({
             phone: lead.phone_formatted,
