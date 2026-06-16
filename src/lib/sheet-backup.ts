@@ -46,21 +46,8 @@ async function ensureTab(title: string, headers: string[]): Promise<void> {
   })
 }
 
-// Write rows starting at a given row, chunked to stay within request limits.
-async function writeRowsAt(title: string, startRow: number, rows: string[][]): Promise<void> {
-  if (!rows.length) return
-  const sheets = getSheets()
-  for (let i = 0; i < rows.length; i += WRITE_CHUNK) {
-    const batch = rows.slice(i, i + WRITE_CHUNK)
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID!,
-      range: `${title}!A${startRow + i}`,
-      valueInputOption: 'RAW',
-      requestBody: { values: batch },
-    })
-  }
-}
-
+// Append rows (chunked). append auto-EXPANDS the grid, so it never hits the
+// default ~1000-row grid limit a freshly-created tab starts with.
 async function appendRows(title: string, rows: string[][]): Promise<void> {
   if (!rows.length) return
   const sheets = getSheets()
@@ -89,7 +76,7 @@ export async function backupNotes(): Promise<number> {
   const title = 'Lead Notes (Backup)'
   await ensureTab(title, ['created_at', 'phone', 'lead_name', 'note', 'created_by'])
   await getSheets().spreadsheets.values.clear({ spreadsheetId: SPREADSHEET_ID!, range: `${title}!A2:E` })
-  await writeRowsAt(title, 2, rows)
+  await appendRows(title, rows)
   return rows.length
 }
 
@@ -107,7 +94,7 @@ export async function backupCallLogs(): Promise<number> {
   const title = 'Call Logs (Backup)'
   await ensureTab(title, ['created_at', 'phone', 'lead_name', 'duration', 'outcome', 'notes', 'logged_by'])
   await getSheets().spreadsheets.values.clear({ spreadsheetId: SPREADSHEET_ID!, range: `${title}!A2:G` })
-  await writeRowsAt(title, 2, rows)
+  await appendRows(title, rows)
   return rows.length
 }
 
