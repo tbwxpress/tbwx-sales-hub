@@ -72,7 +72,9 @@ export async function GET(req: NextRequest) {
         leads: leads.map(l => ({ row_number: l.row_number, lead_status: l.lead_status, phone: l.phone })),
         optedOutPhones,
       })
-      leads = leads.filter(l => visibleRows.has(l.row_number))
+      // Telecallers also see leads they OWN (assigned_to === their name) — e.g. leads
+      // they added manually — in addition to leads queued to them by other agents.
+      leads = leads.filter(l => visibleRows.has(l.row_number) || l.assigned_to === session!.name)
     } else if (session!.role === 'agent') {
       // Closer / regular agent: see assigned leads + unassigned (if can_assign) + delegated to me
       const activeDelegations = await getActiveDelegationsFor(session!.id)
