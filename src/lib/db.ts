@@ -445,6 +445,10 @@ export async function ensureInit(): Promise<Client> {
     try { await db.execute("ALTER TABLE messages ADD COLUMN error_code TEXT DEFAULT ''") } catch { /* column may already exist */ }
     try { await db.execute("ALTER TABLE messages ADD COLUMN error_message TEXT DEFAULT ''") } catch { /* column may already exist */ }
 
+    // Wait up to 5s for a lock instead of failing with SQLITE_BUSY — matters now that
+    // auto-send writes every ~2 min alongside agent activity and the sheet-backup job.
+    try { await db.execute('PRAGMA busy_timeout = 5000') } catch { /* non-critical */ }
+
     _initialized = true
   }
   return db

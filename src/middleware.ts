@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   '/api/voice-agent/log',
   // Cron endpoints — they enforce CRON_SECRET bearer auth themselves OR fall back to admin session
   '/api/cron/auto-send',
+  '/api/cron/sheet-backup',
   '/api/cron/cleanup-media',
   '/api/cron/meta-audience-sync',
   '/api/cron/meta-daily-report',
