@@ -61,6 +61,11 @@ import {
 } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import StatusEditPopover from './_components/StatusEditPopover'
+import SavedViewsBar from '@/components/leads/SavedViewsBar'
+import LeadSidePanel from '@/components/leads/LeadSidePanel'
+import InlineSelect from '@/components/leads/InlineSelect'
+import { PRIORITY_CHIP, PRIORITY_OPTIONS as PRIORITY_SELECT_OPTIONS, patchLead } from '@/components/leads/shared'
+import { type SavedViewFilters } from '@/lib/stages'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -84,6 +89,8 @@ interface Lead {
   created_time: string
   wa_message_id: string
   next_followup: string
+  notes?: string
+  model_interest?: string
   lead_score?: number
   last_discussion?: LastDiscussion | null
   telecaller_user_id?: string
@@ -94,29 +101,16 @@ interface Lead {
 }
 
 interface SessionUser {
+  id: string
   name: string
+  email?: string
   role: string
   can_assign: boolean
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeStatusVars(cssVar: string): { bg: string; text: string; border: string } {
-  return {
-    bg: `color-mix(in srgb, ${cssVar} 15%, transparent)`,
-    text: cssVar,
-    border: `color-mix(in srgb, ${cssVar} 30%, transparent)`,
-  }
-}
-
-const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  HOT:  makeStatusVars('var(--color-priority-hot)'),
-  WARM: makeStatusVars('var(--color-priority-warm)'),
-  COLD: makeStatusVars('var(--color-priority-cold)'),
-}
-
 const STATUS_OPTIONS: readonly string[] = LEAD_STATUSES
-const PRIORITY_OPTIONS = ['HOT', 'WARM', 'COLD'] as const
 
 // ─── Add Lead Schema ─────────────────────────────────────────────────────────
 
@@ -240,6 +234,45 @@ export default function LeadsPage() {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
 
+  // ─── Record side-panel (slide-over) ──────────────────────────────────────
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelLeadRow, setPanelLeadRow] = useState<number | null>(null)
+
+  // Patch a lead in local state (used by inline edits + the side panel for
+  // optimistic UI). Single source of truth so the table + panel stay in sync.
+  const patchLeadLocal = useCallback((rowNum: number, patch: Partial<Lead>) => {
+    setLeads(prev => prev.map(l => (l.row_number === rowNum ? { ...l, ...patch } : l)))
+  }, [])
+
+  function openPanel(rowNum: number) {
+    setPanelLeadRow(rowNum)
+    setPanelOpen(true)
+  }
+
+  // Apply a saved view's filters to the page filter state.
+  const applyViewFilters = useCallback((f: SavedViewFilters) => {
+    setSearch(f.search ?? '')
+    setStatusFilter(f.status ?? '')
+    setAssignedFilter(f.assignee ?? '')
+    setTelecallerFilter(f.telecaller ?? '')
+    setSortByQuery(f.sort || 'score')
+    setDateFrom(f.dateFrom ?? '')
+    setDateTo(f.dateTo ?? '')
+    setQuickFilter(f.priority === 'HOT' ? 'hot' : 'all')
+  }, [])
+
+  // Snapshot of the current filter state for "Save view".
+  const currentViewFilters = useMemo<SavedViewFilters>(() => ({
+    search,
+    status: statusFilter,
+    assignee: assignedFilter,
+    telecaller: telecallerFilter,
+    sort: sortByQuery,
+    dateFrom,
+    dateTo,
+    priority: quickFilter === 'hot' ? 'HOT' : '',
+  }), [search, statusFilter, assignedFilter, telecallerFilter, sortByQuery, dateFrom, dateTo, quickFilter])
+
   // ─── Data Fetching ───────────────────────────────────────────────────────
 
   const fetchUser = useCallback(async () => {
@@ -362,32 +395,36 @@ export default function LeadsPage() {
     setLeads(prev => prev.map(l => (l.row_number === rowNum ? { ...l, lead_status: value } : l)))
   }, [])
 
-  // Priority dropdown still uses inline select → fire-and-update.
+  // Inline priority edit — optimistic + PATCH + rollback (shared helper).
   const updateLeadPriority = useCallback(async (rowNum: number, value: string) => {
-    let previous: string | undefined
+    let previous = ''
     setLeads(prev => prev.map(l => {
-      if (l.row_number === rowNum) {
-        previous = l.lead_priority
-        return { ...l, lead_priority: value }
-      }
+      if (l.row_number === rowNum) { previous = l.lead_priority; return { ...l, lead_priority: value } }
       return l
     }))
-    try {
-      const res = await fetch(`/api/leads/${rowNum}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lead_priority: value }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        toast.success(`Priority updated to ${value}`)
-      } else {
-        setLeads(prev => prev.map(l => (l.row_number === rowNum ? { ...l, lead_priority: previous || '' } : l)))
-        toast.error(data.error || 'Update failed')
-      }
-    } catch {
-      setLeads(prev => prev.map(l => (l.row_number === rowNum ? { ...l, lead_priority: previous || '' } : l)))
-      toast.error('Update failed')
+    const res = await patchLead(rowNum, { lead_priority: value })
+    if (res.ok) {
+      toast.success(`Priority updated to ${value}`)
+    } else {
+      setLeads(prev => prev.map(l => (l.row_number === rowNum ? { ...l, lead_priority: previous } : l)))
+      toast.error(res.error || 'Update failed')
+    }
+  }, [])
+
+  // Inline assignee edit — optimistic + PATCH + rollback. Only rendered for
+  // users who can reassign (admin / can_assign); the API also enforces this.
+  const updateLeadAssignee = useCallback(async (rowNum: number, value: string) => {
+    let previous = ''
+    setLeads(prev => prev.map(l => {
+      if (l.row_number === rowNum) { previous = l.assigned_to; return { ...l, assigned_to: value } }
+      return l
+    }))
+    const res = await patchLead(rowNum, { assigned_to: value })
+    if (res.ok) {
+      toast.success(value ? `Assigned to ${value}` : 'Unassigned')
+    } else {
+      setLeads(prev => prev.map(l => (l.row_number === rowNum ? { ...l, assigned_to: previous } : l)))
+      toast.error(res.error || 'Update failed')
     }
   }, [])
 
@@ -559,6 +596,20 @@ export default function LeadsPage() {
   const canBulkTelecaller = !!user && hasTelecallers
   const showCheckboxColumn = !!(canBulkAction || canBulkTelecaller)
   const isAdmin = user?.role === 'admin'
+  const canReassign = !!(user?.role === 'admin' || user?.can_assign)
+
+  // Assignee picker options for inline editing (active agents by name).
+  const assigneeOptions = useMemo(
+    () => agents.map(a => ({ value: a.name, label: a.name })),
+    [agents]
+  )
+
+  // The lead currently shown in the side-panel (always the freshest copy from
+  // the list so inline edits inside the panel reflect immediately).
+  const panelLead = useMemo(
+    () => (panelLeadRow === null ? null : leads.find(l => l.row_number === panelLeadRow) ?? null),
+    [panelLeadRow, leads]
+  )
 
   // ─── TanStack columns ────────────────────────────────────────────────────
 
@@ -704,26 +755,16 @@ export default function LeadsPage() {
       header: () => <span className="text-eyebrow uppercase tracking-wider">Priority</span>,
       cell: ({ row }) => {
         const lead = row.original
-        const priorityColor = PRIORITY_COLORS[lead.lead_priority] || { bg: 'var(--color-elevated)', text: 'var(--color-muted)', border: 'var(--color-border)' }
         return (
-          <select
-            value={lead.lead_priority || ''}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => { e.stopPropagation(); updateLeadPriority(lead.row_number, e.target.value) }}
-            className="status-select"
-            style={{
-              backgroundColor: priorityColor.bg,
-              color: priorityColor.text,
-              borderColor: priorityColor.border,
-            }}
-          >
-            <option value="" style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>-</option>
-            {PRIORITY_OPTIONS.map(p => (
-              <option key={p} value={p} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>
-                {p}
-              </option>
-            ))}
-          </select>
+          <InlineSelect
+            value={lead.lead_priority}
+            options={PRIORITY_SELECT_OPTIONS}
+            onChange={(next) => updateLeadPriority(lead.row_number, next)}
+            colors={PRIORITY_CHIP[lead.lead_priority]}
+            placeholder="-"
+            ariaLabel={`Edit priority for ${lead.full_name || 'lead'}`}
+            stopPropagation
+          />
         )
       },
     })
@@ -732,12 +773,26 @@ export default function LeadsPage() {
       id: 'assigned_to',
       accessorKey: 'assigned_to',
       header: () => <span className="text-eyebrow uppercase tracking-wider">Assigned</span>,
-      cell: ({ row }) => (
-        <div className="flex items-center gap-1.5 flex-wrap text-body">
-          <span>{row.original.assigned_to || <span className="text-accent/50 italic">Unassigned</span>}</span>
-          {row.original.is_delegated_to_me && <Badge tone="active">Supporting</Badge>}
-        </div>
-      ),
+      cell: ({ row }) => {
+        const lead = row.original
+        return (
+          <div className="flex items-center gap-1.5 flex-wrap text-body">
+            {canReassign ? (
+              <InlineSelect
+                value={lead.assigned_to}
+                options={assigneeOptions}
+                onChange={(next) => updateLeadAssignee(lead.row_number, next)}
+                placeholder="Unassigned"
+                ariaLabel={`Edit assignee for ${lead.full_name || 'lead'}`}
+                stopPropagation
+              />
+            ) : (
+              <span>{lead.assigned_to || <span className="text-accent/50 italic">Unassigned</span>}</span>
+            )}
+            {lead.is_delegated_to_me && <Badge tone="active">Supporting</Badge>}
+          </div>
+        )
+      },
     })
 
     if (isAdmin) {
@@ -844,7 +899,7 @@ export default function LeadsPage() {
     })
 
     return cols
-  }, [showCheckboxColumn, isAdmin, applyLocalStatus, updateLeadPriority, quickNotePhone])
+  }, [showCheckboxColumn, isAdmin, applyLocalStatus, updateLeadPriority, updateLeadAssignee, canReassign, assigneeOptions, quickNotePhone])
 
   const table = useReactTable({
     data: displayedLeads,
@@ -949,6 +1004,17 @@ export default function LeadsPage() {
             </Link>
           </div>
         </div>
+
+        {/* ─── Saved Views Bar ──────────────────────────────────────────── */}
+        {user && (
+          <SavedViewsBar
+            currentFilters={currentViewFilters}
+            onApply={applyViewFilters}
+            onDefaultLoaded={applyViewFilters}
+            userId={user.id}
+            isAdmin={isAdmin}
+          />
+        )}
 
         {/* ─── Quick Filter Pills ───────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -1122,7 +1188,7 @@ export default function LeadsPage() {
               return (
                 <div
                   key={lead.row_number}
-                  onClick={() => router.push(`/leads/${lead.row_number}`)}
+                  onClick={() => openPanel(lead.row_number)}
                   className="bg-card border border-border rounded-lg p-3 active:bg-elevated/50 transition-colors cursor-pointer relative"
                 >
                   {showCheckboxColumn && (
@@ -1285,7 +1351,7 @@ export default function LeadsPage() {
                       <React.Fragment key={row.id}>
                         <TableRow
                           data-state={row.getIsSelected() ? 'selected' : undefined}
-                          onClick={() => router.push(`/leads/${lead.row_number}`)}
+                          onClick={() => openPanel(lead.row_number)}
                           className="cursor-pointer h-9 hover:bg-elevated/40 transition-colors"
                         >
                           {row.getVisibleCells().map(cell => (
@@ -1649,6 +1715,16 @@ export default function LeadsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ─── Record Side-Panel (slide-over) ───────────────────────────── */}
+      <LeadSidePanel
+        lead={panelLead}
+        open={panelOpen}
+        onOpenChange={setPanelOpen}
+        assignees={assigneeOptions.map(a => a.value)}
+        canAssign={canReassign}
+        onPatch={patchLeadLocal}
+      />
 
     </div>
   )

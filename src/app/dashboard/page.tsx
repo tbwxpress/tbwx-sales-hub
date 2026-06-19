@@ -8,6 +8,8 @@ import PoweredBy from '@/components/PoweredBy'
 import AgentQueue from '@/components/AgentQueue'
 import NeedsAttentionBanner from '@/components/NeedsAttentionBanner'
 import UpdateRequestWidget from '@/components/UpdateRequestWidget'
+import DashboardWidgets from '@/components/DashboardWidgets'
+import { KpiCardSkeleton } from '@/components/KpiCard'
 import { toast } from 'sonner'
 import { timeAgo, followupLabel } from '@/lib/format'
 import { scoreColor, scoreBg, scoreBorder } from '@/lib/score-colors'
@@ -949,6 +951,19 @@ export default function DashboardPage() {
 
         {/* Forced followup loop — leads requiring an explicit touch right now. */}
         <NeedsAttentionBanner defaultExpanded />
+
+        {/* ─── KPI Metric Widgets (admin) ─────────────────────────────── */}
+        {user?.role === 'admin' && (
+          (loadingStats || loadingLeads) ? (
+            <section aria-label="Key metrics" className="mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {[0, 1, 2, 3].map(i => <KpiCardSkeleton key={i} />)}
+              </div>
+            </section>
+          ) : (
+            <DashboardWidgets leads={leads} stats={stats} avgResponse={avgResponseHours} />
+          )
+        )}
 
         {/* ─── Pending Delegation Requests Widget ─────────────────────── */}
         {pendingDelegations.length > 0 && (

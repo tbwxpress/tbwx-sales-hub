@@ -16,9 +16,11 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import Badge, { statusTone, type BadgeTone } from '@/components/ui/Badge'
-import { LEAD_STATUSES, STATUS_LABELS } from '@/config/client'
+import { LEAD_STATUSES } from '@/config/client'
+import { usePipelineStages } from '@/hooks/usePipelineStages'
+import { getStageMeta } from '@/lib/stages'
 
-type LeadStatus = (typeof LEAD_STATUSES)[number]
+type LeadStatus = string
 
 interface StatusEditPopoverProps {
   /** Lead id (row_number used in /api/leads/[id]) */
@@ -55,8 +57,15 @@ export default function StatusEditPopover({
 }: StatusEditPopoverProps) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const { stages } = usePipelineStages()
 
-  const currentLabel = STATUS_LABELS[value] || value
+  // Prefer active pipeline stages (admin-ordered) when available; fall back to
+  // the config LEAD_STATUSES so the editor never renders an empty list.
+  const statusKeys: string[] = stages.length
+    ? stages.filter(s => s.isActive).sort((a, b) => a.sortOrder - b.sortOrder).map(s => s.key)
+    : [...LEAD_STATUSES]
+
+  const currentLabel = getStageMeta(stages, value).label
   const currentTone: BadgeTone = statusTone(value)
 
   async function handleSelect(next: LeadStatus) {
@@ -77,7 +86,7 @@ export default function StatusEditPopover({
       })
       const json = await res.json()
       if (json.success) {
-        toast.success(`Status updated to ${STATUS_LABELS[next] || next}`)
+        toast.success(`Status updated to ${getStageMeta(stages, next).label}`)
       } else {
         onChange(prev)
         toast.error(json.error || 'Failed to update status')
@@ -118,14 +127,14 @@ export default function StatusEditPopover({
           <CommandInput placeholder="Search status..." />
           <CommandList>
             <CommandEmpty>No status found.</CommandEmpty>
-            {LEAD_STATUSES.map((s) => {
-              const label = STATUS_LABELS[s] || s
+            {statusKeys.map((s) => {
+              const label = getStageMeta(stages, s).label
               const tone = statusTone(s)
               return (
                 <CommandItem
                   key={s}
                   value={`${s} ${label}`}
-                  onSelect={() => handleSelect(s as LeadStatus)}
+                  onSelect={() => handleSelect(s)}
                   data-checked={s === value}
                 >
                   <Badge tone={tone}>{label}</Badge>

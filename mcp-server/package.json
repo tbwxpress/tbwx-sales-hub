@@ -1,0 +1,26 @@
+{
+  "name": "tbwx-saleshub-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MCP server exposing the TBWX Sales Hub CRM (leads + WhatsApp inbox) over stdio for Claude and n8n. Read-only queries plus a small set of audited, non-destructive writes.",
+  "type": "module",
+  "bin": {
+    "tbwx-saleshub-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.0",
+    "@modelcontextprotocol/sdk": "^1.22.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

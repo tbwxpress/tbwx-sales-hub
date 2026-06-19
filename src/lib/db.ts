@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { createClient, type Client, type Row } from '@libsql/client'
 import type { Delegation, PaymentFollowup, PaymentFollowupUpdate, PaymentFollowupStatus } from './types'
+import { LEAD_STATUSES, STATUS_LABELS, STATUS_COLORS } from '@/config/client'
 
 // Convert BigInt values to Number so JSON.stringify works
 function serializeRow(row: Row): Record<string, unknown> {
@@ -410,6 +411,36 @@ export async function ensureInit(): Promise<Client> {
       CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(lead_status);
       CREATE INDEX IF NOT EXISTS idx_leads_assigned ON leads(assigned_to);
       CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone);
+
+      -- Pipeline stages: the editable funnel definition. Seeded (once) from the
+      -- LEAD_STATUSES constants in config/client.ts. The key column equals the
+      -- lead_status string stored on every lead and is IMMUTABLE — labels/colors
+      -- can change, the key never does.
+      CREATE TABLE IF NOT EXISTS pipeline_stages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT UNIQUE NOT NULL,
+        label TEXT NOT NULL,
+        color TEXT,
+        sort_order INTEGER,
+        is_active INTEGER DEFAULT 1,
+        is_won INTEGER DEFAULT 0,
+        is_lost INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_pipeline_stages_sort ON pipeline_stages(sort_order);
+
+      -- Saved views: per-user (or shared) snapshots of the /leads filter state.
+      CREATE TABLE IF NOT EXISTS saved_views (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        owner_user_id TEXT NOT NULL,
+        scope TEXT DEFAULT 'private',
+        filters TEXT,
+        is_default INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_saved_views_owner ON saved_views(owner_user_id);
+      CREATE INDEX IF NOT EXISTS idx_saved_views_scope ON saved_views(scope);
     `)
 
     await db.execute(`
@@ -448,6 +479,9 @@ export async function ensureInit(): Promise<Client> {
     // Wait up to 5s for a lock instead of failing with SQLITE_BUSY — matters now that
     // auto-send writes every ~2 min alongside agent activity and the sheet-backup job.
     try { await db.execute('PRAGMA busy_timeout = 5000') } catch { /* non-critical */ }
+
+    // Seed pipeline_stages once from the config/client.ts status constants.
+    try { await seedPipelineStages(db) } catch (err) { console.error('[seedPipelineStages] non-critical:', err) }
 
     _initialized = true
   }
@@ -2214,4 +2248,390 @@ export async function getPaymentFollowupsForLead(lead_row: number): Promise<Paym
     args: [lead_row],
   })
   return serializeRows(result.rows).map(rowToFollowup)
+}
+
+// ─── Pipeline stages ─────────────────────────────────────────────────
+// The editable funnel definition. `key` is the immutable lead_status identifier
+// stored on every lead; labels/colors/order/active are the editable bits.
+
+export interface PipelineStage {
+  key: string
+  label: string
+  color: string
+  sortOrder: number
+  isActive: boolean
+  isWon: boolean
+  isLost: boolean
+}
+
+function rowToStage(r: Record<string, unknown>): PipelineStage {
+  return {
+    key: String(r.key || ''),
+    label: String(r.label || ''),
+    color: r.color == null ? '' : String(r.color),
+    sortOrder: Number(r.sort_order ?? 0),
+    isActive: Number(r.is_active ?? 1) === 1,
+    isWon: Number(r.is_won ?? 0) === 1,
+    isLost: Number(r.is_lost ?? 0) === 1,
+  }
+}
+
+// Build an UPPER_SNAKE key from a free-text label (e.g. "Final Negotiation"
+// → "FINAL_NEGOTIATION"). Mirrors the existing lead_status identifier style.
+function slugifyStageKey(label: string): string {
+  return String(label)
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+// Seed the table ONCE from the config/client.ts status constants. Preserves the
+// existing keys/labels/colors and their declared order. CONVERTED → is_won,
+// LOST → is_lost. No-op if any rows already exist (so admin edits are never
+// clobbered on restart).
+async function seedPipelineStages(db: Client): Promise<void> {
+  const existing = await db.execute('SELECT COUNT(*) AS n FROM pipeline_stages')
+  if (Number(existing.rows[0]?.n ?? 0) > 0) return
+
+  const stmts = LEAD_STATUSES.map((key, i) => ({
+    sql: `INSERT OR IGNORE INTO pipeline_stages (key, label, color, sort_order, is_active, is_won, is_lost)
+          VALUES (?, ?, ?, ?, 1, ?, ?)`,
+    args: [
+      key,
+      STATUS_LABELS[key] || key,
+      STATUS_COLORS[key] || '',
+      i,
+      key === 'CONVERTED' ? 1 : 0,
+      key === 'LOST' ? 1 : 0,
+    ] as (string | number)[],
+  }))
+  await db.batch(stmts, 'write')
+}
+
+export async function getPipelineStages(opts?: { includeInactive?: boolean }): Promise<PipelineStage[]> {
+  const db = await ensureInit()
+  const where = opts?.includeInactive ? '' : 'WHERE is_active = 1'
+  const result = await db.execute(
+    `SELECT * FROM pipeline_stages ${where} ORDER BY sort_order ASC, id ASC`
+  )
+  return serializeRows(result.rows).map(rowToStage)
+}
+
+export async function getPipelineStage(key: string): Promise<PipelineStage | null> {
+  const db = await ensureInit()
+  const result = await db.execute({ sql: 'SELECT * FROM pipeline_stages WHERE key = ?', args: [key] })
+  return result.rows[0] ? rowToStage(serializeRow(result.rows[0])) : null
+}
+
+// Create a new stage. Auto-generates a unique UPPER_SNAKE key from the label and
+// appends it after the current highest sort_order. Returns the created stage.
+export async function createPipelineStage(data: { label: string; color?: string }): Promise<PipelineStage> {
+  const db = await ensureInit()
+  const label = String(data.label || '').trim()
+  if (!label) throw new Error('Label is required')
+
+  const base = slugifyStageKey(label)
+  if (!base) throw new Error('Label must contain at least one alphanumeric character')
+
+  // Ensure the key is unique — suffix _2, _3, … on collision.
+  let key = base
+  let suffix = 2
+  while (true) {
+    const clash = await db.execute({ sql: 'SELECT 1 FROM pipeline_stages WHERE key = ?', args: [key] })
+    if (clash.rows.length === 0) break
+    key = `${base}_${suffix++}`
+  }
+
+  const maxRes = await db.execute('SELECT MAX(sort_order) AS m FROM pipeline_stages')
+  const nextOrder = Number(maxRes.rows[0]?.m ?? -1) + 1
+
+  await db.execute({
+    sql: `INSERT INTO pipeline_stages (key, label, color, sort_order, is_active, is_won, is_lost)
+          VALUES (?, ?, ?, ?, 1, 0, 0)`,
+    args: [key, label, data.color || '', nextOrder],
+  })
+
+  const created = await getPipelineStage(key)
+  if (!created) throw new Error('Failed to create stage')
+  return created
+}
+
+// Update editable fields of a stage. The `key` is immutable and never changes.
+export async function updatePipelineStage(
+  key: string,
+  patch: { label?: string; color?: string; sortOrder?: number; isActive?: boolean },
+): Promise<PipelineStage | null> {
+  const db = await ensureInit()
+  const updates: string[] = []
+  const args: (string | number)[] = []
+  if (patch.label !== undefined) { updates.push('label = ?'); args.push(String(patch.label)) }
+  if (patch.color !== undefined) { updates.push('color = ?'); args.push(String(patch.color)) }
+  if (patch.sortOrder !== undefined) { updates.push('sort_order = ?'); args.push(Number(patch.sortOrder)) }
+  if (patch.isActive !== undefined) { updates.push('is_active = ?'); args.push(patch.isActive ? 1 : 0) }
+  if (updates.length > 0) {
+    args.push(key)
+    await db.execute({ sql: `UPDATE pipeline_stages SET ${updates.join(', ')} WHERE key = ?`, args })
+  }
+  return getPipelineStage(key)
+}
+
+// Reorder stages by an ordered list of keys. sort_order is rewritten to the
+// list index; keys not present in the list keep their existing order after.
+export async function reorderPipelineStages(orderedKeys: string[]): Promise<void> {
+  if (!orderedKeys.length) return
+  const db = await ensureInit()
+  const stmts = orderedKeys.map((key, i) => ({
+    sql: 'UPDATE pipeline_stages SET sort_order = ? WHERE key = ?',
+    args: [i, key] as (string | number)[],
+  }))
+  await db.batch(stmts, 'write')
+}
+
+// ─── Saved views ─────────────────────────────────────────────────────
+// Per-user (or shared) snapshots of the /leads filter state.
+
+export interface SavedViewFilters {
+  search?: string
+  status?: string
+  priority?: string
+  assignee?: string
+  telecaller?: string
+  dateFrom?: string
+  dateTo?: string
+  sort?: string
+}
+
+export interface SavedView {
+  id: number
+  name: string
+  ownerUserId: string
+  scope: 'private' | 'shared'
+  filters: SavedViewFilters
+  isDefault: boolean
+  createdAt: string
+}
+
+function rowToSavedView(r: Record<string, unknown>): SavedView {
+  let filters: SavedViewFilters = {}
+  const raw = r.filters
+  if (raw) {
+    try { filters = JSON.parse(String(raw)) as SavedViewFilters } catch { filters = {} }
+  }
+  return {
+    id: Number(r.id),
+    name: String(r.name || ''),
+    ownerUserId: String(r.owner_user_id || ''),
+    scope: (String(r.scope || 'private') === 'shared' ? 'shared' : 'private'),
+    filters,
+    isDefault: Number(r.is_default ?? 0) === 1,
+    createdAt: String(r.created_at || ''),
+  }
+}
+
+// The user's own private views PLUS every shared view (regardless of owner).
+export async function listSavedViews(userId: string): Promise<SavedView[]> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `SELECT * FROM saved_views
+          WHERE owner_user_id = ? OR scope = 'shared'
+          ORDER BY is_default DESC, name ASC`,
+    args: [userId],
+  })
+  return serializeRows(result.rows).map(rowToSavedView)
+}
+
+export async function getSavedView(id: number): Promise<SavedView | null> {
+  const db = await ensureInit()
+  const result = await db.execute({ sql: 'SELECT * FROM saved_views WHERE id = ?', args: [id] })
+  return result.rows[0] ? rowToSavedView(serializeRow(result.rows[0])) : null
+}
+
+export async function createSavedView(
+  userId: string,
+  data: { name: string; scope?: 'private' | 'shared'; filters?: SavedViewFilters; isDefault?: boolean },
+): Promise<SavedView> {
+  const db = await ensureInit()
+  const name = String(data.name || '').trim()
+  if (!name) throw new Error('Name is required')
+  const scope = data.scope === 'shared' ? 'shared' : 'private'
+
+  // Only one default per user — clear the rest first.
+  if (data.isDefault) {
+    await db.execute({ sql: 'UPDATE saved_views SET is_default = 0 WHERE owner_user_id = ?', args: [userId] })
+  }
+
+  const result = await db.execute({
+    sql: `INSERT INTO saved_views (name, owner_user_id, scope, filters, is_default)
+          VALUES (?, ?, ?, ?, ?)`,
+    args: [name, userId, scope, JSON.stringify(data.filters || {}), data.isDefault ? 1 : 0],
+  })
+  const created = await getSavedView(Number(result.lastInsertRowid))
+  if (!created) throw new Error('Failed to create saved view')
+  return created
+}
+
+// Update a saved view. Owner can always edit their own; admins can edit any.
+// Returns null if not found or not permitted.
+export async function updateSavedView(
+  id: number,
+  userId: string,
+  isAdmin: boolean,
+  patch: { name?: string; filters?: SavedViewFilters; isDefault?: boolean; scope?: 'private' | 'shared' },
+): Promise<SavedView | null> {
+  const db = await ensureInit()
+  const existing = await getSavedView(id)
+  if (!existing) return null
+  if (existing.ownerUserId !== userId && !isAdmin) throw new Error('Not authorized to edit this view')
+
+  // Default toggling is scoped to the view's owner.
+  if (patch.isDefault === true) {
+    await db.execute({ sql: 'UPDATE saved_views SET is_default = 0 WHERE owner_user_id = ?', args: [existing.ownerUserId] })
+  }
+
+  const updates: string[] = []
+  const args: (string | number)[] = []
+  if (patch.name !== undefined) { updates.push('name = ?'); args.push(String(patch.name)) }
+  if (patch.filters !== undefined) { updates.push('filters = ?'); args.push(JSON.stringify(patch.filters)) }
+  if (patch.scope !== undefined) { updates.push('scope = ?'); args.push(patch.scope === 'shared' ? 'shared' : 'private') }
+  if (patch.isDefault !== undefined) { updates.push('is_default = ?'); args.push(patch.isDefault ? 1 : 0) }
+  if (updates.length > 0) {
+    args.push(id)
+    await db.execute({ sql: `UPDATE saved_views SET ${updates.join(', ')} WHERE id = ?`, args })
+  }
+  return getSavedView(id)
+}
+
+// Delete a saved view. Owner or admin only. Returns true if a row was deleted.
+export async function deleteSavedView(id: number, userId: string, isAdmin: boolean): Promise<boolean> {
+  const db = await ensureInit()
+  const existing = await getSavedView(id)
+  if (!existing) return false
+  if (existing.ownerUserId !== userId && !isAdmin) throw new Error('Not authorized to delete this view')
+  const res = await db.execute({ sql: 'DELETE FROM saved_views WHERE id = ?', args: [id] })
+  return Number(res.rowsAffected ?? 0) > 0
+}
+
+// ─── Bulk lead import (admin CSV) ────────────────────────────────────
+// Writes to the SQLite `leads` table only (NOT the Google Sheet). Dedupes by
+// normalized phone. New leads get a row_number appended after the current max,
+// lead_status='NEW', a WARM priority default, and a created_time stamped the
+// same way createLead() does (new Date().toISOString()).
+
+export interface BulkLeadRow {
+  full_name?: string
+  phone?: string
+  email?: string
+  city?: string
+  state?: string
+  model_interest?: string
+  experience?: string
+  timeline?: string
+  platform?: string
+  campaign_name?: string
+  notes?: string
+}
+
+export interface BulkInsertResult {
+  inserted: number
+  updated: number
+  skipped: number
+  errors: string[]
+}
+
+// Fields a CSV row may carry into the leads table.
+const BULK_IMPORT_FIELDS = [
+  'full_name', 'email', 'city', 'state', 'model_interest',
+  'experience', 'timeline', 'platform', 'campaign_name', 'notes',
+] as const
+
+export async function bulkInsertLeads(
+  rows: BulkLeadRow[],
+  opts: { dedupe: 'skip' | 'update' },
+): Promise<BulkInsertResult> {
+  const db = await ensureInit()
+  const result: BulkInsertResult = { inserted: 0, updated: 0, skipped: 0, errors: [] }
+  if (!Array.isArray(rows) || rows.length === 0) return result
+
+  // Map normalized phone → existing row_number, for dedupe.
+  const existingRes = await db.execute('SELECT row_number, phone FROM leads')
+  const phoneToRow = new Map<string, number>()
+  for (const r of existingRes.rows) {
+    const norm = normalizePhone(String(r.phone || ''))
+    if (norm) phoneToRow.set(norm, Number(r.row_number))
+  }
+
+  // Allocate new row numbers after the current max (sheet append normally does
+  // this; for a SQLite-only import we advance the counter ourselves).
+  const maxRes = await db.execute('SELECT MAX(row_number) AS m FROM leads')
+  let nextRow = Number(maxRes.rows[0]?.m ?? 0) + 1
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = rows[i] || {}
+    const rawPhone = String(raw.phone || '').trim()
+    if (!rawPhone) { result.errors.push(`Row ${i + 1}: missing phone`); result.skipped++; continue }
+
+    const phone = normalizePhone(rawPhone)
+    if (phone.length < 10) { result.errors.push(`Row ${i + 1}: invalid phone "${rawPhone}"`); result.skipped++; continue }
+
+    try {
+      const existingRow = phoneToRow.get(phone)
+      if (existingRow !== undefined) {
+        if (opts.dedupe === 'skip') {
+          result.skipped++
+          continue
+        }
+        // dedupe === 'update': overwrite provided non-empty fields only.
+        const updates: string[] = []
+        const args: (string | number)[] = []
+        for (const f of BULK_IMPORT_FIELDS) {
+          const val = raw[f]
+          if (val !== undefined && String(val).trim() !== '') {
+            updates.push(`${f} = ?`)
+            args.push(String(val))
+          }
+        }
+        if (updates.length === 0) { result.skipped++; continue }
+        args.push(existingRow)
+        await db.execute({
+          sql: `UPDATE leads SET ${updates.join(', ')}, updated_at = datetime('now') WHERE row_number = ?`,
+          args,
+        })
+        result.updated++
+        continue
+      }
+
+      // New lead.
+      const rowNumber = nextRow++
+      await db.execute({
+        sql: `INSERT INTO leads
+                (row_number, id, created_time, campaign_name, full_name, phone, email, city, state,
+                 model_interest, experience, timeline, platform, lead_status, lead_priority, notes)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NEW', 'WARM', ?)`,
+        args: [
+          rowNumber,
+          `import_${Date.now()}_${rowNumber}`,
+          new Date().toISOString(),
+          String(raw.campaign_name || 'CSV Import'),
+          String(raw.full_name || ''),
+          phone,
+          String(raw.email || ''),
+          String(raw.city || ''),
+          String(raw.state || ''),
+          String(raw.model_interest || ''),
+          String(raw.experience || ''),
+          String(raw.timeline || ''),
+          String(raw.platform || 'Import'),
+          String(raw.notes || ''),
+        ],
+      })
+      phoneToRow.set(phone, rowNumber)
+      result.inserted++
+    } catch (err) {
+      result.errors.push(`Row ${i + 1}: ${err instanceof Error ? err.message : 'insert failed'}`)
+      result.skipped++
+    }
+  }
+
+  return result
 }

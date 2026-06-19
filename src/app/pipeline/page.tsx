@@ -1,15 +1,17 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Copy, Check, Inbox } from 'lucide-react'
+import { Copy, Check, Inbox, EyeOff } from 'lucide-react'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
 import { toast } from 'sonner'
 import Badge, { statusTone } from '@/components/ui/Badge'
 import EmptyState from '@/components/ui/EmptyState'
 import { timeAgo } from '@/lib/format'
+import { usePipelineStages } from '@/hooks/usePipelineStages'
+import { getStageMeta, type Stage } from '@/lib/stages'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -26,11 +28,7 @@ interface Lead {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-import { LEAD_STATUSES, STATUS_LABELS, STATUS_MIGRATION } from '@/config/client'
-
-const PIPELINE_STAGES = LEAD_STATUSES
-
-const STAGE_LABELS = STATUS_LABELS
+import { STATUS_MIGRATION } from '@/config/client'
 
 const PRIORITY_BORDER: Record<string, string> = {
   HOT: '#fb923c',
@@ -55,9 +53,11 @@ function formatPhone(phone: string): string {
 
 function LeadCard({
   lead,
+  stages,
   onMove,
 }: {
   lead: Lead
+  stages: Stage[]
   onMove: (rowNum: number, newStatus: string) => void
 }) {
   const [showMove, setShowMove] = useState(false)
@@ -145,9 +145,15 @@ function LeadCard({
             onClick={(e) => e.stopPropagation()}
             className="w-full glass rounded-md px-2 py-1.5 text-xs text-text focus:outline-none focus:border-accent/50"
           >
-            {PIPELINE_STAGES.map(s => (
-              <option key={s} value={s} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>
-                {STAGE_LABELS[s]}
+            {/* Keep the lead's current status selectable even if it's no longer an active stage */}
+            {!stages.some(s => s.key === lead.lead_status) && (
+              <option value={lead.lead_status} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>
+                {getStageMeta(stages, lead.lead_status).label} (current)
+              </option>
+            )}
+            {stages.map(s => (
+              <option key={s.key} value={s.key} style={{ backgroundColor: 'var(--color-option-bg)', color: 'var(--color-option-text)' }}>
+                {getStageMeta(stages, s.key).label}
               </option>
             ))}
           </select>
@@ -162,6 +168,8 @@ function LeadCard({
 export default function PipelinePage() {
   const router = useRouter()
 
+  const { stages: allStages, loading: stagesLoading } = usePipelineStages()
+
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -169,6 +177,12 @@ export default function PipelinePage() {
   const [currentUser, setCurrentUser] = useState<{ name: string; role: string; can_assign: boolean } | null>(null)
   const [agents, setAgents] = useState<{ name: string }[]>([])
   const [agentFilter, setAgentFilter] = useState('')
+
+  // Active stages, ordered. Memoized so the columns array is stable.
+  const activeStages = useMemo(
+    () => [...allStages].sort((a, b) => a.sortOrder - b.sortOrder),
+    [allStages],
+  )
 
   // ─── Auth + Data ─────────────────────────────────────────────────────────
 
@@ -231,7 +245,7 @@ export default function PipelinePage() {
         setLeads(prev =>
           prev.map(l => (l.row_number === rowNum ? { ...l, lead_status: newStatus } : l))
         )
-        toast.success(`Moved to ${STAGE_LABELS[newStatus] || newStatus}`)
+        toast.success(`Moved to ${getStageMeta(allStages, newStatus).label || newStatus}`)
       } else {
         setError(data.error || 'Move failed')
       }
@@ -247,28 +261,41 @@ export default function PipelinePage() {
     ? leads.filter(l => l.assigned_to === agentFilter)
     : leads
 
-  const leadsByStage: Record<string, Lead[]> = {}
-  for (const stage of PIPELINE_STAGES) {
-    leadsByStage[stage] = []
-  }
-  for (const lead of filteredLeads) {
-    const stage = lead.lead_status
-    if (leadsByStage[stage]) {
-      leadsByStage[stage].push(lead)
-    } else {
-      leadsByStage['NEW'].push(lead)
+  // Columns = active stages, in order. Plus any "orphan" stages (a lead's
+  // status that is no longer an active stage) appended as read-only columns so
+  // those leads never disappear from the board.
+  const { columns, leadsByStage } = useMemo(() => {
+    const activeKeys = activeStages.map(s => s.key)
+    const byStage: Record<string, Lead[]> = {}
+    for (const k of activeKeys) byStage[k] = []
+
+    // Discover orphan stages from the current lead set, preserving first-seen order.
+    // An orphan is any lead_status not present in the active stage list — its
+    // leads still need a home so they never disappear from the board.
+    const orphanKeys: string[] = []
+    for (const lead of filteredLeads) {
+      const k = lead.lead_status
+      if (!byStage[k]) { byStage[k] = []; orphanKeys.push(k) }
+      byStage[k].push(lead)
     }
-  }
+
+    const cols = [
+      ...activeStages.map(s => ({ key: s.key, orphan: false })),
+      ...orphanKeys.map(k => ({ key: k, orphan: true })),
+    ]
+    return { columns: cols, leadsByStage: byStage }
+  }, [activeStages, filteredLeads])
 
   // ─── Stats ───────────────────────────────────────────────────────────────
 
   const totalLeads = filteredLeads.length
-  const convertedCount = leadsByStage['CONVERTED'].length
+  const wonKeys = useMemo(() => new Set(allStages.filter(s => s.isWon).map(s => s.key)), [allStages])
+  const convertedCount = filteredLeads.filter(l => wonKeys.has(l.lead_status) || l.lead_status === 'CONVERTED').length
   const conversionRate = totalLeads > 0 ? ((convertedCount / totalLeads) * 100).toFixed(1) : '0.0'
 
   // ─── Loading State ─────────────────────────────────────────────────────
 
-  if (loading) {
+  if (loading || stagesLoading) {
     return (
       <div className="min-h-screen bg-bg">
         <Navbar />
@@ -340,13 +367,13 @@ export default function PipelinePage() {
 
         {/* Kanban Board */}
         <div className="overflow-x-auto pb-4 kanban-scroll">
-          <div className="flex gap-3" style={{ minWidth: `${PIPELINE_STAGES.length * 252}px` }}>
-            {PIPELINE_STAGES.map(stage => {
-              const stageleads = leadsByStage[stage]
-              const isConverted = stage === 'CONVERTED'
-              const isLost = stage === 'LOST'
-              const isDelayed = stage === 'DELAYED'
-
+          <div className="flex gap-3" style={{ minWidth: `${columns.length * 252}px` }}>
+            {columns.map(({ key: stage, orphan }) => {
+              const stageleads = leadsByStage[stage] || []
+              const meta = getStageMeta(allStages, stage)
+              const stageObj = allStages.find(s => s.key === stage)
+              const isWon = stageObj?.isWon || stage === 'CONVERTED'
+              const isLost = stageObj?.isLost || stage === 'LOST'
               const isDragOver = dragOverStage === stage
 
               return (
@@ -376,10 +403,10 @@ export default function PipelinePage() {
                   className={`min-w-[240px] w-[240px] flex-shrink-0 rounded-xl border flex flex-col max-h-[calc(100vh-180px)] transition-all duration-200 ${
                     isDragOver
                       ? 'border-accent/60 bg-accent/5 ring-1 ring-accent/30'
-                      : isConverted
-                        ? 'bg-card border-success/30'
-                        : isDelayed
-                          ? 'bg-card/60 border-amber-500/20'
+                      : orphan
+                        ? 'bg-card/50 border-dashed border-border'
+                        : isWon
+                          ? 'bg-card border-success/30'
                           : isLost
                             ? 'bg-card/60 border-danger/20'
                             : 'bg-card border-border'
@@ -388,29 +415,44 @@ export default function PipelinePage() {
                   {/* Column Header */}
                   <div
                     className={`sticky top-0 z-10 px-3 py-2.5 border-b rounded-t-xl flex items-center justify-between ${
-                      isConverted
-                        ? 'bg-card border-success/20'
-                        : isDelayed
-                          ? 'bg-card/60 border-amber-500/15'
+                      orphan
+                        ? 'bg-card/50 border-border'
+                        : isWon
+                          ? 'bg-card border-success/20'
                           : isLost
                             ? 'bg-card/60 border-danger/15'
                             : 'bg-card border-border'
                     }`}
                   >
-                    <Badge tone={statusTone(stage)}>{STAGE_LABELS[stage]}</Badge>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {/* Color dot from the stage meta when it's a hex; falls back to tone badge */}
+                      {/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(meta.color) ? (
+                        <span className="inline-flex items-center gap-1.5 min-w-0">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: meta.color }} />
+                          <span className="text-[11px] font-semibold uppercase tracking-wide truncate text-body">{meta.label}</span>
+                        </span>
+                      ) : (
+                        <Badge tone={statusTone(stage)}>{meta.label}</Badge>
+                      )}
+                      {orphan && (
+                        <span title="Retired stage — existing leads kept here. Drag them to an active column." className="shrink-0">
+                          <EyeOff className="w-3 h-3 text-dim" />
+                        </span>
+                      )}
+                    </div>
                     <span className="text-caption text-dim">
                       {stageleads.length}
                     </span>
                   </div>
 
                   {/* Cards */}
-                  <div className={`flex-1 overflow-y-auto max-h-[calc(100vh-280px)] p-2 space-y-2 ${isLost || isDelayed ? 'opacity-60' : ''}`}>
+                  <div className={`flex-1 overflow-y-auto max-h-[calc(100vh-280px)] p-2 space-y-2 ${isLost || orphan ? 'opacity-70' : ''}`}>
                     {stageleads.length === 0 ? (
                       <div className="[&>div]:py-6">
                         <EmptyState
                           icon={<Inbox className="w-5 h-5" />}
                           title="No leads"
-                          hint="Drop someone in this stage"
+                          hint={orphan ? 'Retired stage' : 'Drop someone in this stage'}
                         />
                       </div>
                     ) : (
@@ -418,6 +460,7 @@ export default function PipelinePage() {
                         <LeadCard
                           key={lead.row_number}
                           lead={lead}
+                          stages={activeStages}
                           onMove={moveLead}
                         />
                       ))
@@ -431,8 +474,6 @@ export default function PipelinePage() {
       </main>
 
       <PoweredBy />
-
-      {/* Toast */}
     </div>
   )
 }

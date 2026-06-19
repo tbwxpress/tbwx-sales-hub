@@ -11,6 +11,7 @@ const MetaAdsDashboard = dynamic(() => import('@/components/MetaAdsDashboard'), 
   ssr: false,
 })
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { GitBranch, FileSpreadsheet, ArrowRight } from 'lucide-react'
 
 interface User {
   id: string; name: string; email: string; role: string;
@@ -645,6 +646,44 @@ export default function AdminPage() {
             ))}
           </div>
         )}
+
+        {/* Pipeline & Data */}
+        <div className="mt-8 mb-6">
+          <h2 className="text-lg font-bold text-text mb-1">Pipeline &amp; Data</h2>
+          <p className="text-sm text-dim mb-4">Shape the sales board and bring leads in from a spreadsheet.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <a
+              href="/admin/pipeline-stages"
+              className="card-hover group bg-card border border-border rounded-xl p-5 flex items-start gap-4 transition-colors hover:border-accent/40 focus-ring"
+            >
+              <div className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:scale-105" style={{ background: 'var(--color-accent-soft)' }}>
+                <GitBranch className="w-5 h-5 text-accent" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-text">Pipeline Stages</h3>
+                  <ArrowRight className="w-4 h-4 text-dim group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0" />
+                </div>
+                <p className="text-xs text-dim mt-1 leading-relaxed">Rename, recolor, reorder, or retire the columns on your Kanban board.</p>
+              </div>
+            </a>
+            <a
+              href="/admin/import"
+              className="card-hover group bg-card border border-border rounded-xl p-5 flex items-start gap-4 transition-colors hover:border-accent/40 focus-ring"
+            >
+              <div className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:scale-105" style={{ background: 'var(--color-accent-soft)' }}>
+                <FileSpreadsheet className="w-5 h-5 text-accent" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-text">Import Leads (CSV)</h3>
+                  <ArrowRight className="w-4 h-4 text-dim group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0" />
+                </div>
+                <p className="text-xs text-dim mt-1 leading-relaxed">Upload a spreadsheet, auto-map columns, preview, and de-dupe by phone.</p>
+              </div>
+            </a>
+          </div>
+        </div>
 
         {/* Bulk Delegate */}
         <div className="mt-8 mb-6">
