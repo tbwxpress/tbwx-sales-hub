@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { apiError } from '@/lib/api-error'
-import { getSession, requireAuth, requireAdmin } from '@/lib/auth'
+import { getSession, requireAuth } from '@/lib/auth'
 import { getUsers } from '@/lib/users'
 import { getLeads } from '@/lib/sheets'
 import {
@@ -40,6 +40,10 @@ export async function GET() {
   try {
     const session = await getSession()
     const user = requireAuth(session)
+    // Owner-private: commissions are admin-only at every layer.
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
 
     const [settings, users, leads] = await Promise.all([
       getCommissionSettings(),
@@ -108,7 +112,9 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getSession()
     const user = requireAuth(session)
-    requireAdmin(user)
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
 
     const { closer_user_id, lead_rows, notes, paid } = await req.json()
     if (!closer_user_id || !Array.isArray(lead_rows) || lead_rows.length === 0) {
@@ -151,7 +157,9 @@ export async function PATCH(req: NextRequest) {
   try {
     const session = await getSession()
     const user = requireAuth(session)
-    requireAdmin(user)
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
 
     const body = await req.json()
     if (body.settings) {
@@ -174,7 +182,9 @@ export async function DELETE(req: NextRequest) {
   try {
     const session = await getSession()
     const user = requireAuth(session)
-    requireAdmin(user)
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
     const url = new URL(req.url)
     const id = parseInt(url.searchParams.get('id') || '', 10)
     if (!Number.isFinite(id)) return NextResponse.json({ success: false, error: 'id required' }, { status: 400 })

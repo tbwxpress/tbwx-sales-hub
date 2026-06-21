@@ -20,12 +20,16 @@ function escapeHtml(str: string): string {
 }
 
 /**
- * GET /api/agreements/[id]/generate — View the filled agreement (any auth user)
+ * GET /api/agreements/[id]/generate — View the filled agreement (admin only)
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession()
-    requireAuth(session)
+    const user = requireAuth(session)
+    // Owner-private: agreements are admin-only at every layer (incl. the PDF/HTML stream).
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
     const { id } = await params
 
     const agreement = await getAgreementById(id)

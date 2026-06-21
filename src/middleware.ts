@@ -61,7 +61,16 @@ export async function middleware(req: NextRequest) {
     const { payload } = await jwtVerify(token, JWT_SECRET)
     // Defense-in-depth admin gate: admin pages/APIs require the admin role claim.
     // Client-side guards remain as redundancy.
-    if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
+    //
+    // Owner-private surfaces (Payment Followups, Commissions, Agreements) are
+    // hidden + server-blocked for non-admins until the owner exposes them:
+    //   - Pages → redirect non-admins to /dashboard
+    //   - APIs  → return 403 JSON
+    const ADMIN_PAGE_PREFIXES = ['/admin', '/payment-followups', '/commissions']
+    const ADMIN_API_PREFIXES = ['/api/admin', '/api/payment-followups', '/api/commissions', '/api/agreements']
+    const isAdminPage = ADMIN_PAGE_PREFIXES.some(p => pathname.startsWith(p))
+    const isAdminApi = ADMIN_API_PREFIXES.some(p => pathname.startsWith(p))
+    if (isAdminPage || isAdminApi) {
       if (payload.role !== 'admin') {
         if (pathname.startsWith('/api/')) {
           return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })

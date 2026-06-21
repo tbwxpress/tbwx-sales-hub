@@ -8,6 +8,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const session = await getSession()
     const user = requireAuth(session)
+    // Owner-private: payment followups are admin-only at every layer.
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
 
     const { id } = await params
     const followupId = parseInt(id)
@@ -18,11 +22,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const followup = await getPaymentFollowup(followupId)
     if (!followup) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
-    }
-
-    // Agents can only view history for their own followups
-    if (user.role !== 'admin' && followup.assigned_to_id !== user.id) {
-      return NextResponse.json({ success: false, error: 'Not authorized' }, { status: 403 })
     }
 
     const history = await getPaymentFollowupUpdates(followupId)

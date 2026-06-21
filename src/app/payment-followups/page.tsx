@@ -565,6 +565,8 @@ export default function PaymentFollowupsPage() {
     const res = await fetch('/api/auth/me')
     const data = await res.json()
     if (!data.success) { router.push('/login'); return null }
+    // Admin guard — this page is owner-private. Bounce non-admins to /dashboard.
+    if (data.data.role !== 'admin') { router.push('/dashboard'); return null }
     setUser(data.data)
     return data.data as SessionUser
   }, [router])
@@ -603,6 +605,10 @@ export default function PaymentFollowupsPage() {
   }, [statusFilter, agentFilter, fetchFollowups, user])
 
   const isAdmin = user?.role === 'admin'
+
+  // Render nothing until the admin role is confirmed — non-admins are bounced
+  // to /dashboard by fetchUser; this prevents a flash of owner-private data.
+  if (!user || user.role !== 'admin') return null
 
   function handleSaved(updated: PaymentFollowup) {
     setFollowups(prev => prev.map(f => f.id === updated.id ? updated : f))

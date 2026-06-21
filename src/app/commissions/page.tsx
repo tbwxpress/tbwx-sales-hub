@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
 
@@ -39,6 +40,7 @@ function formatMoney(amount: number, currency: string) {
 }
 
 export default function CommissionsPage() {
+  const router = useRouter()
   const [me, setMe] = useState<{ id: string; role: string; name: string } | null>(null)
   const [settings, setSettings] = useState<{ amount_per_conversion: number; currency: string }>({ amount_per_conversion: 10000, currency: '₹' })
   const [summaries, setSummaries] = useState<CloserSummary[]>([])
@@ -61,7 +63,10 @@ export default function CommissionsPage() {
       ])
       const meJson = await meRes.json()
       const dataJson = await dataRes.json()
-      if (meJson.success) setMe(meJson.data)
+      if (!meJson.success) { router.push('/login'); return }
+      // Admin guard — this page is owner-private. Bounce non-admins to /dashboard.
+      if (meJson.data.role !== 'admin') { router.push('/dashboard'); return }
+      setMe(meJson.data)
       if (dataJson.success) {
         setSettings(dataJson.data.settings)
         setSummaries(dataJson.data.summaries)
@@ -73,7 +78,7 @@ export default function CommissionsPage() {
       }
     } catch (e) { setErr(String(e)) }
     setLoading(false)
-  }, [])
+  }, [router])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
@@ -147,6 +152,10 @@ export default function CommissionsPage() {
 
   const totalPending = summaries.reduce((acc, s) => acc + s.pending_amount, 0)
   const totalPaid = summaries.reduce((acc, s) => acc + s.paid_amount, 0)
+
+  // Render nothing until the admin role is confirmed — non-admins are bounced
+  // to /dashboard by fetchAll; this prevents a flash of owner-private data.
+  if (!me || me.role !== 'admin') return null
 
   return (
     <div className="min-h-screen bg-bg flex flex-col">

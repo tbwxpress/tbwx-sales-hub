@@ -7,7 +7,11 @@ import { getAgreementById, updateAgreement } from '@/lib/db'
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession()
-    requireAuth(session)
+    const user = requireAuth(session)
+    // Owner-private: agreements are admin-only at every layer.
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
     const { id } = await params
 
     const agreement = await getAgreementById(id)
@@ -33,14 +37,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const session = await getSession()
     const user = requireAuth(session)
+    // Owner-private: agreements are admin-only at every layer.
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
     const { id } = await params
 
     const body = await req.json()
-
-    // Only admin can change status to GENERATED or REVIEWED
-    if (body.status && body.status !== 'DRAFT' && user.role !== 'admin') {
-      return NextResponse.json({ error: 'Only admin can change agreement status' }, { status: 403 })
-    }
 
     const updates: Record<string, unknown> = {}
     if (body.fields) updates.fields = body.fields

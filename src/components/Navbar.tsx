@@ -124,16 +124,18 @@ export default function Navbar() {
   ]
 
   const secondaryLinks: NavLink[] = [
-    { href: '/payment-followups', label: 'Payment Followups', Icon: CreditCard },
     { href: '/quick-replies', label: 'Quick Replies', Icon: Zap },
     { href: '/templates', label: 'Templates', Icon: FileText },
     { href: '/knowledge-base', label: 'Knowledge Base', Icon: BookOpen },
     { href: '/analytics', label: 'Analytics', Icon: ChartColumn },
-    { href: '/commissions', label: 'Commissions', Icon: Banknote },
     // Stats link: admins get the full leaderboard, agents/telecallers get their self view
     // from the same /agent-stats page (the API serves a different shape based on role).
     { href: '/agent-stats', label: user?.role === 'admin' ? 'Agent Stats' : 'My Stats', Icon: ChartColumn },
+    // Admin-only links: Payment Followups + Commissions are owner-private
+    // (hidden from agents until exposed), alongside the Admin cockpit.
     ...(user?.role === 'admin' ? [
+      { href: '/payment-followups', label: 'Payment Followups', Icon: CreditCard } as NavLink,
+      { href: '/commissions', label: 'Commissions', Icon: Banknote } as NavLink,
       { href: '/admin', label: 'Admin', Icon: Settings } as NavLink,
     ] : []),
   ]

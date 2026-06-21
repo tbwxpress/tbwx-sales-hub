@@ -8,6 +8,10 @@ export async function GET(req: NextRequest) {
   try {
     const session = await getSession()
     const user = requireAuth(session)
+    // Owner-private: agreements are admin-only at every layer.
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
 
     const phone = new URL(req.url).searchParams.get('phone')
 
@@ -17,9 +21,6 @@ export async function GET(req: NextRequest) {
     }
 
     // Admin: get all agreements
-    if (user.role !== 'admin') {
-      return NextResponse.json({ error: 'Admin only for listing all agreements' }, { status: 403 })
-    }
     const all = await getAllAgreements()
     return NextResponse.json({ success: true, data: all })
   } catch (err) {
@@ -32,6 +33,10 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getSession()
     const user = requireAuth(session)
+    // Owner-private: agreements are admin-only at every layer.
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
 
     const body = await req.json()
     const { lead_phone, lead_row, doc_type, fields } = body

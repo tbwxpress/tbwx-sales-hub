@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { apiError } from '@/lib/api-error'
-import { getSession, requireAuth, requireAdmin } from '@/lib/auth'
+import { getSession, requireAuth } from '@/lib/auth'
 import {
   createPaymentFollowup,
   getAllPaymentFollowups,
-  getPaymentFollowupsForAgent,
   insertLeadEdit,
 } from '@/lib/db'
 import { getUserById } from '@/lib/users'
@@ -14,7 +13,10 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getSession()
     const user = requireAuth(session)
-    requireAdmin(user)
+    // Owner-private: payment followups are admin-only at every layer.
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
 
     const body = await req.json()
     const { lead_row, phone, franchise_name, amount, due_date, assigned_to_id, notes, currency } = body
@@ -69,19 +71,17 @@ export async function GET(req: NextRequest) {
   try {
     const session = await getSession()
     const user = requireAuth(session)
+    // Owner-private: payment followups are admin-only at every layer.
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
 
     const url = new URL(req.url)
     const status = url.searchParams.get('status') || undefined
     const days = url.searchParams.get('days') ? Number(url.searchParams.get('days')) : undefined
 
-    let data
-    if (user.role === 'admin') {
-      const agent_id = url.searchParams.get('assigned_to_id') || undefined
-      data = await getAllPaymentFollowups({ status, agent_id, days })
-    } else {
-      // Agents only see their own
-      data = await getPaymentFollowupsForAgent(user.id, { status })
-    }
+    const agent_id = url.searchParams.get('assigned_to_id') || undefined
+    const data = await getAllPaymentFollowups({ status, agent_id, days })
 
     return NextResponse.json({ success: true, data })
   } catch (err) {

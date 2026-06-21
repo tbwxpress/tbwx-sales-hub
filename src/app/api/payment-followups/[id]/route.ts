@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { apiError } from '@/lib/api-error'
-import { getSession, requireAuth, requireAdmin } from '@/lib/auth'
+import { getSession, requireAuth } from '@/lib/auth'
 import {
   getPaymentFollowup,
   updatePaymentFollowup,
@@ -8,15 +8,16 @@ import {
   insertLeadEdit,
 } from '@/lib/db'
 import { getUserById } from '@/lib/users'
-import type { PaymentFollowupStatus } from '@/lib/types'
-
-const AGENT_ALLOWED_FIELDS = new Set(['status', 'reason', 'cleared_amount', 'notes'])
 
 // PATCH /api/payment-followups/[id]
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession()
     const user = requireAuth(session)
+    // Owner-private: payment followups are admin-only at every layer.
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
     const { id } = await params
     const followupId = parseInt(id)
     if (isNaN(followupId)) {
@@ -28,40 +29,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
 
-    // Agents can only update their own assigned items
-    if (user.role !== 'admin' && existing.assigned_to_id !== user.id) {
-      return NextResponse.json({ success: false, error: 'Not authorized' }, { status: 403 })
-    }
-
     const body = await req.json()
     const updates: Record<string, unknown> = {}
 
-    if (user.role === 'admin') {
-      // Admin can update any field
-      const allowedAdminFields = [
-        'franchise_name', 'amount', 'currency', 'due_date',
-        'assigned_to_id', 'status', 'reason', 'cleared_amount', 'notes',
-        'cleared_at', 'cleared_by_id',
-      ]
-      for (const field of allowedAdminFields) {
-        if (field in body) updates[field] = body[field]
-      }
+    // Admin can update any field
+    const allowedAdminFields = [
+      'franchise_name', 'amount', 'currency', 'due_date',
+      'assigned_to_id', 'status', 'reason', 'cleared_amount', 'notes',
+      'cleared_at', 'cleared_by_id',
+    ]
+    for (const field of allowedAdminFields) {
+      if (field in body) updates[field] = body[field]
+    }
 
-      // If reassigning, resolve new agent name
-      if (updates.assigned_to_id && updates.assigned_to_id !== existing.assigned_to_id) {
-        const agent = await getUserById(updates.assigned_to_id as string)
-        if (!agent || !agent.active) {
-          return NextResponse.json({ success: false, error: 'Assigned agent not found or inactive' }, { status: 400 })
-        }
-        updates.assigned_to_name = agent.name
+    // If reassigning, resolve new agent name
+    if (updates.assigned_to_id && updates.assigned_to_id !== existing.assigned_to_id) {
+      const agent = await getUserById(updates.assigned_to_id as string)
+      if (!agent || !agent.active) {
+        return NextResponse.json({ success: false, error: 'Assigned agent not found or inactive' }, { status: 400 })
       }
-    } else {
-      // Agent: only allowed fields
-      for (const field of Object.keys(body)) {
-        if (AGENT_ALLOWED_FIELDS.has(field)) {
-          updates[field] = body[field]
-        }
-      }
+      updates.assigned_to_name = agent.name
     }
 
     // Auto-set cleared_at and cleared_by_id when status moves to cleared
@@ -100,7 +87,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const session = await getSession()
     const user = requireAuth(session)
-    requireAdmin(user)
+    // Owner-private: payment followups are admin-only at every layer.
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+    }
 
     const { id } = await params
     const followupId = parseInt(id)

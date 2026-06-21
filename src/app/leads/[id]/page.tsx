@@ -1059,7 +1059,10 @@ export default function LeadDetailPage() {
               )}
             </div>
 
-            {/* Documents Card — collapsible */}
+            {/* Documents Card — collapsible. Agreements are owner-private:
+                only admins see the header, list, generate buttons, and form. */}
+            {sessionUser?.role === 'admin' && (
+            <>
             <div className="bg-card rounded-lg border border-border">
               <button
                 onClick={() => setAgreementsOpen(o => !o)}
@@ -1151,6 +1154,8 @@ export default function LeadDetailPage() {
                     .catch(() => {})
                 }}
               />
+            )}
+            </>
             )}
 
             {/* AI Voice Agent Card — collapsible */}
@@ -1439,7 +1444,9 @@ export default function LeadDetailPage() {
               <LeadNotes phone={lead.phone} />
             </div>
 
-            {/* Payment Followups — collapsible */}
+            {/* Payment Followups — collapsible. Owner-private: only admins
+                see payment followup data on the lead. */}
+            {sessionUser?.role === 'admin' && (
             <div className="bg-card rounded-lg border border-border">
               <button
                 onClick={() => setPaymentOpen(o => !o)}
@@ -1459,6 +1466,7 @@ export default function LeadDetailPage() {
                 </div>
               )}
             </div>
+            )}
 
             {/* Activity Log — collapsible */}
             <div className="bg-card rounded-lg border border-border">
