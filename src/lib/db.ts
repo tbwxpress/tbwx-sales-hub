@@ -4,6 +4,7 @@ import { createClient, type Client, type Row } from '@libsql/client'
 import type { Delegation, PaymentFollowup, PaymentFollowupUpdate, PaymentFollowupStatus } from './types'
 import type { SavedViewFilters, SavedView } from '@/lib/stages'
 import { LEAD_STATUSES, STATUS_LABELS, STATUS_COLORS } from '@/config/client'
+import { isNegativeReply } from '@/lib/negative-replies'
 
 // Convert BigInt values to Number so JSON.stringify works
 function serializeRow(row: Row): Record<string, unknown> {
@@ -594,6 +595,26 @@ export async function upsertContact(phone: string, data: {
   }
 }
 
+// Derive the inbox-triage booleans + normalize the joined lead fields on a
+// serialized contact row.
+// awaiting_reply: the LAST message in the thread was inbound (the customer
+//   messaged last and we haven't replied since) — derived from last_direction.
+// negative_hint: awaiting_reply AND that last inbound text reads as a negative
+//   reply (powers the inbox "Mark Lost?" suggestion). It NEVER auto-changes
+//   a lead's status — it is a hint only.
+function withTriageHints(row: Record<string, unknown>): Record<string, unknown> {
+  const awaiting_reply = String(row.last_direction ?? '') === 'received'
+  const negative_hint = awaiting_reply && isNegativeReply(String(row.last_message ?? ''))
+  return {
+    ...row,
+    lead_status: (row.lead_status ?? null) as string | null,
+    lead_priority: (row.lead_priority ?? null) as string | null,
+    assigned_to: (row.assigned_to ?? null) as string | null,
+    awaiting_reply,
+    negative_hint,
+  }
+}
+
 export async function getContacts() {
   const db = await ensureInit()
   const result = await db.execute(`
@@ -602,14 +623,18 @@ export async function getContacts() {
       m.text AS last_message,
       m.direction AS last_direction,
       m.timestamp AS last_message_at,
+      l.lead_status AS lead_status,
+      l.lead_priority AS lead_priority,
+      l.assigned_to AS assigned_to,
       (SELECT COUNT(*) FROM messages WHERE phone = c.phone AND read = 0 AND direction = 'received') AS unread_count
     FROM contacts c
     LEFT JOIN messages m ON m.phone = c.phone AND m.timestamp = (
       SELECT MAX(timestamp) FROM messages WHERE phone = c.phone
     )
+    LEFT JOIN leads l ON l.row_number = c.lead_row
     ORDER BY m.timestamp DESC NULLS LAST
   `)
-  return serializeRows(result.rows)
+  return serializeRows(result.rows).map(withTriageHints)
 }
 
 // Chunk size kept well under SQLite/libsql's ~999 parameter ceiling.
@@ -647,11 +672,15 @@ export async function getContactsForAgent(
           m.text AS last_message,
           m.direction AS last_direction,
           m.timestamp AS last_message_at,
+          l.lead_status AS lead_status,
+          l.lead_priority AS lead_priority,
+          l.assigned_to AS assigned_to,
           (SELECT COUNT(*) FROM messages WHERE phone = c.phone AND read = 0 AND direction = 'received') AS unread_count
         FROM contacts c
         LEFT JOIN messages m ON m.phone = c.phone AND m.timestamp = (
           SELECT MAX(timestamp) FROM messages WHERE phone = c.phone
         )
+        LEFT JOIN leads l ON l.row_number = c.lead_row
         WHERE ${conditions}
       `,
       args: batch,
@@ -660,7 +689,7 @@ export async function getContactsForAgent(
       const phoneKey = String(row.phone ?? '')
       if (!seen.has(phoneKey)) {
         seen.add(phoneKey)
-        merged.push(row)
+        merged.push(withTriageHints(row))
       }
     }
   }

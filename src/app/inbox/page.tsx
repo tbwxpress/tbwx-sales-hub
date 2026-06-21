@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
 import Navbar from '@/components/Navbar'
@@ -24,7 +24,24 @@ const VoiceAgentCard = dynamic(() => import('@/components/VoiceAgentCard'), {
 import CallHistory from '@/components/CallHistory'
 import ActivityLog from '@/components/ActivityLog'
 import EmptyState from '@/components/ui/EmptyState'
-import { Send, Paperclip, MessageSquare, ArrowLeft } from 'lucide-react'
+import Badge, { statusTone } from '@/components/ui/Badge'
+import { usePipelineStages } from '@/hooks/usePipelineStages'
+import { getStageMeta } from '@/lib/stages'
+import { LEAD_STATUSES } from '@/config/client'
+import { isNegativeReply } from '@/lib/negative-replies'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import TriageBar, { type TriageFilter, type TriageSort, type TriageCounts } from '@/components/inbox/TriageBar'
+import WindowCountdown from '@/components/inbox/WindowCountdown'
+import NegativeReplyBanner from '@/components/inbox/NegativeReplyBanner'
+import { useNow, formatWaiting } from '@/components/inbox/useNow'
+import { Send, Paperclip, MessageSquare, ArrowLeft, Flame, ChevronDown, Clock } from 'lucide-react'
 // Note: no Mic/audio button exists in the current composer, so lucide Mic was not adopted.
 
 interface Contact {
@@ -39,6 +56,12 @@ interface Contact {
   last_direction: string
   last_message_at: string
   unread_count: number
+  // Triage enrichment (from /api/inbox — see backend contract)
+  lead_status?: string | null
+  lead_priority?: string | null
+  assigned_to?: string | null
+  awaiting_reply?: boolean
+  negative_hint?: boolean
 }
 
 interface Message {
@@ -81,6 +104,16 @@ interface LeadNote {
   created_at: string
 }
 
+// Priority sort rank: HOT first, then WARM, COLD, then unset. Pure — kept at
+// module level so it isn't re-created every render.
+function priorityRank(p?: string | null) {
+  const u = (p || '').toUpperCase()
+  if (u === 'HOT') return 0
+  if (u === 'WARM') return 1
+  if (u === 'COLD') return 2
+  return 3
+}
+
 export default function InboxPage() {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [activePhone, setActivePhone] = useState<string | null>(null)
@@ -98,7 +131,12 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true)
   const [msgLoading, setMsgLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [showUnreadOnly, setShowUnreadOnly] = useState(false)
+  // Triage filter/sort state (replaces the lone "Unread only" toggle).
+  const [triageFilter, setTriageFilter] = useState<TriageFilter>('all')
+  const [triageSort, setTriageSort] = useState<TriageSort>('recent')
+  const [triageStatus, setTriageStatus] = useState('') // '' = all statuses
+  // Dismissed negative-reply prompts (per active phone) — false-positive escape hatch.
+  const [dismissedNegative, setDismissedNegative] = useState<Set<string>>(new Set())
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
   const [showQuickReplies, setShowQuickReplies] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
@@ -110,7 +148,7 @@ export default function InboxPage() {
   // Lead details panel
   const [showLeadDetails, setShowLeadDetails] = useState(false)
   // Full lead info from API
-  interface LeadInfo { row_number: number; full_name: string; lead_status: string; lead_priority: string; assigned_to: string; email: string; city: string; state: string; model_interest: string; next_followup: string; lead_score?: number }
+  interface LeadInfo { row_number: number; full_name: string; lead_status: string; lead_priority: string; assigned_to: string; email: string; city: string; state: string; model_interest: string; next_followup: string; lead_score?: number; timeline?: string; experience?: string; campaign_name?: string; platform?: string }
   const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null)
   const [updatingLead, setUpdatingLead] = useState(false)
   // Call logging
@@ -133,7 +171,7 @@ export default function InboxPage() {
   // Mobile right-side context drawer (slide-in lead details on <md). Desktop ignores this.
   const [contextDrawerOpen, setContextDrawerOpen] = useState(false)
   // Session user — needed to check can_edit_leads permission
-  const [sessionUser, setSessionUser] = useState<{ id: string; role: string; can_edit_leads?: boolean } | null>(null)
+  const [sessionUser, setSessionUser] = useState<{ id: string; name: string; role: string; can_edit_leads?: boolean } | null>(null)
   // Inbox delegation state
   const [inboxActiveDelegation, setInboxActiveDelegation] = useState<{ id: number; from_agent_name: string; to_agent_name: string; expires_at: string | null } | null>(null)
   const [showInboxDelegateModal, setShowInboxDelegateModal] = useState(false)
@@ -406,9 +444,11 @@ export default function InboxPage() {
     setInboxEndingDelegation(false)
   }
 
-  // Update lead field from inbox
-  async function updateLeadFromInbox(field: string, value: string) {
-    if (!leadInfo) return
+  // Update lead field from inbox. Returns true when the PATCH succeeded so
+  // callers can gate follow-up actions (e.g. dismissing the negative banner) on
+  // a confirmed write.
+  async function updateLeadFromInbox(field: string, value: string): Promise<boolean> {
+    if (!leadInfo) return false
     setUpdatingLead(true)
     try {
       const res = await fetch(`/api/leads/${leadInfo.row_number}`, {
@@ -417,10 +457,22 @@ export default function InboxPage() {
         body: JSON.stringify({ [field]: value }),
       })
       const data = await res.json()
-      if (data.success) {
+      if (res.ok && data.success) {
         setLeadInfo(prev => prev ? { ...prev, [field]: value } : null)
+        // Mirror status/priority onto the contact rows so the list pills + the
+        // header pill stay in sync with the Details panel (one source of truth).
+        if (field === 'lead_status' || field === 'lead_priority') {
+          setContacts(prev => prev.map(c =>
+            c.lead_row === leadInfo.row_number ? { ...c, [field]: value } : c
+          ))
+          setActiveContact(prev =>
+            prev && prev.lead_row === leadInfo.row_number ? { ...prev, [field]: value } : prev
+          )
+        }
         const labels: Record<string, string> = { lead_status: 'Status', lead_priority: 'Priority', full_name: 'Name', email: 'Email', city: 'City', state: 'State', model_interest: 'Model interest' }
         toast.success(`${labels[field] || field} updated`)
+        setUpdatingLead(false)
+        return true
       } else {
         toast.error(data.error || 'Update failed')
       }
@@ -428,6 +480,19 @@ export default function InboxPage() {
       toast.error('Update failed')
     }
     setUpdatingLead(false)
+    return false
+  }
+
+  // One-click "Mark as Lost" from the negative-reply prompt. Only dismiss the
+  // banner once the status write actually lands — on failure the banner stays so
+  // the agent can retry (the error toast already explains why).
+  async function markActiveLost() {
+    if (!leadInfo) {
+      toast.error('Open the lead to change its status')
+      return
+    }
+    const ok = await updateLeadFromInbox('lead_status', 'LOST')
+    if (ok && activePhone) setDismissedNegative(prev => new Set(prev).add(activePhone))
   }
 
   // Send message
@@ -620,22 +685,89 @@ export default function InboxPage() {
     setSavingReminder(false)
   }
 
-  // Filtered contacts
-  const filteredContacts = contacts.filter(c => {
-    if (showUnreadOnly && c.unread_count === 0) return false
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase()
-      return c.name.toLowerCase().includes(q) || c.phone.includes(searchQuery)
-    }
-    return true
-  })
-  const unreadTotal = contacts.reduce((sum, c) => sum + (c.unread_count || 0), 0)
+  // Shared ticking clock — drives the waiting badges + 24h window countdown
+  // off a single 45s interval so every live element stays current cheaply.
+  const now = useNow(45000)
 
-  // 24hr window check
+  // Pipeline stages — for status-pill labels/colors + the status filter list,
+  // matching how the rest of the app resolves statuses.
+  const { stages } = usePipelineStages()
+  const statusKeys: string[] = useMemo(() => stages.length
+    ? stages.filter(s => s.isActive).sort((a, b) => a.sortOrder - b.sortOrder).map(s => s.key)
+    : [...LEAD_STATUSES], [stages])
+
+  // Quick-filter predicate (segment chips). All filters are client-side over the
+  // already-loaded enriched contacts.
+  const matchesTriage = useCallback((c: Contact, f: TriageFilter): boolean => {
+    switch (f) {
+      case 'mine': return Boolean(sessionUser?.name && c.assigned_to === sessionUser.name)
+      case 'unassigned': return !c.assigned_to
+      case 'hot': return (c.lead_priority || '').toUpperCase() === 'HOT'
+      case 'awaiting': return c.awaiting_reply === true
+      case 'unread': return c.unread_count > 0
+      default: return true
+    }
+  }, [sessionUser?.name])
+
+  // Counts per segment (computed once over all contacts — cheap on a few hundred rows)
+  const triageCounts: TriageCounts = useMemo(() => contacts.reduce<TriageCounts>((acc, c) => {
+    acc.all++
+    if (sessionUser?.name && c.assigned_to === sessionUser.name) acc.mine++
+    if (!c.assigned_to) acc.unassigned++
+    if ((c.lead_priority || '').toUpperCase() === 'HOT') acc.hot++
+    if (c.awaiting_reply) acc.awaiting++
+    if (c.unread_count > 0) acc.unread++
+    return acc
+  }, { all: 0, mine: 0, unassigned: 0, hot: 0, awaiting: 0, unread: 0 }), [contacts, sessionUser?.name])
+
+  // Filtered + sorted contacts. Memoized so the 45s clock tick (`now`) doesn't
+  // re-run the filter+sort — the ordering keys off `last_message_at`, never
+  // `now` (the per-row "waiting Xh" badge reads `now` directly at render time),
+  // so `now` is deliberately absent from the deps.
+  const filteredContacts = useMemo(() => contacts
+    .filter(c => {
+      if (!matchesTriage(c, triageFilter)) return false
+      if (triageStatus && c.lead_status !== triageStatus) return false
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase()
+        return c.name.toLowerCase().includes(q) || c.phone.includes(searchQuery)
+      }
+      return true
+    })
+    .sort((a, b) => {
+      if (triageSort === 'priority') {
+        const pr = priorityRank(a.lead_priority) - priorityRank(b.lead_priority)
+        if (pr !== 0) return pr
+        // tie-break: most recent activity first
+        return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
+      }
+      if (triageSort === 'waiting') {
+        // Awaiting-our-reply first, then oldest last_message_at first (ball in our
+        // court the longest sits at the top of the queue).
+        const aw = Number(Boolean(b.awaiting_reply)) - Number(Boolean(a.awaiting_reply))
+        if (aw !== 0) return aw
+        return new Date(a.last_message_at).getTime() - new Date(b.last_message_at).getTime()
+      }
+      // recent (default)
+      return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
+    }), [contacts, triageFilter, triageSort, triageStatus, searchQuery, sessionUser?.name])
+
+  // 24hr window check — last *received* message anchors the WhatsApp service window.
   const lastReceived = messages.filter(m => m.direction === 'received').pop()
+  const lastReceivedIso = lastReceived?.timestamp || null
   const isWithin24h = lastReceived
-    ? (Date.now() - new Date(lastReceived.timestamp).getTime()) < 24 * 60 * 60 * 1000
+    ? (now - new Date(lastReceived.timestamp).getTime()) < 24 * 60 * 60 * 1000
     : false
+
+  // Negative-reply detection on the ACTIVE thread. Trust the server's
+  // negative_hint when present; also re-check the last inbound client-side so a
+  // freshly-arrived message is caught before the next contacts poll.
+  const lastInboundText = lastReceived?.text || ''
+  const negativeOnActive = Boolean(activePhone) && (
+    activeContact?.negative_hint === true ||
+    (Boolean(lastInboundText) && isNegativeReply(lastInboundText))
+  )
+  const showNegativeBanner = negativeOnActive && Boolean(activePhone) && !dismissedNegative.has(activePhone || '')
 
   // Format time
   function formatTime(ts: string) {
@@ -786,37 +918,20 @@ export default function InboxPage() {
                 style={{ background: 'color-mix(in srgb, var(--color-elevated) 60%, transparent)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
               />
             </div>
-            {/* Unread filter toggle */}
-            <button
-              type="button"
-              onClick={() => setShowUnreadOnly(v => !v)}
-              className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors"
-              style={{
-                background: showUnreadOnly ? 'color-mix(in srgb, var(--color-accent) 18%, transparent)' : 'color-mix(in srgb, var(--color-elevated) 60%, transparent)',
-                borderColor: showUnreadOnly ? 'color-mix(in srgb, var(--color-accent) 50%, transparent)' : 'var(--color-border)',
-                color: showUnreadOnly ? 'var(--color-accent)' : 'var(--color-dim)',
-                border: '1px solid',
-              }}
-              title={showUnreadOnly ? 'Show all conversations' : 'Show only conversations with unread messages'}
-            >
-              <span className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                {showUnreadOnly ? 'Showing unread only' : 'Unread only'}
-              </span>
-              {unreadTotal > 0 && (
-                <span
-                  className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
-                  style={{
-                    background: showUnreadOnly ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-accent) 25%, transparent)',
-                    color: showUnreadOnly ? 'var(--color-bg)' : 'var(--color-accent)',
-                  }}
-                >
-                  {unreadTotal > 99 ? '99+' : unreadTotal}
-                </span>
-              )}
-            </button>
+            {/* Triage filters + sort — the core cockpit upgrade */}
+            <div className="mt-2.5">
+              <TriageBar
+                filter={triageFilter}
+                onFilter={setTriageFilter}
+                sort={triageSort}
+                onSort={setTriageSort}
+                statusFilter={triageStatus}
+                onStatusFilter={setTriageStatus}
+                counts={triageCounts}
+                stages={stages}
+                statusKeys={statusKeys}
+              />
+            </div>
           </div>
 
           {/* New Chat Dialog */}
@@ -882,15 +997,29 @@ export default function InboxPage() {
               )
             ) : (
               <>
-              {filteredContacts.map(contact => (
+              {filteredContacts.map(contact => {
+                const awaiting = contact.awaiting_reply === true
+                const isActive = activePhone === contact.phone
+                // Left accent bar is the headline triage signal — amber when the
+                // ball is in OUR court (awaiting our reply), accent when active.
+                const leftBar = isActive
+                  ? 'border-l-[3px] border-l-accent'
+                  : awaiting
+                    ? 'border-l-[3px]'
+                    : 'border-l-[3px] border-l-transparent hover:border-l-accent/40'
+                const waitedMs = contact.last_message_at ? now - new Date(contact.last_message_at).getTime() : 0
+                return (
                 <button
                   key={contact.phone}
                   onClick={() => openConversation(contact)}
-                  className={`w-full flex items-center gap-3 px-3 py-3 border-b border-border/50 text-left ${
-                    activePhone === contact.phone
-                      ? 'bg-accent/10 border-l-2 border-l-accent'
-                      : 'hover:bg-elevated/80 hover:border-l-2 hover:border-l-accent/40 border-l-2 border-l-transparent'
+                  className={`w-full flex items-center gap-3 px-3 py-3 border-b border-border/50 text-left transition-colors duration-150 ${leftBar} ${
+                    isActive
+                      ? 'bg-accent/10'
+                      : awaiting
+                        ? 'bg-warning/[0.04] hover:bg-elevated/80'
+                        : 'hover:bg-elevated/80'
                   }`}
+                  style={!isActive && awaiting ? { borderLeftColor: 'var(--color-warning)' } : undefined}
                 >
                   {/* Avatar */}
                   <div
@@ -905,8 +1034,11 @@ export default function InboxPage() {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-text truncate">
+                      <span className="text-sm font-medium text-text truncate flex items-center gap-1.5">
                         {contact.name || formatPhoneDisplay(contact.phone)}
+                        {(contact.lead_priority || '').toUpperCase() === 'HOT' && (
+                          <Flame className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={2.2} style={{ color: 'var(--color-status-hot)' }} aria-label="HOT priority" />
+                        )}
                       </span>
                       <span className="text-caption text-muted flex-shrink-0 ml-2">
                         {formatTime(contact.last_message_at)}
@@ -928,19 +1060,43 @@ export default function InboxPage() {
                         </span>
                       )}
                     </div>
-                    {/* Tags */}
-                    <div className="flex items-center gap-1 mt-1">
-                      {contact.is_lead ? (
-                        <span className="text-[9px] bg-accent/20 text-accent px-1.5 py-0.5 rounded font-semibold">Lead</span>
+                    {/* Triage tags — real status, awaiting signal, negative hint, city */}
+                    <div className="flex items-center gap-1 mt-1 flex-wrap">
+                      {awaiting && (
+                        <span
+                          className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full font-bold tabular-nums"
+                          style={{ background: 'color-mix(in srgb, var(--color-warning) 18%, transparent)', color: 'var(--color-warning)' }}
+                          title="Awaiting our reply — the ball is in our court"
+                        >
+                          <Clock className="w-2.5 h-2.5" strokeWidth={2.5} />
+                          waiting {formatWaiting(contact.last_message_at, now) || `${Math.max(1, Math.floor(waitedMs / 60000))}m`}
+                        </span>
+                      )}
+                      {contact.is_lead && contact.lead_status ? (
+                        <Badge tone={statusTone(contact.lead_status)} className="!text-[9px] !px-1.5 !py-0.5">
+                          {getStageMeta(stages, contact.lead_status).label}
+                        </Badge>
+                      ) : contact.is_lead ? (
+                        <span className="text-[9px] bg-accent/20 text-accent px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide">Lead</span>
                       ) : null}
+                      {contact.negative_hint === true && (
+                        <span
+                          className="inline-flex items-center text-[9px] px-1 py-0.5 rounded-full font-bold"
+                          style={{ background: 'color-mix(in srgb, var(--color-danger) 16%, transparent)', color: 'var(--color-danger)' }}
+                          title="Last reply looks negative — review for Lost"
+                          aria-label="Possible negative reply"
+                        >
+                          &#9888;
+                        </span>
+                      )}
                       {contact.city && (
                         <span className="text-[9px] bg-elevated text-muted px-1.5 py-0.5 rounded font-medium" style={{ border: '1px solid var(--color-border)' }}>{contact.city}</span>
                       )}
                     </div>
                   </div>
                 </button>
-              ))}
-              {hasMoreContacts && !searchQuery && !showUnreadOnly && (
+              )})}
+              {hasMoreContacts && !searchQuery && triageFilter === 'all' && !triageStatus && (
                 <button
                   onClick={loadOlderContacts}
                   disabled={loadingMoreContacts}
@@ -996,13 +1152,25 @@ export default function InboxPage() {
 
                 {/* Contact info */}
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-text truncate">
+                  <div className="text-sm font-semibold text-text truncate flex items-center gap-1.5">
                     {activeContact?.name || formatPhoneDisplay(activePhone)}
+                    {(leadInfo?.lead_priority || activeContact?.lead_priority || '').toUpperCase() === 'HOT' && (
+                      <Flame className="w-4 h-4 flex-shrink-0" strokeWidth={2.2} style={{ color: 'var(--color-status-hot)' }} aria-label="HOT priority" />
+                    )}
                   </div>
-                  <div className="text-caption text-muted flex items-center gap-2 flex-wrap">
+                  <div className="text-caption text-muted flex items-center gap-2 flex-wrap mt-0.5">
                     <span>+{activePhone}</span>
-                    {activeContact?.is_lead ? (
-                      <span className="bg-accent/20 text-accent px-1.5 py-0.5 rounded text-[9px] font-semibold">Lead</span>
+                    {/* One-click status change without opening Details (Feature 2) */}
+                    {activeContact?.is_lead && activeContact.lead_row ? (
+                      <HeaderStatusPill
+                        value={leadInfo?.lead_status || activeContact.lead_status || 'NEW'}
+                        stages={stages}
+                        statusKeys={statusKeys}
+                        disabled={updatingLead || !leadInfo}
+                        onChange={(next) => updateLeadFromInbox('lead_status', next)}
+                      />
+                    ) : activeContact?.is_lead ? (
+                      <span className="bg-accent/20 text-accent px-1.5 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wide">Lead</span>
                     ) : null}
                     {activeContact?.city && <span className="font-medium">{activeContact.city}</span>}
                   </div>
@@ -1010,14 +1178,8 @@ export default function InboxPage() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {/* 24hr window indicator */}
-                  <span className={`text-[10px] px-2 py-1 rounded-full font-medium hidden sm:inline-block ${
-                    isWithin24h
-                      ? 'bg-success/15 text-success'
-                      : 'bg-warning/15 text-warning'
-                  }`}>
-                    {isWithin24h ? '24h open' : 'Template only'}
-                  </span>
+                  {/* Live 24-hour service-window countdown (Feature 6) */}
+                  <WindowCountdown lastReceivedIso={lastReceivedIso} now={now} className="hidden sm:inline-flex" />
 
                   {/* Log Call button */}
                   <button
@@ -1064,6 +1226,20 @@ export default function InboxPage() {
                     <span className="hidden sm:inline">Details</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Negative-reply prompt — one-click Mark as Lost (Feature 5) */}
+              {showNegativeBanner && (
+                <NegativeReplyBanner
+                  busy={updatingLead}
+                  onMarkLost={markActiveLost}
+                  onDismiss={() => activePhone && setDismissedNegative(prev => new Set(prev).add(activePhone))}
+                />
+              )}
+
+              {/* Mobile-only live window countdown (header pill is hidden under sm) */}
+              <div className="sm:hidden flex items-center gap-2 px-4 py-1.5 border-b border-border glass-nav">
+                <WindowCountdown lastReceivedIso={lastReceivedIso} now={now} />
               </div>
 
               {/* Lead Details Panel (collapsible) — desktop only; mobile uses slide-in drawer below */}
@@ -1113,6 +1289,9 @@ export default function InboxPage() {
                       </div>
                     )
                   })()}
+
+                  {/* Qualification summary — reply informed, not blind */}
+                  {leadInfo && <QualificationSummary leadInfo={leadInfo} />}
 
                   {/* Lead-specific info: Status, Priority, Assigned, Score */}
                   {leadInfo && (
@@ -1685,6 +1864,9 @@ export default function InboxPage() {
                 )
               })()}
 
+              {/* Qualification summary (mobile drawer) */}
+              {leadInfo && <QualificationSummary leadInfo={leadInfo} />}
+
               {leadInfo && (
                 <div className="grid grid-cols-2 gap-3 text-xs mt-4 pt-3 border-t border-border/50">
                   <div>
@@ -1951,4 +2133,94 @@ function formatPhoneDisplay(phone: string): string {
     return `+91 ${phone.slice(2, 7)} ${phone.slice(7)}`
   }
   return `+${phone}`
+}
+
+/**
+ * One-click status pill for the conversation header (Feature 2). Click the
+ * colored pill → searchable status list → fires the parent's onChange, which
+ * routes through updateLeadFromInbox so the Details-panel select and every list
+ * pill stay in sync off one state update. Mirrors the app's StatusEditPopover
+ * idiom (Popover + Command + Badge) so it feels native.
+ */
+function HeaderStatusPill({
+  value,
+  stages,
+  statusKeys,
+  disabled,
+  onChange,
+}: {
+  value: string
+  stages: import('@/lib/stages').Stage[]
+  statusKeys: string[]
+  disabled?: boolean
+  onChange: (next: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const label = getStageMeta(stages, value).label
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        disabled={disabled}
+        className="inline-flex items-center gap-0.5 rounded-full transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        aria-label={`Status: ${label}. Click to change.`}
+        title="Change status"
+      >
+        <Badge tone={statusTone(value)} className="!text-[9px] !px-1.5 !py-0.5">{label}</Badge>
+        <ChevronDown className="w-3 h-3 opacity-60" style={{ color: 'var(--color-dim)' }} />
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={6} className="w-56 p-0 overflow-hidden">
+        <Command>
+          <CommandInput placeholder="Search status..." />
+          <CommandList>
+            <CommandEmpty>No status found.</CommandEmpty>
+            {statusKeys.map((s) => (
+              <CommandItem
+                key={s}
+                value={`${s} ${getStageMeta(stages, s).label}`}
+                onSelect={() => { onChange(s); setOpen(false) }}
+                data-checked={s === value}
+              >
+                <Badge tone={statusTone(s)}>{getStageMeta(stages, s).label}</Badge>
+              </CommandItem>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/**
+ * Compact qualification summary for the Details panel — Model interest, Timeline,
+ * Experience, Source/Campaign, Platform — so agents reply informed instead of
+ * seeing N/A everywhere. Read-only; the editable Model Interest stays in the
+ * main grid above.
+ */
+function QualificationSummary({ leadInfo }: { leadInfo: { model_interest?: string; timeline?: string; experience?: string; campaign_name?: string; platform?: string } }) {
+  const fields: { label: string; value?: string }[] = [
+    { label: 'Model', value: leadInfo.model_interest },
+    { label: 'Timeline', value: leadInfo.timeline },
+    { label: 'Experience', value: leadInfo.experience },
+    { label: 'Source', value: leadInfo.campaign_name },
+    { label: 'Platform', value: leadInfo.platform },
+  ]
+  // Only render when at least one qualification field has a value — no empty box.
+  if (!fields.some(f => f.value && f.value.trim())) return null
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border/50">
+      <span className="text-[10px] text-dim uppercase tracking-wider block mb-2">Qualification</span>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-2 text-xs">
+        {fields.map(({ label, value }) => (
+          <div key={label} className="min-w-0">
+            <span className="text-dim block text-[10px] uppercase tracking-wider">{label}</span>
+            <span className="text-text font-medium block truncate" title={value || undefined}>
+              {value && value.trim() ? value : <span className="text-dim">—</span>}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }

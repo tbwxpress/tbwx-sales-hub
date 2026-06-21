@@ -6,6 +6,7 @@ import { logSentMessage, getLeadByRow } from '@/lib/sheets'
 import { getMarketingFirstTemplateName } from '@/lib/template-settings'
 import { notifyQuiet } from '@/lib/notifications'
 import { getUsers } from '@/lib/users'
+import { isNegativeReply } from '@/lib/negative-replies'
 
 // Button response classification for follow-up templates
 const POSITIVE_BUTTONS = [
@@ -337,6 +338,22 @@ export async function POST(req: NextRequest) {
                       ref_phone: phone,
                       ref_lead_row: Number(contact.lead_row),
                     })
+
+                    // Flag a possible negative reply so the owner can review it.
+                    // Alert only — we never auto-mark the lead LOST here (the
+                    // free-text matcher is conservative but not infallible); the
+                    // inbox surfaces a one-click "Mark Lost?" suggestion instead.
+                    if (isNegativeReply(text)) {
+                      await notifyQuiet({
+                        user_id: owner.id,
+                        type: 'negative_reply',
+                        title: `⚠️ Possible negative reply — ${lead.full_name || phone}`,
+                        body: previewText,
+                        ref_phone: phone,
+                        ref_lead_row: Number(contact.lead_row),
+                      })
+                      console.log(`[Webhook] Possible negative reply from ${phone}: "${previewText}"`)
+                    }
                   }
                 } catch { /* best effort */ }
               }

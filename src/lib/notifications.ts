@@ -31,6 +31,7 @@ export type NotificationType =
   | 'lead_hot'            // Lead was promoted to HOT
   | 'telecaller_update'   // Telecaller changed status / added note on owner's lead
   | 'followup_overdue'    // Follow-up date is past
+  | 'negative_reply'      // Lead's free-text reply looks like an opt-out / disinterest
 
 export interface Notification {
   id: number
