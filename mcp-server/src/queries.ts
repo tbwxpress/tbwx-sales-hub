@@ -200,6 +200,22 @@ export async function listPipelineStages(includeInactive: boolean) {
   return serializeRows(res.rows)
 }
 
+// query_sql — run a single, already-validated read-only SELECT/WITH statement
+// and return its columns + rows capped to `limit`. The SELECT-only / single-
+// statement / forbidden-keyword guards are enforced at the tool boundary
+// (assertReadOnlySelect in index.ts) BEFORE this runs; this only executes and
+// shapes the result.
+export async function runSql(sql: string, limit: number) {
+  const db = getClient()
+  const res = await db.execute(sql)
+  const rows = serializeRows(res.rows).slice(0, limit)
+  return {
+    columns: res.columns,
+    rowCount: rows.length,
+    rows,
+  }
+}
+
 // Valid status keys — used to validate update_lead_status input.
 export async function getPipelineStageKeys(): Promise<string[]> {
   const db = getClient()

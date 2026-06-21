@@ -24,6 +24,7 @@ import {
   addLeadNote,
   updateLeadStatus,
   createTask,
+  runSql,
 } from './queries.js'
 
 // Actor label stamped on every audited write (notes / status changes / tasks).
@@ -170,6 +171,61 @@ server.registerTool(
   async ({ include_inactive }) => {
     try {
       return json({ stages: await listPipelineStages(include_inactive) })
+    } catch (e) {
+      return fail(String(e instanceof Error ? e.message : e))
+    }
+  },
+)
+
+// Words that imply a write/DDL/side-effecting statement. Whole-word,
+// case-insensitive — rejected before any SQL runs so query_sql stays read-only.
+const FORBIDDEN_SQL_KEYWORDS = [
+  'INSERT', 'UPDATE', 'DELETE', 'REPLACE', 'DROP', 'ALTER', 'CREATE',
+  'ATTACH', 'DETACH', 'PRAGMA', 'VACUUM', 'REINDEX', 'TRIGGER',
+]
+const FORBIDDEN_SQL_RE = new RegExp(`\\b(${FORBIDDEN_SQL_KEYWORDS.join('|')})\\b`, 'i')
+
+// Enforce the read-only contract for query_sql. Returns the cleaned, single
+// statement on success, or an error message describing the first violation.
+function assertReadOnlySelect(raw: string): { ok: true; sql: string } | { ok: false; error: string } {
+  const trimmed = raw.trim()
+  if (!/^(SELECT|WITH)\b/i.test(trimmed)) {
+    return { ok: false, error: 'Query must start with SELECT or WITH (read-only statements only).' }
+  }
+  // Allow exactly one optional trailing semicolon; any other ; means multiple statements.
+  const single = trimmed.replace(/;\s*$/, '')
+  if (single.includes(';')) {
+    return { ok: false, error: 'Only a single SQL statement is allowed (no semicolons).' }
+  }
+  const banned = single.match(FORBIDDEN_SQL_RE)
+  if (banned) {
+    return { ok: false, error: `Forbidden keyword "${banned[1].toUpperCase()}" — query_sql is read-only (SELECT/WITH only).` }
+  }
+  return { ok: true, sql: single }
+}
+
+server.registerTool(
+  'query_sql',
+  {
+    title: 'Ad-hoc analytics SQL',
+    description:
+      'READ-ONLY analytics/reporting query over the TBWX SalesHub database (tables include leads, messages, contacts, users, call_logs, sla_metrics, lead_status_changes, lead_status_changes, tasks, lead_notes, assignment_log, voice_agent_calls, pipeline_stages, saved_views). For analysing the sales team and sales leads. Accepts a single SELECT/WITH statement only.',
+    inputSchema: {
+      sql: z.string().describe('A single read-only SELECT or WITH statement'),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(5000)
+        .default(500)
+        .describe('Max rows to return (positive int, max 5000, default 500)'),
+    },
+  },
+  async ({ sql, limit }) => {
+    try {
+      const check = assertReadOnlySelect(sql)
+      if (!check.ok) return fail(check.error)
+      return json(await runSql(check.sql, limit))
     } catch (e) {
       return fail(String(e instanceof Error ? e.message : e))
     }
