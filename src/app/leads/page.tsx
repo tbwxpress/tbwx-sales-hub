@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Search, UserPlus, Download, Eye, MessageSquare, Pencil, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react'
+import { Plus, Search, UserPlus, Download, Eye, MessageSquare, Pencil, ArrowUp, ArrowDown, ChevronsUpDown, Star } from 'lucide-react'
 import Navbar from '@/components/Navbar'
 import { STATUS_LABELS, LEAD_STATUSES } from '@/config/client'
 import { toast } from 'sonner'
@@ -64,8 +64,11 @@ import StatusEditPopover from './_components/StatusEditPopover'
 import SavedViewsBar from '@/components/leads/SavedViewsBar'
 import LeadSidePanel from '@/components/leads/LeadSidePanel'
 import InlineSelect from '@/components/leads/InlineSelect'
+import ColumnCustomizer, { type ColumnMeta, type ColumnPref } from '@/components/leads/ColumnCustomizer'
+import FavoriteStar from '@/components/leads/FavoriteStar'
 import { PRIORITY_CHIP, PRIORITY_OPTIONS as PRIORITY_SELECT_OPTIONS, patchLead } from '@/components/leads/shared'
 import { type SavedViewFilters } from '@/lib/stages'
+import { useFavorites } from '@/hooks/useFavorites'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -111,6 +114,65 @@ interface SessionUser {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const STATUS_OPTIONS: readonly string[] = LEAD_STATUSES
+
+// ─── Canonical column catalog ────────────────────────────────────────────────
+// Mirrors the columns the table renders, in their natural left→right order.
+// `locked` columns are structural — always visible, never reorderable (the
+// favorite-star rail, the bulk-select box, the row #, Name, and the row Actions).
+// The rest are user-toggleable + draggable via the ColumnCustomizer, and their
+// order/visibility is persisted per-user via /api/table-prefs.
+const COLUMN_CATALOG: ColumnMeta[] = [
+  { key: 'favorite', label: 'Pin', locked: true },
+  { key: 'select', label: 'Select', locked: true },
+  { key: 'index', label: '#', locked: true },
+  { key: 'lead_score', label: 'Score' },
+  { key: 'full_name', label: 'Name', locked: true },
+  { key: 'phone', label: 'Phone' },
+  { key: 'city', label: 'City' },
+  { key: 'lead_status', label: 'Status' },
+  { key: 'lead_priority', label: 'Priority' },
+  { key: 'assigned_to', label: 'Assigned' },
+  { key: 'telecaller', label: 'Telecaller' },
+  { key: 'next_followup', label: 'Follow-up' },
+  { key: 'created_time', label: 'Created' },
+  { key: 'actions', label: 'Actions', locked: true },
+]
+
+// The toggleable (non-locked) column keys, in catalog order — the default pref set.
+const DEFAULT_COLUMN_PREFS: ColumnPref[] = COLUMN_CATALOG
+  .filter(c => !c.locked)
+  .map(c => ({ key: c.key, visible: true }))
+
+const LOCKED_COLUMN_KEYS = COLUMN_CATALOG.filter(c => c.locked).map(c => c.key)
+
+// Locked columns split into left-anchors (always lead, in this order) and
+// right-anchors (always trail). The toggleable, user-reorderable columns flow
+// between them. `full_name` is pinned left so Name never drifts right even
+// though it sits after Score in the catalog; `actions` is pinned right.
+const LEADING_LOCKED_KEYS = ['favorite', 'select', 'index', 'full_name']
+const TRAILING_LOCKED_KEYS = ['actions']
+
+/**
+ * Reconcile saved/applied prefs against the current catalog: keep saved order +
+ * visibility for known keys, append any catalog columns the saved set is missing
+ * (defaulting to visible), and drop keys no longer in the catalog. Guarantees the
+ * table always has a complete, valid pref list even as columns evolve.
+ */
+function reconcilePrefs(saved: ColumnPref[] | null | undefined): ColumnPref[] {
+  const valid = new Set(DEFAULT_COLUMN_PREFS.map(c => c.key))
+  const seen = new Set<string>()
+  const out: ColumnPref[] = []
+  for (const c of saved ?? []) {
+    if (valid.has(c.key) && !seen.has(c.key)) {
+      out.push({ key: c.key, visible: c.visible })
+      seen.add(c.key)
+    }
+  }
+  for (const def of DEFAULT_COLUMN_PREFS) {
+    if (!seen.has(def.key)) out.push({ ...def })
+  }
+  return out
+}
 
 // ─── Add Lead Schema ─────────────────────────────────────────────────────────
 
@@ -229,10 +291,21 @@ export default function LeadsPage() {
   // Quick filter pills
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'hot' | 'unassigned' | 'due_today'>('all')
 
+  // ★ Favorites — optimistic pins for leads + saved views (see useFavorites).
+  const { isFavorite, toggle: toggleFavorite } = useFavorites()
+  // When on, the table is filtered to only pinned leads.
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
+
+  // ─── Column customization ──────────────────────────────────────────────────
+  // Per-user order + visibility for the toggleable columns, persisted via
+  // /api/table-prefs. Seeded with the default (all-visible, catalog order) until
+  // the saved prefs load; a saved view may override these when applied.
+  const [columnPrefs, setColumnPrefs] = useState<ColumnPref[]>(DEFAULT_COLUMN_PREFS)
+  const savePrefsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // TanStack table state
   const [sorting, setSorting] = useState<SortingState>([])
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
 
   // ─── Record side-panel (slide-over) ──────────────────────────────────────
   const [panelOpen, setPanelOpen] = useState(false)
@@ -249,8 +322,11 @@ export default function LeadsPage() {
     setPanelOpen(true)
   }
 
-  // Apply a saved view's filters to the page filter state.
+  // Apply a saved view's filters to the page filter state. A view may also carry
+  // its own column layout — apply it (reconciled) when present, otherwise leave
+  // the user's current/default column prefs untouched.
   const applyViewFilters = useCallback((f: SavedViewFilters) => {
+    setFavoritesOnly(false)
     setSearch(f.search ?? '')
     setStatusFilter(f.status ?? '')
     setAssignedFilter(f.assignee ?? '')
@@ -259,9 +335,13 @@ export default function LeadsPage() {
     setDateFrom(f.dateFrom ?? '')
     setDateTo(f.dateTo ?? '')
     setQuickFilter(f.priority === 'HOT' ? 'hot' : 'all')
+    if (Array.isArray(f.columns) && f.columns.length > 0) {
+      setColumnPrefs(reconcilePrefs(f.columns))
+    }
   }, [])
 
-  // Snapshot of the current filter state for "Save view".
+  // Snapshot of the current filter state for "Save view" — now includes the
+  // live column layout so a saved view restores the user's columns too.
   const currentViewFilters = useMemo<SavedViewFilters>(() => ({
     search,
     status: statusFilter,
@@ -271,7 +351,8 @@ export default function LeadsPage() {
     dateFrom,
     dateTo,
     priority: quickFilter === 'hot' ? 'HOT' : '',
-  }), [search, statusFilter, assignedFilter, telecallerFilter, sortByQuery, dateFrom, dateTo, quickFilter])
+    columns: columnPrefs,
+  }), [search, statusFilter, assignedFilter, telecallerFilter, sortByQuery, dateFrom, dateTo, quickFilter, columnPrefs])
 
   // ─── Data Fetching ───────────────────────────────────────────────────────
 
@@ -348,6 +429,53 @@ export default function LeadsPage() {
     } catch { /* non-critical */ }
   }, [])
 
+  // Load this user's saved column prefs once. Falls back to the default catalog
+  // order when none are saved. Reconciled against the catalog so evolving
+  // columns never break the table.
+  const fetchColumnPrefs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/table-prefs?table=leads')
+      const data = await res.json()
+      if (Array.isArray(data?.columns) && data.columns.length > 0) {
+        setColumnPrefs(reconcilePrefs(data.columns))
+      }
+    } catch { /* non-critical — default columns stand */ }
+  }, [])
+
+  // Persist column prefs (debounced) — used by the ColumnCustomizer onChange.
+  const persistColumnPrefs = useCallback((next: ColumnPref[]) => {
+    if (savePrefsTimer.current) clearTimeout(savePrefsTimer.current)
+    savePrefsTimer.current = setTimeout(() => {
+      fetch('/api/table-prefs', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'leads', columns: next }),
+      }).catch(() => { /* best-effort — UI already reflects the change */ })
+    }, 600)
+  }, [])
+
+  // ColumnCustomizer change handler. The customizer only sees columns present
+  // for this role, so its output (`next`) may omit role-gated prefs (e.g.
+  // `telecaller` for non-admins). Merge: take the customizer's order for the
+  // keys it manages, then append any prefs it never saw so they're never lost
+  // from state or the persisted payload.
+  const handleColumnsChange = useCallback((next: ColumnPref[]) => {
+    setColumnPrefs(prev => {
+      const nextKeys = new Set(next.map(c => c.key))
+      const untouched = prev.filter(c => !nextKeys.has(c.key))
+      const merged = [...next, ...untouched]
+      persistColumnPrefs(merged)
+      return merged
+    })
+  }, [persistColumnPrefs])
+
+  const resetColumns = useCallback(() => {
+    const next = DEFAULT_COLUMN_PREFS.map(c => ({ ...c }))
+    setColumnPrefs(next)
+    persistColumnPrefs(next)
+    toast.success('Columns reset to default')
+  }, [persistColumnPrefs])
+
   useEffect(() => {
     setLoading(true)
     // Auth + agents only. The leads fetch is owned by the filter-effect below:
@@ -357,6 +485,7 @@ export default function LeadsPage() {
     // finally, so the spinner stays up until that deferred first fetch returns.
     fetchUser()
     fetchAgents()
+    fetchColumnPrefs()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -552,14 +681,17 @@ export default function LeadsPage() {
     }
   }, [leads, user?.name, today])
 
-  // Apply quick filter on top of the already-fetched leads
+  // Apply quick filter on top of the already-fetched leads, then narrow to
+  // pinned leads when the ★ Favorites toggle is active.
   const displayedLeads = useMemo(() => {
-    if (quickFilter === 'all') return leads
-    if (quickFilter === 'mine') return leads.filter(l => l.assigned_to === user?.name)
-    if (quickFilter === 'hot') return leads.filter(l => l.lead_priority === 'HOT')
-    if (quickFilter === 'unassigned') return leads.filter(l => !l.assigned_to)
-    return leads.filter(l => l.next_followup?.startsWith(today))
-  }, [leads, quickFilter, user?.name, today])
+    let list = leads
+    if (quickFilter === 'mine') list = list.filter(l => l.assigned_to === user?.name)
+    else if (quickFilter === 'hot') list = list.filter(l => l.lead_priority === 'HOT')
+    else if (quickFilter === 'unassigned') list = list.filter(l => !l.assigned_to)
+    else if (quickFilter === 'due_today') list = list.filter(l => l.next_followup?.startsWith(today))
+    if (favoritesOnly) list = list.filter(l => isFavorite('lead', l.row_number))
+    return list
+  }, [leads, quickFilter, user?.name, today, favoritesOnly, isFavorite])
 
   // Mirror the latest displayedLeads into a ref so handleExportCsv stays
   // stable but still exports the currently-visible set.
@@ -619,6 +751,25 @@ export default function LeadsPage() {
 
   const columns = useMemo<ColumnDef<Lead>[]>(() => {
     const cols: ColumnDef<Lead>[] = []
+
+    // ★ Favorite-star rail — leftmost, structural (always visible, fixed).
+    cols.push({
+      id: 'favorite',
+      enableSorting: false,
+      enableHiding: false,
+      size: 36,
+      header: () => <span className="sr-only">Pin</span>,
+      cell: ({ row }) => {
+        const lead = row.original
+        return (
+          <FavoriteStar
+            active={isFavorite('lead', lead.row_number)}
+            onToggle={() => toggleFavorite('lead', lead.row_number)}
+            label={lead.full_name || 'lead'}
+          />
+        )
+      },
+    })
 
     if (showCheckboxColumn) {
       cols.push({
@@ -903,15 +1054,52 @@ export default function LeadsPage() {
     })
 
     return cols
-  }, [showCheckboxColumn, isAdmin, applyLocalStatus, updateLeadPriority, updateLeadAssignee, canReassign, assigneeOptions, quickNotePhone])
+  }, [showCheckboxColumn, isAdmin, applyLocalStatus, updateLeadPriority, updateLeadAssignee, canReassign, assigneeOptions, quickNotePhone, isFavorite, toggleFavorite])
+
+  // The set of column ids that actually exist this render (some are role-gated:
+  // `select` only for bulk-capable users, `telecaller` only for admins). Used to
+  // keep the customizer catalog + derived order/visibility in sync with reality.
+  const presentColumnIds = useMemo(() => new Set(columns.map(c => c.id as string)), [columns])
+
+  // The catalog shown in the ColumnCustomizer — only columns that exist for this
+  // user's role, preserving canonical order.
+  const visibleCatalog = useMemo(
+    () => COLUMN_CATALOG.filter(c => presentColumnIds.has(c.key)),
+    [presentColumnIds]
+  )
+
+  // The prefs passed to the customizer — filtered to columns present this render
+  // so a hidden-by-role column (e.g. telecaller for non-admins) never shows up.
+  const visibleColumnPrefs = useMemo(
+    () => columnPrefs.filter(c => presentColumnIds.has(c.key)),
+    [columnPrefs, presentColumnIds]
+  )
+
+  // Derive TanStack columnVisibility from prefs (locked columns always shown).
+  const columnVisibility = useMemo<VisibilityState>(() => {
+    const vis: VisibilityState = {}
+    for (const pref of columnPrefs) {
+      if (!LOCKED_COLUMN_KEYS.includes(pref.key) && presentColumnIds.has(pref.key)) vis[pref.key] = pref.visible
+    }
+    return vis
+  }, [columnPrefs, presentColumnIds])
+
+  // Derive TanStack columnOrder: fixed left-anchors, then the user-reorderable
+  // toggleable columns in saved-pref order, then fixed right-anchors. Only ids
+  // present this render are emitted (role-gated columns drop out cleanly).
+  const columnOrder = useMemo<string[]>(() => {
+    const leading = LEADING_LOCKED_KEYS.filter(k => presentColumnIds.has(k))
+    const trailing = TRAILING_LOCKED_KEYS.filter(k => presentColumnIds.has(k))
+    const middle = columnPrefs.map(p => p.key).filter(k => presentColumnIds.has(k))
+    return [...leading, ...middle, ...trailing]
+  }, [columnPrefs, presentColumnIds])
 
   const table = useReactTable({
     data: displayedLeads,
     columns,
-    state: { sorting, rowSelection, columnVisibility },
+    state: { sorting, rowSelection, columnVisibility, columnOrder },
     onSortingChange: setSorting,
     onRowSelectionChange: setRowSelection,
-    onColumnVisibilityChange: setColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -984,6 +1172,12 @@ export default function LeadsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <ColumnCustomizer
+              catalog={visibleCatalog}
+              columns={visibleColumnPrefs}
+              onChange={handleColumnsChange}
+              onReset={resetColumns}
+            />
             <button
               onClick={handleExportCsv}
               className="bg-elevated hover:bg-border text-muted text-caption font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
@@ -1064,6 +1258,33 @@ export default function LeadsPage() {
               </button>
             )
           })}
+
+          {/* ★ Favorites toggle — narrows the table to pinned leads */}
+          <div className="w-px h-5 self-center mx-0.5" style={{ backgroundColor: 'var(--color-border)' }} aria-hidden />
+          <button
+            type="button"
+            onClick={() => setFavoritesOnly(v => !v)}
+            aria-pressed={favoritesOnly}
+            title={favoritesOnly ? 'Showing pinned leads only' : 'Show only pinned leads'}
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-caption font-semibold uppercase tracking-wide transition-colors cursor-pointer focus-ring"
+            style={
+              favoritesOnly
+                ? {
+                    backgroundColor: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
+                    color: 'var(--color-accent)',
+                    border: '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                  }
+                : { backgroundColor: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }
+            }
+          >
+            <Star
+              className="w-3.5 h-3.5"
+              fill={favoritesOnly ? 'currentColor' : 'none'}
+              strokeWidth={favoritesOnly ? 0 : 2}
+              aria-hidden
+            />
+            Favorites
+          </button>
         </div>
 
         {/* ─── Filter Bar ───────────────────────────────────────────────── */}
@@ -1171,14 +1392,20 @@ export default function LeadsPage() {
           {table.getRowModel().rows.length === 0 ? (
             <div className="bg-card border border-border rounded-lg">
               <EmptyState
-                icon={<UserPlus className="w-10 h-10" strokeWidth={1.25} />}
+                icon={favoritesOnly
+                  ? <Star className="w-10 h-10" strokeWidth={1.25} />
+                  : <UserPlus className="w-10 h-10" strokeWidth={1.25} />}
                 title={
-                  search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
+                  favoritesOnly
+                    ? 'No pinned leads'
+                    : search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
                     ? 'No leads match these filters'
                     : 'No leads yet'
                 }
                 hint={
-                  search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
+                  favoritesOnly
+                    ? 'Tap the star on any lead to pin it here.'
+                    : search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
                     ? 'Try clearing filters or add a new lead.'
                     : 'New leads will appear here as they come in.'
                 }
@@ -1224,6 +1451,11 @@ export default function LeadsPage() {
                         {lead.city && <> · {lead.city}{lead.state ? `, ${lead.state}` : ''}</>}
                       </p>
                     </div>
+                    <FavoriteStar
+                      active={isFavorite('lead', lead.row_number)}
+                      onToggle={() => toggleFavorite('lead', lead.row_number)}
+                      label={lead.full_name || 'lead'}
+                    />
                     {lead.lead_score !== undefined && (
                       <span
                         className="inline-flex items-center justify-center w-7 h-7 rounded-full text-caption font-bold flex-shrink-0"
@@ -1334,14 +1566,20 @@ export default function LeadsPage() {
                   <TableRow>
                     <TableCell colSpan={columns.length} className="px-3">
                       <EmptyState
-                        icon={<UserPlus className="w-10 h-10" strokeWidth={1.25} />}
+                        icon={favoritesOnly
+                          ? <Star className="w-10 h-10" strokeWidth={1.25} />
+                          : <UserPlus className="w-10 h-10" strokeWidth={1.25} />}
                         title={
-                          search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
+                          favoritesOnly
+                            ? 'No pinned leads'
+                            : search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
                             ? 'No leads match these filters'
                             : 'No leads yet'
                         }
                         hint={
-                          search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
+                          favoritesOnly
+                            ? 'Click the star on any lead to pin it here.'
+                            : search || statusFilter || assignedFilter || telecallerFilter || quickFilter !== 'all'
                             ? 'Try clearing filters or add a new lead.'
                             : 'New leads will appear here as they come in.'
                         }
@@ -1728,6 +1966,8 @@ export default function LeadsPage() {
         assignees={assigneeOptions.map(a => a.value)}
         canAssign={canReassign}
         onPatch={patchLeadLocal}
+        isFavorite={panelLead ? isFavorite('lead', panelLead.row_number) : false}
+        onToggleFavorite={panelLead ? () => toggleFavorite('lead', panelLead.row_number) : undefined}
       />
 
     </div>

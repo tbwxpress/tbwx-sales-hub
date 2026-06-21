@@ -39,6 +39,7 @@ import Badge, { statusTone, priorityTone } from '@/components/ui/Badge'
 import StatusEditPopover from '@/app/leads/_components/StatusEditPopover'
 import FollowupDatePicker from '@/app/leads/[id]/_components/FollowupDatePicker'
 import InlineSelect from './InlineSelect'
+import FavoriteStar from './FavoriteStar'
 import { PRIORITY_CHIP, PRIORITY_OPTIONS, patchLead } from './shared'
 import { STATUS_LABELS } from '@/config/client'
 import { timeAgo } from '@/lib/format'
@@ -86,6 +87,10 @@ interface LeadSidePanelProps {
   canAssign: boolean
   /** Patch the page's local lead list optimistically */
   onPatch: (rowNumber: number, patch: Partial<PanelLead>) => void
+  /** Whether this lead is pinned (from useFavorites().isFavorite) */
+  isFavorite?: boolean
+  /** Optimistic pin toggle for this lead (from useFavorites().toggle) */
+  onToggleFavorite?: () => void | Promise<void>
 }
 
 function initials(name: string): string {
@@ -127,6 +132,8 @@ export default function LeadSidePanel({
   assignees,
   canAssign,
   onPatch,
+  isFavorite = false,
+  onToggleFavorite,
 }: LeadSidePanelProps) {
   const [notesDraft, setNotesDraft] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
@@ -251,9 +258,20 @@ export default function LeadSidePanel({
                   {initials(lead.full_name)}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <SheetTitle className="text-heading font-bold text-text truncate">
-                    {lead.full_name || 'Unknown lead'}
-                  </SheetTitle>
+                  <div className="flex items-start gap-1.5">
+                    <SheetTitle className="text-heading font-bold text-text truncate min-w-0">
+                      {lead.full_name || 'Unknown lead'}
+                    </SheetTitle>
+                    {onToggleFavorite && (
+                      <FavoriteStar
+                        active={isFavorite}
+                        onToggle={onToggleFavorite}
+                        label={lead.full_name || 'lead'}
+                        size="md"
+                        className="shrink-0 -mt-0.5"
+                      />
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <Badge tone={statusTone(lead.lead_status)}>
                       {STATUS_LABELS[lead.lead_status] || lead.lead_status}

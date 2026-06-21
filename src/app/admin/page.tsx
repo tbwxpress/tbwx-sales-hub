@@ -11,7 +11,7 @@ const MetaAdsDashboard = dynamic(() => import('@/components/MetaAdsDashboard'), 
   ssr: false,
 })
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { GitBranch, FileSpreadsheet, ArrowRight } from 'lucide-react'
+import { GitBranch, FileSpreadsheet, ArrowRight, CopyX } from 'lucide-react'
 
 interface User {
   id: string; name: string; email: string; role: string;
@@ -102,8 +102,10 @@ export default function AdminPage() {
       if (d.success) {
         setCurrentUser(d.data)
         if (d.data.role !== 'admin') router.push('/dashboard')
+      } else {
+        router.push('/login')
       }
-    })
+    }).catch(() => router.push('/login'))
     fetchUsers()
     fetchVoiceAgentSettings()
     fetchTemplateSettings()
@@ -680,6 +682,21 @@ export default function AdminPage() {
                   <ArrowRight className="w-4 h-4 text-dim group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0" />
                 </div>
                 <p className="text-xs text-dim mt-1 leading-relaxed">Upload a spreadsheet, auto-map columns, preview, and de-dupe by phone.</p>
+              </div>
+            </a>
+            <a
+              href="/admin/duplicates"
+              className="card-hover group bg-card border border-border rounded-xl p-5 flex items-start gap-4 transition-colors hover:border-accent/40 focus-ring"
+            >
+              <div className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:scale-105" style={{ background: 'var(--color-accent-soft)' }}>
+                <CopyX className="w-5 h-5 text-accent" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-text">Duplicate Leads</h3>
+                  <ArrowRight className="w-4 h-4 text-dim group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0" />
+                </div>
+                <p className="text-xs text-dim mt-1 leading-relaxed">Find leads sharing a phone number and merge them into one — reversible, history preserved.</p>
               </div>
             </a>
           </div>

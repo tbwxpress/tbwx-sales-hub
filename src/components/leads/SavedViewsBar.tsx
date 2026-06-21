@@ -15,6 +15,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Users, Lock, MoreHorizontal, Star, Pencil, Trash2, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import type { SavedView, SavedViewFilters } from '@/lib/stages'
+import { useFavorites } from '@/hooks/useFavorites'
+import FavoriteStar from './FavoriteStar'
 import {
   Dialog,
   DialogContent,
@@ -59,6 +61,10 @@ export default function SavedViewsBar({
   const [activeId, setActiveId] = useState<number>(ALL_LEADS_ID)
   const [loading, setLoading] = useState(true)
   const defaultAppliedRef = useRef(false)
+
+  // ★ Pin saved views (kind 'view') — optimistic, shared store with the leads
+  // table's lead pins so the star state is always consistent app-wide.
+  const { isFavorite, toggle: toggleFavorite } = useFavorites()
 
   // Save dialog state
   const [saveOpen, setSaveOpen] = useState(false)
@@ -272,6 +278,14 @@ export default function SavedViewsBar({
                   : <Lock className="w-3 h-3 shrink-0 opacity-50" aria-label="Private" />}
                 <span className="max-w-[14ch] truncate">{view.name}</span>
               </button>
+
+              {/* ★ Pin this view */}
+              <FavoriteStar
+                active={isFavorite('view', view.id)}
+                onToggle={() => toggleFavorite('view', view.id)}
+                label={`${view.name} view`}
+                className={`w-6 h-6 -ml-0.5 ${canManage(view) ? '' : 'rounded-r-full pr-1'}`}
+              />
 
               {canManage(view) && (
                 <DropdownMenu>

@@ -26,6 +26,7 @@ export interface SavedViewFilters {
   dateFrom?: string
   dateTo?: string
   sort?: string
+  columns?: { key: string; visible: boolean }[]
 }
 
 /**

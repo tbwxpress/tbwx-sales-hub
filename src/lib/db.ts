@@ -442,6 +442,55 @@ export async function ensureInit(): Promise<Client> {
       );
       CREATE INDEX IF NOT EXISTS idx_saved_views_owner ON saved_views(owner_user_id);
       CREATE INDEX IF NOT EXISTS idx_saved_views_scope ON saved_views(scope);
+
+      -- Lead comments: threaded discussion on a lead, keyed by lead row_number.
+      -- mentions is a JSON array of mentioned user ids; each mention also spawns a
+      -- row in the notifications table (type 'mention').
+      CREATE TABLE IF NOT EXISTS lead_comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lead_row INTEGER NOT NULL,
+        author_id TEXT,
+        author_name TEXT,
+        body TEXT NOT NULL,
+        mentions TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_lead_comments_lead ON lead_comments(lead_row, created_at);
+
+      -- Favorites: per-user starred leads or saved views.
+      -- kind = 'lead' (ref = lead_row as string) | 'view' (ref = saved_view id).
+      CREATE TABLE IF NOT EXISTS favorites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        ref TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, kind, ref)
+      );
+      CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
+
+      -- Per-user table column preferences (order + visibility), one row per
+      -- (user, table_key). columns is a JSON array of { key, visible }.
+      CREATE TABLE IF NOT EXISTS user_table_prefs (
+        user_id TEXT NOT NULL,
+        table_key TEXT NOT NULL,
+        columns TEXT,
+        updated_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY(user_id, table_key)
+      );
+
+      -- Duplicate-merge audit trail. One row per merged source lead.
+      -- moved is a JSON object { table: count } of child rows reassigned.
+      CREATE TABLE IF NOT EXISTS lead_merges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_row INTEGER,
+        source_row INTEGER,
+        merged_by TEXT,
+        moved TEXT,
+        merged_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_lead_merges_target ON lead_merges(target_row);
+      CREATE INDEX IF NOT EXISTS idx_lead_merges_source ON lead_merges(source_row);
     `)
 
     await db.execute(`
@@ -476,6 +525,8 @@ export async function ensureInit(): Promise<Client> {
     try { await db.execute("ALTER TABLE messages ADD COLUMN media_path TEXT DEFAULT ''") } catch { /* column may already exist */ }
     try { await db.execute("ALTER TABLE messages ADD COLUMN error_code TEXT DEFAULT ''") } catch { /* column may already exist */ }
     try { await db.execute("ALTER TABLE messages ADD COLUMN error_message TEXT DEFAULT ''") } catch { /* column may already exist */ }
+    // Duplicate-merge: target row_number a source lead was merged into (NULL = not merged).
+    try { await db.execute('ALTER TABLE leads ADD COLUMN merged_into INTEGER') } catch { /* column may already exist */ }
 
     // Wait up to 5s for a lock instead of failing with SQLITE_BUSY — matters now that
     // auto-send writes every ~2 min alongside agent activity and the sheet-backup job.
@@ -2673,4 +2724,416 @@ export async function bulkInsertLeads(
   }
 
   return result
+}
+
+// ─── Lead comments ───────────────────────────────────────────────────
+// Threaded discussion on a lead (keyed by row_number). Mentions spawn a
+// notification per mentioned user id, matching the existing notifications shape.
+
+export interface LeadComment {
+  id: number
+  lead_row: number
+  author_id: string
+  author_name: string
+  body: string
+  mentions: string[]
+  created_at: string
+}
+
+function rowToLeadComment(r: Record<string, unknown>): LeadComment {
+  let mentions: string[] = []
+  if (r.mentions) {
+    try {
+      const parsed = JSON.parse(String(r.mentions))
+      if (Array.isArray(parsed)) mentions = parsed.map(String)
+    } catch { mentions = [] }
+  }
+  return {
+    id: Number(r.id),
+    lead_row: Number(r.lead_row),
+    author_id: String(r.author_id || ''),
+    author_name: String(r.author_name || ''),
+    body: String(r.body || ''),
+    mentions,
+    created_at: String(r.created_at || ''),
+  }
+}
+
+export async function listLeadComments(leadRow: number): Promise<LeadComment[]> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT * FROM lead_comments WHERE lead_row = ? ORDER BY created_at ASC',
+    args: [leadRow],
+  })
+  return serializeRows(result.rows).map(rowToLeadComment)
+}
+
+export async function addLeadComment(
+  leadRow: number,
+  data: { authorId?: string; authorName?: string; body: string; mentions?: string[] },
+): Promise<LeadComment> {
+  const db = await ensureInit()
+  const mentions = Array.isArray(data.mentions) ? data.mentions.map(String).filter(Boolean) : []
+
+  const result = await db.execute({
+    sql: `INSERT INTO lead_comments (lead_row, author_id, author_name, body, mentions)
+          VALUES (?, ?, ?, ?, ?)`,
+    args: [
+      leadRow,
+      data.authorId || '',
+      data.authorName || '',
+      data.body,
+      JSON.stringify(mentions),
+    ],
+  })
+  const id = Number(result.lastInsertRowid)
+
+  // Resolve the lead's phone (best-effort) so the notification can deep-link.
+  let refPhone: string | null = null
+  try {
+    const leadRes = await db.execute({ sql: 'SELECT phone FROM leads WHERE row_number = ?', args: [leadRow] })
+    if (leadRes.rows.length > 0 && leadRes.rows[0].phone) refPhone = String(leadRes.rows[0].phone)
+  } catch { /* phone lookup is non-critical */ }
+
+  // Bulk-validate mentions against real users so we never notify (or store a row for)
+  // a non-existent id. De-dupe first, then keep only ids that exist in users.
+  const uniqueMentions = Array.from(new Set(mentions))
+  const validMentionIds = new Set<string>()
+  if (uniqueMentions.length > 0) {
+    const placeholders = uniqueMentions.map(() => '?').join(', ')
+    const usersRes = await db.execute({
+      sql: `SELECT id FROM users WHERE id IN (${placeholders})`,
+      args: uniqueMentions,
+    })
+    for (const u of usersRes.rows) validMentionIds.add(String(u.id))
+  }
+
+  // Fire a notification per mentioned user (skip the author mentioning themselves).
+  const authorName = data.authorName || 'Someone'
+  const snippet = data.body.length > 140 ? `${data.body.slice(0, 140)}…` : data.body
+  for (const userId of uniqueMentions) {
+    if (userId === data.authorId) continue
+    if (!validMentionIds.has(userId)) continue
+    try {
+      await db.execute({
+        sql: `INSERT INTO notifications (user_id, type, title, body, ref_phone, ref_lead_row, read)
+              VALUES (?, ?, ?, ?, ?, ?, 0)`,
+        args: [userId, 'mention', `${authorName} mentioned you`, snippet, refPhone, leadRow],
+      })
+    } catch (err) {
+      console.error('[addLeadComment] mention notify non-critical:', err)
+    }
+  }
+
+  const row = await db.execute({ sql: 'SELECT * FROM lead_comments WHERE id = ?', args: [id] })
+  return rowToLeadComment(serializeRow(row.rows[0]))
+}
+
+// ─── Favorites ───────────────────────────────────────────────────────
+// Per-user starred leads ('lead') or saved views ('view').
+
+export interface Favorite {
+  id: number
+  user_id: string
+  kind: 'lead' | 'view'
+  ref: string
+  created_at: string
+}
+
+function rowToFavorite(r: Record<string, unknown>): Favorite {
+  return {
+    id: Number(r.id),
+    user_id: String(r.user_id || ''),
+    kind: (String(r.kind || 'lead') === 'view' ? 'view' : 'lead'),
+    ref: String(r.ref || ''),
+    created_at: String(r.created_at || ''),
+  }
+}
+
+export async function listFavorites(userId: string): Promise<Favorite[]> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT * FROM favorites WHERE user_id = ? ORDER BY created_at DESC',
+    args: [userId],
+  })
+  return serializeRows(result.rows).map(rowToFavorite)
+}
+
+// Idempotent: a duplicate (user, kind, ref) is ignored via INSERT OR IGNORE.
+export async function addFavorite(userId: string, kind: string, ref: string): Promise<void> {
+  const db = await ensureInit()
+  await db.execute({
+    sql: 'INSERT OR IGNORE INTO favorites (user_id, kind, ref) VALUES (?, ?, ?)',
+    args: [userId, kind, ref],
+  })
+}
+
+export async function removeFavorite(userId: string, kind: string, ref: string): Promise<void> {
+  const db = await ensureInit()
+  await db.execute({
+    sql: 'DELETE FROM favorites WHERE user_id = ? AND kind = ? AND ref = ?',
+    args: [userId, kind, ref],
+  })
+}
+
+// ─── User table prefs ────────────────────────────────────────────────
+// Per-user column order + visibility for a given table key.
+
+export interface TableColumnPref {
+  key: string
+  visible: boolean
+}
+
+export async function getTablePrefs(userId: string, tableKey: string): Promise<TableColumnPref[] | null> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT columns FROM user_table_prefs WHERE user_id = ? AND table_key = ?',
+    args: [userId, tableKey],
+  })
+  if (result.rows.length === 0) return null
+  const raw = result.rows[0].columns
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(String(raw))
+    if (!Array.isArray(parsed)) return null
+    return parsed.map((c: Record<string, unknown>) => ({
+      key: String(c.key || ''),
+      visible: Boolean(c.visible),
+    }))
+  } catch {
+    return null
+  }
+}
+
+export async function setTablePrefs(userId: string, tableKey: string, columns: TableColumnPref[]): Promise<void> {
+  const db = await ensureInit()
+  const json = JSON.stringify(Array.isArray(columns) ? columns : [])
+  await db.execute({
+    sql: `INSERT INTO user_table_prefs (user_id, table_key, columns, updated_at)
+          VALUES (?, ?, ?, datetime('now'))
+          ON CONFLICT(user_id, table_key) DO UPDATE SET columns = ?, updated_at = datetime('now')`,
+    args: [userId, tableKey, json, json],
+  })
+}
+
+// ─── Duplicate detection + merge ─────────────────────────────────────
+// Find groups of un-merged leads that share the same normalized phone, and
+// merge sources into a target (admin, safe + reversible) by reassigning every
+// lead_row-keyed child row, then archiving the sources.
+
+export interface DuplicateLeadGroup {
+  phone: string
+  leads: Array<{
+    row_number: number
+    full_name: string
+    phone: string
+    city: string
+    lead_status: string
+    assigned_to: string
+    created_time: string
+    message_count: number
+  }>
+}
+
+// Child tables keyed by lead_row that a merge must reassign from source → target
+// via a generic `UPDATE ... SET lead_row = target WHERE lead_row = source`.
+// Phone-keyed children (messages, contacts, call_logs, tasks, voice_agent_calls,
+// agreements, lead_notes, sla_metrics) are already shared via the common phone
+// and are deliberately NOT touched — agreements in particular is phone-keyed by design.
+// Two children are handled outside this generic loop:
+//   - lead_telecaller_assignments has lead_row as a PRIMARY KEY, so a blind UPDATE
+//     would collide when the target already has a row; it is reassigned/discarded per-source.
+//   - notifications is keyed on ref_lead_row (not lead_row), so it is reassigned via its
+//     own statement.
+const LEAD_ROW_CHILD_TABLES = [
+  'lead_status_changes',
+  'lead_delegations',
+  'payment_followups',
+  'lead_comments',
+  'assignment_log',
+  'lead_edits',
+  'update_requests',
+  'meta_capi_events',
+] as const
+
+export async function findDuplicateLeads(): Promise<DuplicateLeadGroup[]> {
+  const db = await ensureInit()
+
+  // Message counts per normalized phone (last 10 digits), one cheap read.
+  const msgRes = await db.execute(
+    "SELECT phone, COUNT(*) AS n FROM messages GROUP BY phone"
+  )
+  const msgCountByLast10 = new Map<string, number>()
+  for (const r of msgRes.rows) {
+    const key = String(r.phone || '').replace(/\D/g, '').slice(-10)
+    if (!key) continue
+    msgCountByLast10.set(key, (msgCountByLast10.get(key) || 0) + Number(r.n || 0))
+  }
+
+  // Only un-merged leads participate in dedupe.
+  const leadsRes = await db.execute(
+    `SELECT row_number, full_name, phone, city, lead_status, assigned_to, created_time
+     FROM leads WHERE merged_into IS NULL`
+  )
+
+  const groups = new Map<string, DuplicateLeadGroup['leads']>()
+  for (const r of leadsRes.rows) {
+    const rawPhone = String(r.phone || '')
+    const norm = normalizePhone(rawPhone)
+    const last10 = norm.slice(-10)
+    if (last10.length < 10) continue // un-normalizable phones can't be grouped
+    if (!groups.has(norm)) groups.set(norm, [])
+    groups.get(norm)!.push({
+      row_number: Number(r.row_number),
+      full_name: String(r.full_name || ''),
+      phone: rawPhone,
+      city: String(r.city || ''),
+      lead_status: String(r.lead_status || ''),
+      assigned_to: String(r.assigned_to || ''),
+      created_time: String(r.created_time || ''),
+      message_count: msgCountByLast10.get(last10) || 0,
+    })
+  }
+
+  const out: DuplicateLeadGroup[] = []
+  for (const [phone, leads] of groups.entries()) {
+    if (leads.length > 1) out.push({ phone, leads })
+  }
+  // Largest groups first.
+  out.sort((a, b) => b.leads.length - a.leads.length)
+  return out
+}
+
+export interface MergeLeadsResult {
+  merged: number
+  targetRow: number
+  moved: Record<string, number>
+}
+
+export async function mergeLeads(
+  targetRow: number,
+  sourceRows: number[],
+  mergedBy: string,
+): Promise<MergeLeadsResult> {
+  const db = await ensureInit()
+
+  const targetRes = await db.execute({ sql: 'SELECT phone, merged_into FROM leads WHERE row_number = ?', args: [targetRow] })
+  if (targetRes.rows.length === 0) throw new Error('Target lead not found')
+  if (targetRes.rows[0].merged_into != null) {
+    throw new Error('Target lead is already merged into another lead — merge into the final target instead')
+  }
+  const targetPhone = normalizePhone(String(targetRes.rows[0].phone || ''))
+  if (targetPhone.length < 10) throw new Error('Target lead has an un-normalizable phone')
+
+  // Validate each source up-front: must exist, share the target's normalized phone,
+  // not be the target, and not already be merged. Reject mismatched-phone sources.
+  // This is a fast-fail pre-check; the in-transaction guarded archive below is the
+  // authoritative, concurrency-safe gate. We capture each source's raw stored phone
+  // here so the guarded archive can assert the row hasn't changed underneath us.
+  const validSources: Array<{ src: number; rawPhone: string }> = []
+  for (const src of sourceRows) {
+    if (src === targetRow) continue
+    const srcRes = await db.execute({
+      sql: 'SELECT phone, merged_into FROM leads WHERE row_number = ?',
+      args: [src],
+    })
+    if (srcRes.rows.length === 0) throw new Error(`Source lead ${src} not found`)
+    if (srcRes.rows[0].merged_into != null) continue // already merged → skip (idempotent)
+    const rawPhone = String(srcRes.rows[0].phone || '')
+    const srcPhone = normalizePhone(rawPhone)
+    if (srcPhone !== targetPhone) {
+      throw new Error(`Source lead ${src} has a different phone than the target — refusing to merge`)
+    }
+    validSources.push({ src, rawPhone })
+  }
+
+  const moved: Record<string, number> = {}
+  let merged = 0
+
+  const tx = await db.transaction('write')
+  try {
+    for (const { src, rawPhone } of validSources) {
+      // Guarded archive FIRST (concurrency-safe). Only proceed for this source if we
+      // actually flip it from un-merged→archived; if a concurrent merge/change already
+      // claimed it (or its phone changed underneath us), rowsAffected is 0 and we skip
+      // it entirely — no children moved, no audit row, not counted.
+      const archiveRes = await tx.execute({
+        sql: `UPDATE leads SET merged_into = ?, lead_status = 'ARCHIVED'
+              WHERE row_number = ? AND merged_into IS NULL AND phone = ?`,
+        args: [targetRow, src, rawPhone],
+      })
+      if (Number(archiveRes.rowsAffected || 0) === 0) continue // lost the race — skip
+
+      const movedForSource: Record<string, number> = {}
+
+      // Generic lead_row children (excludes lead_telecaller_assignments + notifications).
+      for (const table of LEAD_ROW_CHILD_TABLES) {
+        const res = await tx.execute({
+          sql: `UPDATE ${table} SET lead_row = ? WHERE lead_row = ?`,
+          args: [targetRow, src],
+        })
+        const count = Number(res.rowsAffected || 0)
+        if (count > 0) {
+          movedForSource[table] = count
+          moved[table] = (moved[table] || 0) + count
+        }
+      }
+
+      // lead_telecaller_assignments: lead_row is a PRIMARY KEY, so a blind reassign
+      // collides when the target already has an assignment. If the target has one,
+      // discard the source's row; otherwise reassign it to the target.
+      const targetHasAssignment = await tx.execute({
+        sql: `SELECT 1 FROM lead_telecaller_assignments WHERE lead_row = ?`,
+        args: [targetRow],
+      })
+      if (targetHasAssignment.rows.length > 0) {
+        const delRes = await tx.execute({
+          sql: `DELETE FROM lead_telecaller_assignments WHERE lead_row = ?`,
+          args: [src],
+        })
+        const delCount = Number(delRes.rowsAffected || 0)
+        if (delCount > 0) {
+          movedForSource['lead_telecaller_assignments_discarded'] = delCount
+          moved['lead_telecaller_assignments_discarded'] =
+            (moved['lead_telecaller_assignments_discarded'] || 0) + delCount
+        }
+      } else {
+        const reassignRes = await tx.execute({
+          sql: `UPDATE lead_telecaller_assignments SET lead_row = ? WHERE lead_row = ?`,
+          args: [targetRow, src],
+        })
+        const reassignCount = Number(reassignRes.rowsAffected || 0)
+        if (reassignCount > 0) {
+          movedForSource['lead_telecaller_assignments'] = reassignCount
+          moved['lead_telecaller_assignments'] =
+            (moved['lead_telecaller_assignments'] || 0) + reassignCount
+        }
+      }
+
+      // notifications are keyed on ref_lead_row (not lead_row) — reassign explicitly.
+      const notifRes = await tx.execute({
+        sql: `UPDATE notifications SET ref_lead_row = ? WHERE ref_lead_row = ?`,
+        args: [targetRow, src],
+      })
+      const notifCount = Number(notifRes.rowsAffected || 0)
+      if (notifCount > 0) {
+        movedForSource['notifications'] = notifCount
+        moved['notifications'] = (moved['notifications'] || 0) + notifCount
+      }
+
+      // Audit row per source with the moved-counts JSON.
+      await tx.execute({
+        sql: `INSERT INTO lead_merges (target_row, source_row, merged_by, moved)
+              VALUES (?, ?, ?, ?)`,
+        args: [targetRow, src, mergedBy || '', JSON.stringify(movedForSource)],
+      })
+      merged++
+    }
+    await tx.commit()
+  } catch (err) {
+    await tx.rollback()
+    throw err
+  }
+
+  return { merged, targetRow, moved }
 }

@@ -21,6 +21,7 @@ const LogCallModal = dynamic(() => import('@/components/LogCallModal'), {
 })
 import CallHistory from '@/components/CallHistory'
 import ActivityLog from '@/components/ActivityLog'
+import LeadComments from '@/components/LeadComments'
 import OpportunityCheckPrompt from '@/components/OpportunityCheckPrompt'
 import { STATUS_LABELS } from '@/config/client'
 import { toast } from 'sonner'
@@ -254,7 +255,7 @@ export default function LeadDetailPage() {
   const [togglingDrip, setTogglingDrip] = useState(false)
 
   // Session user
-  const [sessionUser, setSessionUser] = useState<{ name: string; role: string; can_edit_leads?: boolean } | null>(null)
+  const [sessionUser, setSessionUser] = useState<{ id?: string; name: string; role: string; can_edit_leads?: boolean } | null>(null)
 
   // Log Call modal
   const [showLogCallModal, setShowLogCallModal] = useState(false)
@@ -262,6 +263,7 @@ export default function LeadDetailPage() {
 
   // Collapsible section state (false = collapsed)
   const [activityOpen, setActivityOpen] = useState(false)
+  const [commentsOpen, setCommentsOpen] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [agreementsOpen, setAgreementsOpen] = useState(false)
@@ -1486,6 +1488,31 @@ export default function LeadDetailPage() {
                 <div className="border-t border-border/60 px-4 py-3">
                   <ActivityLog lead_row={lead.row_number} phone={lead.phone} />
                 </div>
+              )}
+            </div>
+
+            {/* Team Comments — collapsible. Agent-facing collaboration thread:
+                all roles can read & post, with @mention notifications. Not
+                admin-gated (unlike Agreements / Payment Followups). */}
+            <div className="bg-card rounded-lg border border-border">
+              <button
+                onClick={() => setCommentsOpen(o => !o)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left"
+              >
+                <span className="text-xs font-semibold text-dim uppercase tracking-wide flex items-center gap-2">
+                  <svg className="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                  </svg>
+                  Team Comments
+                </span>
+                <ChevronRight className={`w-4 h-4 text-dim transition-transform ${commentsOpen ? 'rotate-90' : ''}`} />
+              </button>
+              {commentsOpen && (
+                <LeadComments
+                  leadRow={lead.row_number}
+                  currentUser={{ id: sessionUser?.id, name: sessionUser?.name || '', role: sessionUser?.role || 'agent' }}
+                  agents={users.map(u => ({ id: u.id, name: u.name }))}
+                />
               )}
             </div>
 
