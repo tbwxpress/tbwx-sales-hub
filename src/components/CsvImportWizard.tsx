@@ -327,9 +327,14 @@ export default function CsvImportWizard() {
                     aria-label={`CSV column for ${field.label}`}
                   >
                     <option value="" style={{ backgroundColor: 'var(--color-option-bg, #241a0e)', color: 'var(--color-option-text, #faf5eb)' }}>— not mapped —</option>
-                    {parsed.headers.map((h) => (
-                      <option key={h} value={h} style={{ backgroundColor: 'var(--color-option-bg, #241a0e)', color: 'var(--color-option-text, #faf5eb)' }}>{h}</option>
-                    ))}
+                    {/* Hide columns already mapped to another field so one CSV column
+                        can't be assigned to two lead fields. Keep this field's own
+                        current selection (h === value) visible. */}
+                    {parsed.headers
+                      .filter((h) => h === value || !Object.values(mapping).includes(h))
+                      .map((h) => (
+                        <option key={h} value={h} style={{ backgroundColor: 'var(--color-option-bg, #241a0e)', color: 'var(--color-option-text, #faf5eb)' }}>{h}</option>
+                      ))}
                   </select>
                 </div>
               )

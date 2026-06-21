@@ -6,7 +6,12 @@
  *   READ:  leads, contacts, messages, tasks, lead_notes,
  *          lead_status_changes, pipeline_stages
  *   WRITE: lead_notes (add_lead_note), leads + lead_status_changes
- *          (update_lead_status), tasks (create_task)
+ *          (update_lead_status — updates lead_status + next_followup + an audit
+ *          row), tasks (create_task)
+ *
+ * update_lead_status does NOT fire Meta CAPI offline-conversion events or in-app
+ * owner notifications — those require the Next.js app runtime and are triggered
+ * separately.
  *
  * No DELETE / no bulk / no destructive operations are ever issued.
  */
@@ -163,10 +168,13 @@ export async function leadStats() {
   const convertedRes = await db.execute(
     `SELECT COUNT(*) AS n FROM leads WHERE lead_status = 'CONVERTED'`,
   )
-  // created_time is the intake timestamp; fall back to updated_at date match.
+  // created_time is the intake timestamp. Compare on the IST calendar day
+  // (the business runs in IST; DATE('now') alone is UTC) and only on
+  // created_time — matching on updated_at would count any lead merely edited
+  // today as "new".
   const todayRes = await db.execute(
     `SELECT COUNT(*) AS n FROM leads
-     WHERE DATE(created_time) = DATE('now') OR DATE(updated_at) = DATE('now')`,
+     WHERE DATE(created_time, '+5 hours', '+30 minutes') = DATE('now', '+5 hours', '+30 minutes')`,
   )
 
   const total = Number(totalRes.rows[0]?.n ?? 0)
@@ -235,11 +243,23 @@ async function resolveLead(opts: { rowNumber?: number; phone?: string }) {
   return null
 }
 
+// Status-specific follow-up intervals — mirrors the app's PATCH flow
+// (src/app/api/leads/[id]/route.ts). Days from "now" → next_followup (YYYY-MM-DD).
+const FOLLOWUP_DAYS: Record<string, number> = {
+  NEW: 1, DECK_SENT: 1, REPLIED: 0, NO_RESPONSE: 1,
+  CALL_DONE_INTERESTED: 2, HOT: 2, FINAL_NEGOTIATION: 2, DELAYED: 7,
+}
+
 // update_lead_status — replicates the app's PATCH flow (src/app/api/leads/[id]/route.ts):
-//   1. update leads.lead_status (+ updated_at), validated against pipeline_stages.key
+//   1. update leads.lead_status (+ updated_at) and, like the app, recompute
+//      next_followup from the new status (FOLLOWUP_DAYS, or cleared on
+//      CONVERTED/LOST), validated against pipeline_stages.key
 //      (mirrors dbUpdateLeadFields)
 //   2. write a lead_status_changes audit row with source 'mcp'
 //      (mirrors insertStatusChange)
+// NOTE: unlike the app, this does NOT fire Meta CAPI offline-conversion events
+// or in-app owner notifications — those require the Next.js app runtime and must
+// be triggered separately.
 export async function updateLeadStatus(opts: {
   rowNumber?: number
   phone?: string
@@ -280,11 +300,32 @@ export async function updateLeadStatus(opts: {
     }
   }
 
-  // 1. Update the lead (mirrors leads-db.ts dbUpdateLeadFields).
-  await db.execute({
-    sql: `UPDATE leads SET lead_status = ?, updated_at = datetime('now') WHERE row_number = ?`,
-    args: [opts.newStatus, rowNumber],
-  })
+  // 1. Update the lead (mirrors leads-db.ts dbUpdateLeadFields). Recompute
+  //    next_followup from the new status exactly like the app's PATCH route:
+  //    a defined FOLLOWUP_DAYS entry → that many days from now (YYYY-MM-DD);
+  //    CONVERTED/LOST → cleared (''); any other status → leave next_followup
+  //    untouched.
+  let nextFollowup: string | undefined
+  const days = FOLLOWUP_DAYS[opts.newStatus]
+  if (days !== undefined) {
+    const nextDate = new Date()
+    nextDate.setDate(nextDate.getDate() + days)
+    nextFollowup = nextDate.toISOString().split('T')[0]
+  } else if (opts.newStatus === 'CONVERTED' || opts.newStatus === 'LOST') {
+    nextFollowup = ''
+  }
+
+  if (nextFollowup !== undefined) {
+    await db.execute({
+      sql: `UPDATE leads SET lead_status = ?, next_followup = ?, updated_at = datetime('now') WHERE row_number = ?`,
+      args: [opts.newStatus, nextFollowup, rowNumber],
+    })
+  } else {
+    await db.execute({
+      sql: `UPDATE leads SET lead_status = ?, updated_at = datetime('now') WHERE row_number = ?`,
+      args: [opts.newStatus, rowNumber],
+    })
+  }
 
   // 2. Audit row, source = 'mcp' (mirrors db.ts insertStatusChange).
   await db.execute({
@@ -314,9 +355,13 @@ export async function createTask(opts: {
 }) {
   const db = getClient()
   const phone = opts.phone ? normalizePhone(opts.phone) : null
+  // Normalize to canonical ISO-8601 (UTC) so lexical `ORDER BY due_at` sorts
+  // chronologically regardless of the input offset (e.g. a +05:30 IST input).
+  // due_at is already validated as Date.parse-able at the tool boundary.
+  const dueAt = new Date(opts.dueAt).toISOString()
   const res = await db.execute({
     sql: 'INSERT INTO tasks (phone, title, due_at, created_by) VALUES (?, ?, ?, ?)',
-    args: [phone, opts.title, opts.dueAt, opts.createdBy],
+    args: [phone, opts.title, dueAt, opts.createdBy],
   })
-  return { id: Number(res.lastInsertRowid), phone, title: opts.title, due_at: opts.dueAt }
+  return { id: Number(res.lastInsertRowid), phone, title: opts.title, due_at: dueAt }
 }

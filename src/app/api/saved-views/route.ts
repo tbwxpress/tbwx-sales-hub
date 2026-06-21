@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 })
     }
     const scope = body?.scope === 'shared' ? 'shared' : 'private'
+    if (scope === 'shared' && user.role !== 'admin') {
+      return NextResponse.json({ error: 'Only admins can create shared views' }, { status: 403 })
+    }
     const view = await createSavedView(user.id, {
       name,
       scope,

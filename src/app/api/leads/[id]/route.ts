@@ -2,8 +2,7 @@ import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, getLeadByRow, updateLead, clearLeadRow } from '@/lib/sheets'
-import { logAssignment, recordLeadClose, insertLeadEdit } from '@/lib/db'
-import { LEAD_STATUSES } from '@/config/client'
+import { logAssignment, recordLeadClose, insertLeadEdit, getPipelineStages } from '@/lib/db'
 import { computeLeadScore } from '@/lib/scoring'
 
 // Fields that require admin or can_edit_leads permission
@@ -86,10 +85,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    // Validate status if provided
-    if (body.lead_status && !(LEAD_STATUSES as readonly string[]).includes(body.lead_status)) {
+    // Validate status against the live pipeline stages (built-in + admin-created
+    // custom keys), not the hardcoded LEAD_STATUSES constant — otherwise custom
+    // columns reject drag-to-move with a 400.
+    const stages = await getPipelineStages({ includeInactive: true })
+    const validKeys = new Set(stages.map(s => s.key))
+    if (body.lead_status && !validKeys.has(body.lead_status)) {
       return NextResponse.json({ success: false, error: `Invalid status: ${body.lead_status}` }, { status: 400 })
     }
+
+    // Resolve whether the target status is a terminal (won/lost) stage. Built-in
+    // CONVERTED/LOST keep working via their is_won/is_lost flags; admin-created
+    // won/lost stages are honored too.
+    const targetStage = body.lead_status ? stages.find(s => s.key === body.lead_status) : undefined
+    const isTerminalStatus = Boolean(targetStage?.isWon || targetStage?.isLost)
 
     // Status-specific follow-up intervals
     if (body.lead_status && !body.next_followup) {
@@ -102,13 +111,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const nextDate = new Date()
         nextDate.setDate(nextDate.getDate() + days)
         body.next_followup = nextDate.toISOString().split('T')[0]
-      } else if (body.lead_status === 'CONVERTED' || body.lead_status === 'LOST') {
+      } else if (isTerminalStatus) {
         body.next_followup = ''
       }
     }
 
-    // Record SLA close on CONVERTED/LOST
-    if (body.lead_status === 'CONVERTED' || body.lead_status === 'LOST') {
+    // Record SLA close on any terminal (won/lost) status
+    if (isTerminalStatus) {
       try {
         const leads = await getLeads()
         const lead = leads.find(l => l.row_number === rowNum)
@@ -123,7 +132,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // the same status). Hashed PII per Meta spec; never logs raw phone/email.
     // Whether the event actually goes to Meta is gated by meta_capi.enabled
     // setting in the admin panel.
-    if (body.lead_status === 'HOT' || body.lead_status === 'CONVERTED') {
+    const isWonStatus = Boolean(targetStage?.isWon)
+    if (body.lead_status === 'HOT' || isWonStatus) {
       try {
         const leads = await getLeads()
         const lead = leads.find(l => l.row_number === rowNum)
@@ -141,7 +151,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               city: lead.city,
               lead_id: lead.id,  // Meta-generated leadgen_id ("l:..." prefix auto-stripped)
             }).catch(e => console.error('[CAPI] Lead event failed:', e))
-          } else if (body.lead_status === 'CONVERTED') {
+          } else if (isWonStatus) {
             const { fireConvertedEvent } = await import('@/lib/meta-capi')
             await fireConvertedEvent({
               lead_row: rowNum,

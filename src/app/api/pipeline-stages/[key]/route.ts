@@ -15,7 +15,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ke
     const { key } = await params
     const body = await req.json()
     const patch: { label?: string; color?: string; isActive?: boolean } = {}
-    if (body?.label !== undefined) patch.label = String(body.label)
+    if (body?.label !== undefined) {
+      const label = String(body.label).trim()
+      if (!label) {
+        return NextResponse.json({ error: 'label cannot be empty' }, { status: 400 })
+      }
+      if (label.length > 40) {
+        return NextResponse.json({ error: 'label must be 40 characters or fewer' }, { status: 400 })
+      }
+      patch.label = label
+    }
     if (body?.color !== undefined) patch.color = String(body.color)
     if (body?.isActive !== undefined) patch.isActive = Boolean(body.isActive)
 

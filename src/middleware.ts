@@ -58,7 +58,17 @@ export async function middleware(req: NextRequest) {
   }
 
   try {
-    await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, JWT_SECRET)
+    // Defense-in-depth admin gate: admin pages/APIs require the admin role claim.
+    // Client-side guards remain as redundancy.
+    if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
+      if (payload.role !== 'admin') {
+        if (pathname.startsWith('/api/')) {
+          return NextResponse.json({ success: false, error: 'Admin only' }, { status: 403 })
+        }
+        return NextResponse.redirect(new URL('/dashboard', req.url))
+      }
+    }
     return NextResponse.next()
   } catch {
     if (pathname.startsWith('/api/')) {

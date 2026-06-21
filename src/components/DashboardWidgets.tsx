@@ -104,8 +104,6 @@ export default function DashboardWidgets({ leads, stats, avgResponse }: Dashboar
     const dailyNew = Array<number>(7).fill(0)
     let thisWeekNew = 0
     let prevWeekNew = 0
-    let thisWeekConverted = 0
-    let prevWeekConverted = 0
 
     for (const l of leads) {
       const t = ts(l.created_time)
@@ -115,10 +113,8 @@ export default function DashboardWidgets({ leads, stats, avgResponse }: Dashboar
         thisWeekNew++
         const dayIdx = Math.min(6, Math.max(0, Math.floor((t - weekAgo) / DAY_MS)))
         dailyNew[dayIdx]++
-        if (l.lead_status === 'CONVERTED') thisWeekConverted++
       } else if (t >= twoWeeksAgo) {
         prevWeekNew++
-        if (l.lead_status === 'CONVERTED') prevWeekConverted++
       }
     }
 
@@ -133,9 +129,9 @@ export default function DashboardWidgets({ leads, stats, avgResponse }: Dashboar
     const converted = stats?.converted ?? leads.filter(l => l.lead_status === 'CONVERTED').length
     const conversionRate = total > 0 ? Math.round((converted / total) * 1000) / 10 : 0
 
-    // Honest conversion-rate delta: this-week cohort vs prior-week cohort.
-    const thisWeekRate = thisWeekNew > 0 ? (thisWeekConverted / thisWeekNew) * 100 : 0
-    const prevWeekRate = prevWeekNew > 0 ? (prevWeekConverted / prevWeekNew) * 100 : 0
+    // NOTE: no conversion-rate week-over-week delta — there's no conversion
+    // timestamp (we bin by created_time but read CURRENT status), so this-week
+    // cohorts are structurally too new to compare. A delta here would mislead.
 
     // Active HOT leads (priority HOT, not closed).
     const hotActive = leads.filter(
@@ -158,14 +154,18 @@ export default function DashboardWidgets({ leads, stats, avgResponse }: Dashboar
         new Date(l.next_followup).getTime() < now,
     ).length
 
+    // Total-leads delta is a week-over-week change in NEW leads, not in the
+    // all-time total — label it so it doesn't read as "the total grew X%".
+    const totalDelta = pctChange(thisWeekNew, prevWeekNew)
+    if (totalDelta) totalDelta.label = 'new vs last week'
+
     return {
       total,
       newToday,
       dailyNew,
-      totalDelta: pctChange(thisWeekNew, prevWeekNew),
+      totalDelta,
       conversionRate,
       converted,
-      convDelta: pctChange(thisWeekRate, prevWeekRate),
       hotActive,
       prioritySplit,
       overdue,
@@ -186,12 +186,11 @@ export default function DashboardWidgets({ leads, stats, avgResponse }: Dashboar
           chart={<Sparkline data={metrics.dailyNew} color="var(--chart-1)" />}
         />
 
-        {/* 2 — Conversion rate + donut */}
+        {/* 2 — Conversion rate + donut (no W/W delta: no conversion timestamp) */}
         <KpiCard
           index={1}
           label="Conversion Rate"
           value={`${metrics.conversionRate}%`}
-          delta={metrics.convDelta}
           caption={`${metrics.converted} converted`}
           valueColor="var(--color-success)"
           chart={
@@ -214,7 +213,9 @@ export default function DashboardWidgets({ leads, stats, avgResponse }: Dashboar
           chart={<MiniBars data={metrics.prioritySplit} />}
         />
 
-        {/* 4 — Avg first response (SLA) + new-leads activity sparkline */}
+        {/* 4 — Avg first response (SLA). No chart: the only per-day series we
+            have is lead VOLUME (dailyNew), which is unrelated to response time —
+            reusing it here would imply a response-time trend that doesn't exist. */}
         <KpiCard
           index={3}
           label="Avg First Response"
@@ -225,7 +226,6 @@ export default function DashboardWidgets({ leads, stats, avgResponse }: Dashboar
               : 'follow-ups on track'
           }
           valueColor="var(--color-text)"
-          chart={<Sparkline data={metrics.dailyNew} color="var(--chart-2)" />}
         />
       </div>
     </section>

@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { createClient, type Client, type Row } from '@libsql/client'
 import type { Delegation, PaymentFollowup, PaymentFollowupUpdate, PaymentFollowupStatus } from './types'
+import type { SavedViewFilters, SavedView } from '@/lib/stages'
 import { LEAD_STATUSES, STATUS_LABELS, STATUS_COLORS } from '@/config/client'
 
 // Convert BigInt values to Number so JSON.stringify works
@@ -2390,27 +2391,8 @@ export async function reorderPipelineStages(orderedKeys: string[]): Promise<void
 
 // ─── Saved views ─────────────────────────────────────────────────────
 // Per-user (or shared) snapshots of the /leads filter state.
-
-export interface SavedViewFilters {
-  search?: string
-  status?: string
-  priority?: string
-  assignee?: string
-  telecaller?: string
-  dateFrom?: string
-  dateTo?: string
-  sort?: string
-}
-
-export interface SavedView {
-  id: number
-  name: string
-  ownerUserId: string
-  scope: 'private' | 'shared'
-  filters: SavedViewFilters
-  isDefault: boolean
-  createdAt: string
-}
+// SavedView / SavedViewFilters types live in '@/lib/stages' (client-safe,
+// single source of truth) and are imported above.
 
 function rowToSavedView(r: Record<string, unknown>): SavedView {
   let filters: SavedViewFilters = {}
@@ -2553,7 +2535,8 @@ export async function bulkInsertLeads(
   const result: BulkInsertResult = { inserted: 0, updated: 0, skipped: 0, errors: [] }
   if (!Array.isArray(rows) || rows.length === 0) return result
 
-  // Map normalized phone → existing row_number, for dedupe.
+  // Map normalized phone → existing row_number, for dedupe. (Read-only; done
+  // before the write transaction.)
   const existingRes = await db.execute('SELECT row_number, phone FROM leads')
   const phoneToRow = new Map<string, number>()
   for (const r of existingRes.rows) {
@@ -2561,10 +2544,32 @@ export async function bulkInsertLeads(
     if (norm) phoneToRow.set(norm, Number(r.row_number))
   }
 
-  // Allocate new row numbers after the current max (sheet append normally does
-  // this; for a SQLite-only import we advance the counter ourselves).
-  const maxRes = await db.execute('SELECT MAX(row_number) AS m FROM leads')
-  let nextRow = Number(maxRes.rows[0]?.m ?? 0) + 1
+  // ── Phase 1: validate + dedupe (no DB writes) ──────────────────────
+  // Resolve each row to an explicit write intent or skip it. Dedupe runs
+  // against both the existing DB rows AND earlier rows in this same batch, so
+  // two CSV rows sharing a phone never both insert. A duplicate of a brand-new
+  // phone whose row_number isn't known until the transaction is recorded as an
+  // 'update-batch' op, resolved to the allocated row_number in phase 2.
+  type WriteOp =
+    | { kind: 'update'; rowNumber: number; updates: string[]; args: (string | number)[] }
+    | { kind: 'update-batch'; phone: string; updates: string[]; args: (string | number)[]; idx: number }
+    | { kind: 'insert'; phone: string; raw: BulkLeadRow; idx: number }
+  const ops: WriteOp[] = []
+  // Phones newly seen in THIS batch (not yet in the DB) → pending insert.
+  const batchNewPhones = new Set<string>()
+
+  function collectUpdates(raw: BulkLeadRow): { updates: string[]; args: (string | number)[] } {
+    const updates: string[] = []
+    const args: (string | number)[] = []
+    for (const f of BULK_IMPORT_FIELDS) {
+      const val = raw[f]
+      if (val !== undefined && String(val).trim() !== '') {
+        updates.push(`${f} = ?`)
+        args.push(String(val))
+      }
+    }
+    return { updates, args }
+  }
 
   for (let i = 0; i < rows.length; i++) {
     const raw = rows[i] || {}
@@ -2574,63 +2579,97 @@ export async function bulkInsertLeads(
     const phone = normalizePhone(rawPhone)
     if (phone.length < 10) { result.errors.push(`Row ${i + 1}: invalid phone "${rawPhone}"`); result.skipped++; continue }
 
-    try {
-      const existingRow = phoneToRow.get(phone)
-      if (existingRow !== undefined) {
-        if (opts.dedupe === 'skip') {
-          result.skipped++
-          continue
-        }
-        // dedupe === 'update': overwrite provided non-empty fields only.
-        const updates: string[] = []
-        const args: (string | number)[] = []
-        for (const f of BULK_IMPORT_FIELDS) {
-          const val = raw[f]
-          if (val !== undefined && String(val).trim() !== '') {
-            updates.push(`${f} = ?`)
-            args.push(String(val))
-          }
-        }
-        if (updates.length === 0) { result.skipped++; continue }
-        args.push(existingRow)
-        await db.execute({
-          sql: `UPDATE leads SET ${updates.join(', ')}, updated_at = datetime('now') WHERE row_number = ?`,
-          args,
-        })
-        result.updated++
-        continue
-      }
-
-      // New lead.
-      const rowNumber = nextRow++
-      await db.execute({
-        sql: `INSERT INTO leads
-                (row_number, id, created_time, campaign_name, full_name, phone, email, city, state,
-                 model_interest, experience, timeline, platform, lead_status, lead_priority, notes)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NEW', 'WARM', ?)`,
-        args: [
-          rowNumber,
-          `import_${Date.now()}_${rowNumber}`,
-          new Date().toISOString(),
-          String(raw.campaign_name || 'CSV Import'),
-          String(raw.full_name || ''),
-          phone,
-          String(raw.email || ''),
-          String(raw.city || ''),
-          String(raw.state || ''),
-          String(raw.model_interest || ''),
-          String(raw.experience || ''),
-          String(raw.timeline || ''),
-          String(raw.platform || 'Import'),
-          String(raw.notes || ''),
-        ],
-      })
-      phoneToRow.set(phone, rowNumber)
-      result.inserted++
-    } catch (err) {
-      result.errors.push(`Row ${i + 1}: ${err instanceof Error ? err.message : 'insert failed'}`)
-      result.skipped++
+    const existingRow = phoneToRow.get(phone)
+    if (existingRow !== undefined) {
+      // Dedupe against an existing DB row.
+      if (opts.dedupe === 'skip') { result.skipped++; continue }
+      const { updates, args } = collectUpdates(raw)
+      if (updates.length === 0) { result.skipped++; continue }
+      ops.push({ kind: 'update', rowNumber: existingRow, updates, args })
+      continue
     }
+
+    if (batchNewPhones.has(phone)) {
+      // Dedupe against a brand-new phone already queued for insert in this batch.
+      if (opts.dedupe === 'skip') { result.skipped++; continue }
+      const { updates, args } = collectUpdates(raw)
+      if (updates.length === 0) { result.skipped++; continue }
+      ops.push({ kind: 'update-batch', phone, updates, args, idx: i })
+      continue
+    }
+
+    // First occurrence of a brand-new phone — queue an insert.
+    ops.push({ kind: 'insert', phone, raw, idx: i })
+    batchNewPhones.add(phone)
+  }
+
+  if (ops.length === 0) return result
+
+  // ── Phase 2: atomic writes ─────────────────────────────────────────
+  // Read MAX(row_number) and apply every insert/update inside one write
+  // transaction so concurrent imports can't allocate the same row_number and
+  // collide on the PRIMARY KEY.
+  const tx = await db.transaction('write')
+  try {
+    const maxRes = await tx.execute('SELECT MAX(row_number) AS m FROM leads')
+    let nextRow = Number(maxRes.rows[0]?.m ?? 0) + 1
+    // Maps a brand-new phone to the row_number its insert was allocated, so a
+    // later 'update-batch' op in the same import can target the right row.
+    const batchPhoneToRow = new Map<string, number>()
+
+    for (const op of ops) {
+      try {
+        if (op.kind === 'insert') {
+          const rowNumber = nextRow++
+          await tx.execute({
+            sql: `INSERT INTO leads
+                    (row_number, id, created_time, campaign_name, full_name, phone, email, city, state,
+                     model_interest, experience, timeline, platform, lead_status, lead_priority, notes)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NEW', 'WARM', ?)`,
+            args: [
+              rowNumber,
+              `import_${Date.now()}_${rowNumber}`,
+              new Date().toISOString(),
+              String(op.raw.campaign_name || 'CSV Import'),
+              String(op.raw.full_name || ''),
+              op.phone,
+              String(op.raw.email || ''),
+              String(op.raw.city || ''),
+              String(op.raw.state || ''),
+              String(op.raw.model_interest || ''),
+              String(op.raw.experience || ''),
+              String(op.raw.timeline || ''),
+              String(op.raw.platform || 'Import'),
+              String(op.raw.notes || ''),
+            ],
+          })
+          batchPhoneToRow.set(op.phone, rowNumber)
+          result.inserted++
+        } else {
+          // 'update' (known DB row) or 'update-batch' (row inserted earlier here).
+          const rowNumber = op.kind === 'update' ? op.rowNumber : batchPhoneToRow.get(op.phone)
+          if (rowNumber === undefined) {
+            // The dependent insert failed earlier in this batch — nothing to update.
+            result.skipped++
+            continue
+          }
+          await tx.execute({
+            sql: `UPDATE leads SET ${op.updates.join(', ')}, updated_at = datetime('now') WHERE row_number = ?`,
+            args: [...op.args, rowNumber],
+          })
+          result.updated++
+        }
+      } catch (err) {
+        const rowLabel = op.kind === 'update' ? `Row (row ${op.rowNumber})` : `Row ${op.idx + 1}`
+        result.errors.push(`${rowLabel}: ${err instanceof Error ? err.message : 'insert failed'}`)
+        result.skipped++
+      }
+    }
+
+    await tx.commit()
+  } catch (err) {
+    await tx.rollback()
+    throw err
   }
 
   return result

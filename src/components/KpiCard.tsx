@@ -121,14 +121,16 @@ export default function KpiCard({
         ) : null}
       </div>
 
-      {/* Caption */}
+      {/* Caption — the informative caption ("X new today" / "X converted") always
+          wins when present; the delta % is already shown inline next to the value,
+          so we only fall back to delta.label when there's no caption. */}
       {(caption || delta?.label) && (
         <p className="text-caption mt-1.5" style={{ color: 'var(--color-dim)' }}>
-          {delta?.label && delta.direction !== 'flat' ? (
-            <span style={{ color: 'var(--color-muted)' }}>{delta.label}</span>
-          ) : (
+          {caption ? (
             caption
-          )}
+          ) : delta?.label && delta.direction !== 'flat' ? (
+            <span style={{ color: 'var(--color-muted)' }}>{delta.label}</span>
+          ) : null}
         </p>
       )}
     </div>

@@ -332,6 +332,11 @@ export default function LeadsPage() {
       }
     } catch {
       setError('Failed to load leads')
+    } finally {
+      // fetchLeads owns the table's loading flag: the first leads fetch is now
+      // deferred to the filter-effect (after `user` becomes truthy), so the
+      // spinner must stay up until THIS resolves — not be cleared by init().
+      setLoading(false)
     }
   }, [search, statusFilter, assignedFilter, telecallerFilter, sortByQuery, dateFrom, dateTo])
 
@@ -344,15 +349,14 @@ export default function LeadsPage() {
   }, [])
 
   useEffect(() => {
-    async function init() {
-      setLoading(true)
-      // Fire auth + leads + agents in PARALLEL. fetchLeads/fetchAgents don't depend
-      // on the user object (the API does its own session check), so gating them on
-      // fetchUser() was a wasted sequential round-trip before any data could paint.
-      await Promise.all([fetchUser(), fetchLeads(), fetchAgents()])
-      setLoading(false)
-    }
-    init()
+    setLoading(true)
+    // Auth + agents only. The leads fetch is owned by the filter-effect below:
+    // once fetchUser() sets `user`, that effect fires the FIRST /api/leads call
+    // (and again on every filter change). Calling fetchLeads here too caused two
+    // /api/leads requests on every mount. fetchLeads clears `loading` in its
+    // finally, so the spinner stays up until that deferred first fetch returns.
+    fetchUser()
+    fetchAgents()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

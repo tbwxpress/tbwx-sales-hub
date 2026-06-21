@@ -205,7 +205,7 @@ server.registerTool(
   {
     title: 'Update lead status',
     description:
-      'Move a lead to a new pipeline stage by row_number OR phone. The new status is VALIDATED against the pipeline_stages keys; an invalid status is rejected with the list of valid keys. On success it updates the lead and writes an audit row to lead_status_changes with source "mcp". Provide exactly one of row_number or phone. No-op (reported as unchanged) if the lead is already in that status.',
+      'Move a lead to a new pipeline stage by row_number OR phone. The new status is VALIDATED against the pipeline_stages keys; an invalid status is rejected with the list of valid keys. On success it updates the lead status, recomputes next_followup from the new status (same rules as the app — a per-status interval, or cleared on CONVERTED/LOST), and writes an audit row to lead_status_changes with source "mcp". It does NOT fire Meta CAPI offline-conversion events or in-app owner notifications — those require the Next.js app runtime and must be triggered separately. Provide exactly one of row_number or phone. No-op (reported as unchanged) if the lead is already in that status.',
     inputSchema: {
       row_number: z.number().int().optional().describe('The lead row_number (primary key)'),
       phone: z.string().optional().describe('Phone in any format; matched on the last 10 digits'),
@@ -235,7 +235,12 @@ server.registerTool(
     inputSchema: {
       phone: z.string().optional().describe('Optional phone to link the task to a lead/contact'),
       title: z.string().min(1).describe('What the task is'),
-      due_at: z.string().describe('Due datetime, ISO-8601 (e.g. 2026-06-20T09:00:00Z)'),
+      due_at: z
+        .string()
+        .refine((s) => !Number.isNaN(Date.parse(s)), {
+          message: 'due_at must be a valid ISO-8601 datetime, e.g. 2026-06-20T09:00:00Z',
+        })
+        .describe('Due datetime, ISO-8601 (e.g. 2026-06-20T09:00:00Z)'),
     },
   },
   async ({ phone, title, due_at }) => {

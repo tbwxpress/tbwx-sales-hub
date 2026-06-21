@@ -20,6 +20,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body?.isDefault !== undefined) patch.isDefault = Boolean(body.isDefault)
     if (body?.scope !== undefined) patch.scope = body.scope === 'shared' ? 'shared' : 'private'
 
+    if (patch.scope === 'shared' && user.role !== 'admin') {
+      return NextResponse.json({ error: 'Only admins can create shared views' }, { status: 403 })
+    }
+
     const view = await updateSavedView(viewId, user.id, user.role === 'admin', patch)
     if (!view) {
       return NextResponse.json({ error: 'Saved view not found' }, { status: 404 })
@@ -27,7 +31,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ view })
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
-    const status = msg.includes('Not authorized') ? 403 : 500
+    const status = msg.includes('Authentication required') ? 401
+      : msg.includes('Not authorized') ? 403
+      : 500
     return NextResponse.json({ error: apiError(err, 'Failed to update saved view') }, { status })
   }
 }
@@ -48,7 +54,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ ok: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
-    const status = msg.includes('Not authorized') ? 403 : 500
+    const status = msg.includes('Authentication required') ? 401
+      : msg.includes('Not authorized') ? 403
+      : 500
     return NextResponse.json({ error: apiError(err, 'Failed to delete saved view') }, { status })
   }
 }
