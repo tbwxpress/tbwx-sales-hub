@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Search, UserPlus, Download, Eye, MessageSquare, Pencil, ArrowUp, ArrowDown, ChevronsUpDown, Star } from 'lucide-react'
+import { Plus, UserPlus, Download, Eye, MessageSquare, Pencil, ArrowUp, ArrowDown, ChevronsUpDown, Star } from 'lucide-react'
 import Navbar from '@/components/Navbar'
 import { STATUS_LABELS, LEAD_STATUSES } from '@/config/client'
 import { toast } from 'sonner'
@@ -65,6 +65,8 @@ import SavedViewsBar from '@/components/leads/SavedViewsBar'
 import LeadSidePanel from '@/components/leads/LeadSidePanel'
 import InlineSelect from '@/components/leads/InlineSelect'
 import ColumnCustomizer, { type ColumnMeta, type ColumnPref } from '@/components/leads/ColumnCustomizer'
+import LeadsFilterBar, { type QuickFilter } from '@/components/leads/LeadsFilterBar'
+import ActiveFilterChips, { type ActiveChip } from '@/components/leads/ActiveFilterChips'
 import FavoriteStar from '@/components/leads/FavoriteStar'
 import { PRIORITY_CHIP, PRIORITY_OPTIONS as PRIORITY_SELECT_OPTIONS, patchLead } from '@/components/leads/shared'
 import { type SavedViewFilters } from '@/lib/stages'
@@ -114,6 +116,40 @@ interface SessionUser {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const STATUS_OPTIONS: readonly string[] = LEAD_STATUSES
+
+// ─── Sort: single source of truth ─────────────────────────────────────────
+// `sortByQuery` (score/newest/oldest/followup) is the canonical sort — it drives
+// the server fetch order AND is the value Saved Views persist. The table's
+// header clicks no longer keep their own independent TanStack `sorting`; instead
+// we DERIVE the TanStack SortingState from `sortByQuery` (so the active sort
+// shows arrows on the right column) and map header clicks BACK to a query value
+// (so the popover Sort + the headers can never disagree). 'score' has no column
+// → no arrow shown, which matches the default-on-load behaviour.
+const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: 'score', label: 'Lead Score (highest first)' },
+  { value: 'newest', label: 'Newest created first' },
+  { value: 'oldest', label: 'Oldest created first' },
+  { value: 'followup', label: 'Follow-up date' },
+]
+
+// query value → the TanStack SortingState it represents.
+const QUERY_TO_SORTING: Record<string, SortingState> = {
+  score: [{ id: 'lead_score', desc: true }],
+  newest: [{ id: 'created_time', desc: true }],
+  oldest: [{ id: 'created_time', desc: false }],
+  followup: [{ id: 'next_followup', desc: false }],
+}
+
+// A header click produces a TanStack SortingState; map it back to the canonical
+// query value. Unknown/cleared sorts fall back to the default 'score'.
+function sortingToQuery(sorting: SortingState): string {
+  const s = sorting[0]
+  if (!s) return 'score'
+  if (s.id === 'lead_score') return 'score'
+  if (s.id === 'created_time') return s.desc ? 'newest' : 'oldest'
+  if (s.id === 'next_followup') return 'followup'
+  return 'score'
+}
 
 // ─── Canonical column catalog ────────────────────────────────────────────────
 // Mirrors the columns the table renders, in their natural left→right order.
@@ -303,8 +339,11 @@ export default function LeadsPage() {
   const [columnPrefs, setColumnPrefs] = useState<ColumnPref[]>(DEFAULT_COLUMN_PREFS)
   const savePrefsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // TanStack table state
-  const [sorting, setSorting] = useState<SortingState>([])
+  // TanStack table state.
+  // NOTE: `sorting` is NOT independent state — it is derived from `sortByQuery`
+  // (the single source of truth) just below, and header clicks are bridged back
+  // into `sortByQuery` via handleSortingChange. This kills the old dual-sort bug
+  // where the legacy Sort <select> and column-header clicks fought each other.
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
 
   // ─── Record side-panel (slide-over) ──────────────────────────────────────
@@ -512,7 +551,10 @@ export default function LeadsPage() {
 
   // ─── Handlers ────────────────────────────────────────────────────────────
 
-  function clearFilters() {
+  // "Clear all" — resets EVERY filter back to default, including the two the old
+  // clearFilters() skipped (quickFilter + favoritesOnly). This is the single
+  // reset the active-chips row and the empty-state hints point at.
+  function clearAllFilters() {
     setSearch('')
     setStatusFilter('')
     setAssignedFilter('')
@@ -520,7 +562,36 @@ export default function LeadsPage() {
     setSortByQuery('score')
     setDateFrom('')
     setDateTo('')
+    setQuickFilter('all')
+    setFavoritesOnly(false)
   }
+
+  // "Reset these" inside the Filters popover — only the advanced (popover)
+  // controls. Leaves the quick pills, favorites, and search untouched.
+  function clearAdvancedFilters() {
+    setStatusFilter('')
+    setAssignedFilter('')
+    setTelecallerFilter('')
+    setSortByQuery('score')
+    setDateFrom('')
+    setDateTo('')
+  }
+
+  // ─── Sort bridge: sortByQuery ⇆ TanStack SortingState ─────────────────────
+  // Derived sorting passed into the table (drives header arrows).
+  const sorting = useMemo<SortingState>(
+    () => QUERY_TO_SORTING[sortByQuery] ?? QUERY_TO_SORTING.score,
+    [sortByQuery]
+  )
+  // Header clicks call this with the next SortingState (or an updater fn) —
+  // translate it into a canonical query value so the popover Sort stays in sync.
+  const handleSortingChange = useCallback((updater: SortingState | ((old: SortingState) => SortingState)) => {
+    setSortByQuery(prevQuery => {
+      const prevSorting = QUERY_TO_SORTING[prevQuery] ?? QUERY_TO_SORTING.score
+      const next = typeof updater === 'function' ? updater(prevSorting) : updater
+      return sortingToQuery(next)
+    })
+  }, [])
 
   // Optimistic status update used by the StatusEditPopover. The popover handles
   // the PATCH + toast + rollback itself; we just patch local state here.
@@ -693,6 +764,83 @@ export default function LeadsPage() {
     return list
   }, [leads, quickFilter, user?.name, today, favoritesOnly, isFavorite])
 
+  // Telecaller agents — declared here (before the chip memo that reads it) so
+  // the active-chip "Telecaller: <name>" label can resolve the id → name.
+  const telecallerAgents = useMemo(
+    () => agents.filter(a => a.is_telecaller),
+    [agents]
+  )
+
+  // ─── Active-filter chips + advanced-filter count ──────────────────────────
+  // How many of the ADVANCED (popover) filters are active — drives the count
+  // badge on the Filters button. Note: a legacy saved view may still carry a
+  // `__UNASSIGNED__`/`__OVERDUE__` status (the filter LOGIC still honours it),
+  // so any non-empty statusFilter counts here even though those pseudo-options
+  // were removed from the dropdown UI.
+  const advancedCount = useMemo(() => {
+    let n = 0
+    if (statusFilter) n++
+    if (assignedFilter) n++
+    if (telecallerFilter) n++
+    if (dateFrom) n++
+    if (dateTo) n++
+    if (sortByQuery && sortByQuery !== 'score') n++
+    return n
+  }, [statusFilter, assignedFilter, telecallerFilter, dateFrom, dateTo, sortByQuery])
+
+  // The removable chips shown above the table — one per active filter, each with
+  // a remover that clears just that filter. Built from the same state the bar
+  // reads/writes, so removing a chip and using the bar stay perfectly in sync.
+  const activeChips = useMemo<ActiveChip[]>(() => {
+    const chips: ActiveChip[] = []
+
+    if (search) {
+      chips.push({ id: 'search', label: 'Search', value: `“${search}”`, onRemove: () => setSearch('') })
+    }
+
+    // The active quick pill (All carries no chip). Favorites is its own chip.
+    if (!favoritesOnly && quickFilter !== 'all') {
+      const QUICK_LABELS: Record<Exclude<QuickFilter, 'all'>, string> = {
+        mine: 'My Leads', hot: 'HOT', unassigned: 'Unassigned', due_today: 'Due Today',
+      }
+      chips.push({
+        id: 'quick',
+        label: 'View',
+        value: QUICK_LABELS[quickFilter as Exclude<QuickFilter, 'all'>],
+        onRemove: () => setQuickFilter('all'),
+      })
+    }
+    if (favoritesOnly) {
+      chips.push({ id: 'favorites', label: 'Pinned', value: 'Favorites only', onRemove: () => setFavoritesOnly(false) })
+    }
+
+    if (statusFilter) {
+      const statusLabel = statusFilter === '__UNASSIGNED__' ? 'Unassigned'
+        : statusFilter === '__OVERDUE__' ? 'Overdue follow-ups'
+        : (STATUS_LABELS[statusFilter] || statusFilter.replace(/_/g, ' '))
+      chips.push({ id: 'status', label: 'Status', value: statusLabel, onRemove: () => setStatusFilter('') })
+    }
+    if (assignedFilter) {
+      chips.push({ id: 'assigned', label: 'Agent', value: assignedFilter, onRemove: () => setAssignedFilter('') })
+    }
+    if (telecallerFilter) {
+      const tcLabel = telecallerFilter === '__NONE__'
+        ? 'No telecaller'
+        : (telecallerAgents.find(a => a.id === telecallerFilter)?.name || telecallerFilter)
+      chips.push({ id: 'telecaller', label: 'Telecaller', value: tcLabel, onRemove: () => setTelecallerFilter('') })
+    }
+    if (dateFrom || dateTo) {
+      const range = `${dateFrom || '…'} → ${dateTo || '…'}`
+      chips.push({ id: 'created', label: 'Created', value: range, onRemove: () => { setDateFrom(''); setDateTo('') } })
+    }
+    if (sortByQuery && sortByQuery !== 'score') {
+      const sortLabel = SORT_OPTIONS.find(o => o.value === sortByQuery)?.label || sortByQuery
+      chips.push({ id: 'sort', label: 'Sort', value: sortLabel, onRemove: () => setSortByQuery('score') })
+    }
+
+    return chips
+  }, [search, favoritesOnly, quickFilter, statusFilter, assignedFilter, telecallerFilter, telecallerAgents, dateFrom, dateTo, sortByQuery])
+
   // Mirror the latest displayedLeads into a ref so handleExportCsv stays
   // stable but still exports the currently-visible set.
   const displayedLeadsRef = useRef(displayedLeads)
@@ -724,10 +872,6 @@ export default function LeadsPage() {
     [leads]
   )
   const hasTelecallers = useMemo(() => agents.some(a => a.is_telecaller), [agents])
-  const telecallerAgents = useMemo(
-    () => agents.filter(a => a.is_telecaller),
-    [agents]
-  )
   const canBulkAction = user?.role === 'admin' || user?.can_assign
   const canBulkTelecaller = !!user && hasTelecallers
   const showCheckboxColumn = !!(canBulkAction || canBulkTelecaller)
@@ -1098,7 +1242,7 @@ export default function LeadsPage() {
     data: displayedLeads,
     columns,
     state: { sorting, rowSelection, columnVisibility, columnOrder },
-    onSortingChange: setSorting,
+    onSortingChange: handleSortingChange,
     onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -1160,18 +1304,21 @@ export default function LeadsPage() {
           </div>
         )}
 
-        {/* Page Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-heading font-bold" style={{ color: 'var(--color-text)' }}>
-              {user?.role === 'agent' ? 'My Leads' : 'All Leads'}
-            </h1>
-            <p className="text-caption mt-0.5" style={{ color: 'var(--color-muted)' }}>
-              {displayedLeads.length} lead{displayedLeads.length !== 1 ? 's' : ''}
-              {statusFilter && ` matching "${statusFilter.replace('_', ' ')}"`}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+        {/* ─── Page Header — title + ACTIONS (not filters) ──────────────── */}
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <h1 className="text-heading font-bold" style={{ color: 'var(--color-text)' }}>
+            {user?.role === 'agent' ? 'My Leads' : 'All Leads'}
+          </h1>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {/* Out-of-cluster nav link, kept away from the filter controls */}
+            <Link
+              href="/dashboard"
+              className="text-caption font-medium px-3 py-1.5 rounded-lg transition-colors hover:text-text"
+              style={{ color: 'var(--color-muted)', background: 'var(--color-elevated)' }}
+            >
+              &larr; Dashboard
+            </Link>
+            <span className="w-px h-5 self-center" style={{ backgroundColor: 'var(--color-border)' }} aria-hidden />
             <ColumnCustomizer
               catalog={visibleCatalog}
               columns={visibleColumnPrefs}
@@ -1180,7 +1327,7 @@ export default function LeadsPage() {
             />
             <button
               onClick={handleExportCsv}
-              className="bg-elevated hover:bg-border text-muted text-caption font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+              className="bg-elevated hover:bg-border text-muted hover:text-text text-caption font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer focus-ring"
               title="Download filtered leads as CSV"
             >
               <Download className="w-3.5 h-3.5" strokeWidth={2} />
@@ -1188,22 +1335,15 @@ export default function LeadsPage() {
             </button>
             <button
               onClick={() => setShowAddLead(true)}
-              className="bg-accent/10 hover:bg-accent/20 text-accent text-caption font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+              className="bg-accent/10 hover:bg-accent/20 text-accent text-caption font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer focus-ring"
             >
               <Plus className="w-3.5 h-3.5" strokeWidth={2} />
               Add Lead
             </button>
-            <Link
-              href="/dashboard"
-              className="text-caption font-medium px-3 py-1.5 rounded-lg transition-colors"
-              style={{ color: 'var(--color-muted)', background: 'var(--color-elevated)' }}
-            >
-              &larr; Dashboard
-            </Link>
           </div>
         </div>
 
-        {/* ─── Saved Views Bar ──────────────────────────────────────────── */}
+        {/* ─── Row 1: Saved Views Bar (unchanged) ───────────────────────── */}
         {user && (
           <SavedViewsBar
             currentFilters={currentViewFilters}
@@ -1214,178 +1354,46 @@ export default function LeadsPage() {
           />
         )}
 
-        {/* ─── Quick Filter Pills ───────────────────────────────────────── */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          {(
-            [
-              { key: 'all', label: 'All' },
-              ...(user?.role !== 'admin' ? [{ key: 'mine', label: 'My Leads' }] : []),
-              { key: 'hot', label: 'HOT' },
-              { key: 'unassigned', label: 'Unassigned' },
-              { key: 'due_today', label: 'Due Today' },
-            ] as { key: typeof quickFilter; label: string }[]
-          ).map(({ key, label }) => {
-            const active = quickFilter === key
-            return (
-              <button
-                key={key}
-                onClick={() => setQuickFilter(active ? 'all' : key)}
-                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-caption font-semibold uppercase tracking-wide transition-colors"
-                style={
-                  active
-                    ? {
-                        backgroundColor: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
-                        color: 'var(--color-accent)',
-                        border: '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
-                      }
-                    : { backgroundColor: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }
-                }
-              >
-                {label}
-                <span
-                  className="inline-flex items-center justify-center min-w-[1.375rem] h-[1.125rem] px-1.5 rounded-full text-[12px] font-bold leading-none"
-                  style={
-                    active
-                      ? {
-                          backgroundColor: 'color-mix(in srgb, var(--color-accent) 28%, transparent)',
-                          color: 'var(--color-accent)',
-                        }
-                      : { backgroundColor: 'var(--color-elevated)', color: 'var(--color-dim)' }
-                  }
-                >
-                  {pillCounts[key]}
-                </span>
-              </button>
-            )
-          })}
+        {/* ─── Row 2: Primary filter row (search · pills · Filters popover) ─ */}
+        <LeadsFilterBar
+          search={search}
+          onSearch={setSearch}
+          quickFilter={quickFilter}
+          onQuickFilter={setQuickFilter}
+          pillCounts={pillCounts}
+          showMine={user?.role !== 'admin'}
+          favoritesOnly={favoritesOnly}
+          onFavoritesOnly={setFavoritesOnly}
+          statusFilter={statusFilter}
+          onStatusFilter={setStatusFilter}
+          statusOptions={STATUS_OPTIONS}
+          statusLabels={STATUS_LABELS}
+          isAdmin={isAdmin}
+          assignedFilter={assignedFilter}
+          onAssignedFilter={setAssignedFilter}
+          assignedNames={assignedNames}
+          hasTelecallers={hasTelecallers}
+          telecallerFilter={telecallerFilter}
+          onTelecallerFilter={setTelecallerFilter}
+          telecallerAgents={telecallerAgents}
+          dateFrom={dateFrom}
+          onDateFrom={setDateFrom}
+          dateTo={dateTo}
+          onDateTo={setDateTo}
+          sort={sortByQuery}
+          onSort={setSortByQuery}
+          sortOptions={SORT_OPTIONS}
+          advancedCount={advancedCount}
+          onResetAdvanced={clearAdvancedFilters}
+        />
 
-          {/* ★ Favorites toggle — narrows the table to pinned leads */}
-          <div className="w-px h-5 self-center mx-0.5" style={{ backgroundColor: 'var(--color-border)' }} aria-hidden />
-          <button
-            type="button"
-            onClick={() => setFavoritesOnly(v => !v)}
-            aria-pressed={favoritesOnly}
-            title={favoritesOnly ? 'Showing pinned leads only' : 'Show only pinned leads'}
-            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-caption font-semibold uppercase tracking-wide transition-colors cursor-pointer focus-ring"
-            style={
-              favoritesOnly
-                ? {
-                    backgroundColor: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
-                    color: 'var(--color-accent)',
-                    border: '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
-                  }
-                : { backgroundColor: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }
-            }
-          >
-            <Star
-              className="w-3.5 h-3.5"
-              fill={favoritesOnly ? 'currentColor' : 'none'}
-              strokeWidth={favoritesOnly ? 0 : 2}
-              aria-hidden
-            />
-            Favorites
-          </button>
-        </div>
-
-        {/* ─── Filter Bar ───────────────────────────────────────────────── */}
-        <div className="bg-card border border-border rounded-lg px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dim pointer-events-none"
-              strokeWidth={2}
-            />
-            <input
-              type="text"
-              placeholder="Search name, phone, city, email..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full bg-elevated border border-border rounded-md pl-10 pr-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
-            />
-          </div>
-
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
-          >
-            <option value="">All Statuses</option>
-            {STATUS_OPTIONS.map(s => (
-              <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
-            ))}
-            <option value="__UNASSIGNED__">Unassigned</option>
-            <option value="__OVERDUE__">Overdue Follow-ups</option>
-          </select>
-
-          {user?.role === 'admin' && (
-            <select
-              value={assignedFilter}
-              onChange={e => setAssignedFilter(e.target.value)}
-              className="bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
-            >
-              <option value="">All Agents</option>
-              {assignedNames.map(name => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          )}
-
-          {user?.role === 'admin' && hasTelecallers && (
-            <select
-              value={telecallerFilter}
-              onChange={e => setTelecallerFilter(e.target.value)}
-              className="bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
-              title="Filter by telecaller"
-            >
-              <option value="">All Telecallers</option>
-              <option value="__NONE__">— No telecaller —</option>
-              {telecallerAgents.map(a => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-          )}
-
-          <div className="flex items-center gap-1.5 text-caption text-dim">
-            <span className="hidden sm:inline">Created:</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={e => setDateFrom(e.target.value)}
-              max={dateTo || undefined}
-              title="From date (inclusive)"
-              className="bg-elevated border border-border rounded-md px-2 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50"
-            />
-            <span>→</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={e => setDateTo(e.target.value)}
-              min={dateFrom || undefined}
-              title="To date (inclusive)"
-              className="bg-elevated border border-border rounded-md px-2 py-1.5 text-sm text-text focus:outline-none focus:border-accent/50"
-            />
-          </div>
-
-          <select
-            value={sortByQuery}
-            onChange={e => setSortByQuery(e.target.value)}
-            className="bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-accent/50"
-          >
-            <option value="score">Sort: Lead Score</option>
-            <option value="newest">Sort: Newest Created First</option>
-            <option value="oldest">Sort: Oldest Created First</option>
-            <option value="followup">Sort: Follow-up Date</option>
-          </select>
-
-          {(search || statusFilter || assignedFilter || telecallerFilter || sortByQuery !== 'score' || dateFrom || dateTo) && (
-            <button onClick={clearFilters} className="text-sm text-dim hover:text-text transition-colors">
-              Clear filters
-            </button>
-          )}
-
-          <span className="text-caption text-dim ml-auto">
-            {displayedLeads.length} lead{displayedLeads.length !== 1 ? 's' : ''}
-          </span>
-        </div>
+        {/* ─── Row 3: Active-filter chips + the SINGLE match count ───────── */}
+        <ActiveFilterChips
+          chips={activeChips}
+          shown={displayedLeads.length}
+          total={leads.length}
+          onClearAll={clearAllFilters}
+        />
 
         {/* ─── Mobile Card List (<md) ─────────────────────────────────── */}
         <div className="md:hidden space-y-2">
@@ -1657,7 +1665,6 @@ export default function LeadsPage() {
             </button>
             <span className="text-dim tabular-nums">
               Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
-              <span className="hidden sm:inline"> · {displayedLeads.length} leads</span>
             </span>
             <button
               onClick={() => table.nextPage()}
