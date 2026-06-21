@@ -481,6 +481,133 @@ export const INDIA_CITIES: CityCoord[] = [
   { name: 'Bulandshahr', state: 'Uttar Pradesh', lat: 28.4067, lng: 77.8500 },
   { name: 'Raebareli', state: 'Uttar Pradesh', lat: 26.2308, lng: 81.2335 },
   { name: 'Orai', state: 'Uttar Pradesh', lat: 25.9914, lng: 79.4506 },
+
+  // Sixth batch — drain pass 2026-06-21 (143-entry unmapped list)
+  // Uttar Pradesh
+  { name: 'Jaunpur', state: 'Uttar Pradesh', lat: 25.7333, lng: 82.6833 },
+  { name: 'Hathras', state: 'Uttar Pradesh', lat: 27.5957, lng: 78.0518 },
+  { name: 'Mahoba', state: 'Uttar Pradesh', lat: 25.2924, lng: 79.8730 },
+  { name: 'Ghazipur', state: 'Uttar Pradesh', lat: 25.5876, lng: 83.5776 },
+  { name: 'Farrukhabad', state: 'Uttar Pradesh', lat: 27.3919, lng: 79.5800 },
+  { name: 'Kannauj', state: 'Uttar Pradesh', lat: 27.0550, lng: 79.9180 },
+  { name: 'Kairana', state: 'Uttar Pradesh', lat: 29.3947, lng: 77.2050 },
+  { name: 'Baraut', state: 'Uttar Pradesh', lat: 29.1027, lng: 77.2635 },
+  { name: 'Baheri', state: 'Uttar Pradesh', lat: 28.7745, lng: 79.4969 },
+  { name: 'Budaun', state: 'Uttar Pradesh', lat: 28.0360, lng: 79.1280 },
+  { name: 'Pilibhit', state: 'Uttar Pradesh', lat: 28.6315, lng: 79.8044 },
+  { name: 'Ballia', state: 'Uttar Pradesh', lat: 25.7585, lng: 84.1495 },
+  { name: 'Lakhimpur Kheri', state: 'Uttar Pradesh', lat: 27.9484, lng: 80.7790 },
+  // Bihar
+  { name: 'Sitamarhi', state: 'Bihar', lat: 26.5946, lng: 85.4905 },
+  { name: 'Runnisaidpur', state: 'Bihar', lat: 26.3833, lng: 85.4833 },
+  { name: 'Madhubani', state: 'Bihar', lat: 26.3486, lng: 86.0716 },
+  { name: 'Gopalganj', state: 'Bihar', lat: 26.4682, lng: 84.4336 },
+  { name: 'Raxaul', state: 'Bihar', lat: 26.9810, lng: 84.8497 },
+  // Jharkhand
+  { name: 'Simdega', state: 'Jharkhand', lat: 22.6168, lng: 84.5142 },
+  { name: 'Godda', state: 'Jharkhand', lat: 24.8270, lng: 87.2130 },
+  // Rajasthan
+  { name: 'Tonk', state: 'Rajasthan', lat: 26.1505, lng: 75.7855 },
+  { name: 'Nagaur', state: 'Rajasthan', lat: 27.1989, lng: 73.7399 },
+  { name: 'Bhinmal', state: 'Rajasthan', lat: 25.0061, lng: 72.2647 },
+  { name: 'Balotra', state: 'Rajasthan', lat: 25.8333, lng: 72.2400 },
+  { name: 'Bijainagar', state: 'Rajasthan', lat: 25.9276, lng: 74.6330 },
+  // Madhya Pradesh
+  { name: 'Chhatarpur', state: 'Madhya Pradesh', lat: 24.9180, lng: 79.5880 },
+  { name: 'Datia', state: 'Madhya Pradesh', lat: 25.6660, lng: 78.4600 },
+  { name: 'Neemuch', state: 'Madhya Pradesh', lat: 24.4760, lng: 74.8720 },
+  { name: 'Khurai', state: 'Madhya Pradesh', lat: 24.0420, lng: 78.3320 },
+  { name: 'Parasia', state: 'Madhya Pradesh', lat: 22.1920, lng: 78.7570 },
+  { name: 'Katangi', state: 'Madhya Pradesh', lat: 21.7720, lng: 79.8000 },
+  { name: 'Waidhan', state: 'Madhya Pradesh', lat: 24.0730, lng: 82.6470 },
+  { name: 'Umaria', state: 'Madhya Pradesh', lat: 23.5240, lng: 80.8370 },
+  // Maharashtra
+  { name: 'Washim', state: 'Maharashtra', lat: 20.1110, lng: 77.1330 },
+  { name: 'Jalna', state: 'Maharashtra', lat: 19.8410, lng: 75.8860 },
+  { name: 'Miraj', state: 'Maharashtra', lat: 16.8290, lng: 74.6420 },
+  { name: 'Gondia', state: 'Maharashtra', lat: 21.4624, lng: 80.1920 },
+  { name: 'Umred', state: 'Maharashtra', lat: 20.8500, lng: 79.3300 },
+  { name: 'Malvan', state: 'Maharashtra', lat: 16.0590, lng: 73.4710 },
+  { name: 'Kopargaon', state: 'Maharashtra', lat: 19.8820, lng: 74.4760 },
+  { name: 'Karjat', state: 'Maharashtra', lat: 18.9107, lng: 73.3239 },
+  { name: 'Omerga', state: 'Maharashtra', lat: 17.8400, lng: 76.6200 },
+  { name: 'Takeghoti', state: 'Maharashtra', lat: 19.6920, lng: 73.5520 },
+  { name: 'Kolgaon', state: 'Maharashtra', lat: 18.6170, lng: 74.6970 },
+  { name: 'Daryapur', state: 'Maharashtra', lat: 20.9270, lng: 77.3270 },
+  { name: 'Parbhani', state: 'Maharashtra', lat: 19.2686, lng: 76.7700 },
+  // Goa
+  { name: 'Valpoi', state: 'Goa', lat: 15.5320, lng: 74.1370 },
+  // Gujarat
+  { name: 'Morbi', state: 'Gujarat', lat: 22.8170, lng: 70.8370 },
+  { name: 'Patan', state: 'Gujarat', lat: 23.8500, lng: 72.1260 },
+  { name: 'Surendranagar', state: 'Gujarat', lat: 22.7280, lng: 71.6370 },
+  // Dadra and Nagar Haveli
+  { name: 'Silvassa', state: 'Dadra and Nagar Haveli', lat: 20.2700, lng: 73.0170 },
+  // Punjab
+  { name: 'Ropar', state: 'Punjab', lat: 30.9660, lng: 76.5270 },
+  { name: 'Sirsa', state: 'Haryana', lat: 29.5349, lng: 75.0280 },
+  { name: 'Batala', state: 'Punjab', lat: 31.8186, lng: 75.2028 },
+  { name: 'Mukerian', state: 'Punjab', lat: 31.9540, lng: 75.6170 },
+  { name: 'Rayya', state: 'Punjab', lat: 31.5670, lng: 75.0080 },
+  { name: 'Moonak', state: 'Punjab', lat: 29.8330, lng: 75.8830 },
+  { name: 'Raikot', state: 'Punjab', lat: 30.6510, lng: 75.6050 },
+  { name: 'Kot Ise Khan', state: 'Punjab', lat: 31.1170, lng: 75.2670 },
+  { name: 'Bhiwani', state: 'Haryana', lat: 28.7930, lng: 76.1390 },
+  // Uttarakhand
+  { name: 'Ramnagar', state: 'Uttarakhand', lat: 29.3970, lng: 79.1290 },
+  { name: 'Kichha', state: 'Uttarakhand', lat: 28.9120, lng: 79.5210 },
+  // Jammu & Kashmir / Ladakh
+  { name: 'Rajouri', state: 'Jammu & Kashmir', lat: 33.3776, lng: 74.3100 },
+  { name: 'Banihal', state: 'Jammu & Kashmir', lat: 33.4350, lng: 75.1960 },
+  { name: 'Awantipora', state: 'Jammu & Kashmir', lat: 33.9180, lng: 75.0150 },
+  { name: 'Katra', state: 'Jammu & Kashmir', lat: 32.9917, lng: 74.9319 },
+  { name: 'Kargil', state: 'Ladakh', lat: 34.5539, lng: 76.1349 },
+  { name: 'Leh', state: 'Ladakh', lat: 34.1526, lng: 77.5771 },
+  // West Bengal
+  { name: 'Malda', state: 'West Bengal', lat: 25.0119, lng: 88.1433 },
+  { name: 'Cooch Behar', state: 'West Bengal', lat: 26.3220, lng: 89.4520 },
+  { name: 'Basirhat', state: 'West Bengal', lat: 22.6570, lng: 88.8940 },
+  { name: 'Barrackpore', state: 'West Bengal', lat: 22.7600, lng: 88.3700 },
+  { name: 'Raniganj', state: 'West Bengal', lat: 23.6200, lng: 87.1290 },
+  // Odisha
+  { name: 'Sundargarh', state: 'Odisha', lat: 22.1170, lng: 84.0330 },
+  { name: 'Rayagada', state: 'Odisha', lat: 19.1710, lng: 83.4160 },
+  { name: 'Jatani', state: 'Odisha', lat: 20.1670, lng: 85.7000 },
+  { name: 'Balasore', state: 'Odisha', lat: 21.4942, lng: 86.9336 },
+  { name: 'Khordha', state: 'Odisha', lat: 20.1820, lng: 85.6160 },
+  { name: 'Bhawanipatna', state: 'Odisha', lat: 19.9070, lng: 83.1670 },
+  // Assam
+  { name: 'Tinsukia', state: 'Assam', lat: 27.4922, lng: 95.3468 },
+  // Karnataka
+  { name: 'Raichur', state: 'Karnataka', lat: 16.2076, lng: 77.3463 },
+  { name: 'Gadag', state: 'Karnataka', lat: 15.4310, lng: 75.6300 },
+  { name: 'Hunsur', state: 'Karnataka', lat: 12.3030, lng: 76.2930 },
+  { name: 'Guntakal', state: 'Andhra Pradesh', lat: 15.1710, lng: 77.3660 },
+  { name: 'Chikkamagaluru', state: 'Karnataka', lat: 13.3160, lng: 75.7720 },
+  { name: 'Kushalnagar', state: 'Karnataka', lat: 12.4570, lng: 75.9610 },
+  { name: 'Kinnigoli', state: 'Karnataka', lat: 13.0670, lng: 74.9330 },
+  { name: 'Ballari', state: 'Karnataka', lat: 15.1394, lng: 76.9214 },
+  // Telangana
+  { name: 'Kamareddy', state: 'Telangana', lat: 18.3200, lng: 78.3370 },
+  { name: 'Tandur', state: 'Telangana', lat: 17.2410, lng: 77.5780 },
+  { name: 'Mahabubnagar', state: 'Telangana', lat: 16.7480, lng: 77.9850 },
+  { name: 'Nalgonda', state: 'Telangana', lat: 17.0540, lng: 79.2670 },
+  // Andhra Pradesh
+  { name: 'Srikakulam', state: 'Andhra Pradesh', lat: 18.2949, lng: 83.8938 },
+  { name: 'Rajahmundry', state: 'Andhra Pradesh', lat: 16.9891, lng: 81.7837 },
+  { name: 'Piduguralla', state: 'Andhra Pradesh', lat: 16.4920, lng: 79.8870 },
+  // Tamil Nadu
+  { name: 'Thanjavur', state: 'Tamil Nadu', lat: 10.7870, lng: 79.1378 },
+  { name: 'Tirumangalam', state: 'Tamil Nadu', lat: 9.8230, lng: 77.9890 },
+  { name: 'Kallakurichi', state: 'Tamil Nadu', lat: 11.7380, lng: 78.9590 },
+  { name: 'Chengalpattu', state: 'Tamil Nadu', lat: 12.6920, lng: 79.9760 },
+  { name: 'Kalpakkam', state: 'Tamil Nadu', lat: 12.5240, lng: 80.1750 },
+  { name: 'Yercaud', state: 'Tamil Nadu', lat: 11.7750, lng: 78.2090 },
+  // Kerala
+  { name: 'Pathanamthitta', state: 'Kerala', lat: 9.2648, lng: 76.7870 },
+  // Foreign cities (state = country; resolve but plot outside India bounds)
+  { name: 'Paris', state: 'France', lat: 48.8566, lng: 2.3522 },
+  { name: 'Bangkok', state: 'Thailand', lat: 13.7563, lng: 100.5018 },
 ]
 
 /**
@@ -619,9 +746,60 @@ const CITY_ALIASES: Record<string, string> = {
   'bhubaneswar': 'Bhubaneswar',
   'chittorgarh': 'Chittorgarh',
 
+  // Sixth-batch aliases — drain pass 2026-06-21
+  // Misspellings / alt spellings → canonical
+  'ujjian': 'Ujjain',
+  'sonepat': 'Sonipat',
+  'godhara': 'Godhra',
+  'shikohibed': 'Shikohabad',
+  'davenger': 'Davanagere',
+  'davanger': 'Davanagere',
+  'davangere': 'Davanagere',
+  'parabhani': 'Parbhani',
+  'nalginda': 'Nalgonda',
+  'bhiwnai': 'Bhiwani',
+  'rajauri': 'Rajouri',
+  'ludhina': 'Ludhiana',
+  'badaun': 'Budaun',
+  'bulandshahar': 'Bulandshahr',
+  'bhubneshwar': 'Bhubaneswar',
+  'benguluru': 'Bengaluru',
+  'bangaluru': 'Bengaluru',
+  'bellari': 'Ballari',
+  'bellary': 'Ballari',
+  'baleshwar': 'Balasore',
+  'darypur': 'Daryapur',            // unicode-stylized 𝔻𝕒𝕣𝕪𝕡𝕦𝕣 normalizes to "Darypur"
+  'sambhajinagar': 'Aurangabad',    // renamed: Aurangabad → Chhatrapati Sambhajinagar (2023)
+  // Renamed / old names
+  'rupnagar': 'Ropar',
+  'osmanabad': 'Omerga',
+  // Compound / district-qualified inputs → the town
+  'muradabad patti': 'Moradabad',
+  'nagaur marwar': 'Nagaur',
+  'tonk todaraisingh': 'Tonk',
+  'ahorejalore': 'Bhinmal',         // "Ahore/jalore" → slash stripped on clean; both in Jalore dist
+  'kotisekhan': 'Kot Ise Khan',     // "Kot-Ise-Khan" → hyphens stripped to a single token on clean
+  'wayanad': 'Kozhikode',           // Wayanad district (Kerala) → nearest mapped city
+  'kalahandi': 'Bhawanipatna',      // Kalahandi district (Odisha) → district HQ Bhawanipatna
+  'gallops hotel': 'Ahmedabad',     // Gallops is a hospitality complex in Ahmedabad
+  'leh ladakh': 'Leh',
+  // Localities / suburbs → parent city
+  'kurla': 'Mumbai',
+  'kharghar': 'Mumbai',             // Navi Mumbai satellite
+  'magarpatta': 'Pune',
+  'krpuram': 'Bangalore',
+  'mansrovar': 'Jaipur',
+  'najafgarh': 'Delhi',
+  'gandimaisamma': 'Hyderabad',
+  'narsingi': 'Hyderabad',
+  'dichipally': 'Hyderabad',
+  'sodepur': 'Kolkata',
+  'dombivali': 'Dombivli',          // spelling variant of existing Dombivli
+
   // State-name-as-city fallbacks — route to state capital so leads aren't lost
   'bihar': 'Patna',
   'maharashtra': 'Mumbai',
+  'mahareshtra': 'Mumbai',
   'gujarat': 'Ahmedabad',
   'punjab': 'Chandigarh',
   'haryana': 'Chandigarh',
@@ -630,6 +808,7 @@ const CITY_ALIASES: Record<string, string> = {
   'tamilnadu': 'Chennai',
   'kerala': 'Thiruvananthapuram',
   'rajasthan': 'Jaipur',
+  'rajesthan': 'Jaipur',
   'uttar pradesh': 'Lucknow',
   'uttarpradesh': 'Lucknow',
   'up': 'Lucknow',
