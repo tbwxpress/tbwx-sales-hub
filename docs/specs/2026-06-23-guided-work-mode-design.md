@@ -21,6 +21,8 @@ A deep forensic audit of production (2,628 leads) showed the operation isn't ble
 
 **Non-goals (v1):** redesigning the ad funnel, pulling closers' *personal* WhatsApp content on-system, deep gamification, a fully configurable playbook UI, auto load-rebalancing of historical backlog.
 
+**Experiment posture (non-negotiable):** This ships as a **reversible, opt-in experiment layered on top of today's app — nothing existing is removed or degraded.** **Free mode is exactly the current SalesHub**, unchanged. `work_mode` defaults to **`free` for everyone**; the owner opts individual agents into Guided to experiment and flips them back instantly. Guided and Free are two *drivers over the same shared data* (leads, statuses, messages, notes) — never separate systems — so switching modes is lossless and loses no history. All schema changes are additive; there are **no destructive migrations** and no behavior change for anyone left in Free.
+
 ---
 
 ## 2. Core concept — two independent dials
@@ -143,7 +145,7 @@ Picking an outcome is the **only** way to advance; each one auto-applies status 
 ## 7. Mode mechanics
 
 - **Schema:** `users.work_mode` (`guided`\|`free`, default `free`), `users.agent_role` (`telecaller`\|`closer`; may derive from existing `is_telecaller`/`is_closer` flags), `users.daily_target` (int).
-- **Owner control:** Admin → Agents — per-agent Role + Mode toggles + daily target + "promote to Free". (Admin-only, already gated.)
+- **Owner control (for everyone):** Admin → Agents — the owner sets **each agent's** Role + Mode + daily target and flips anyone Guided↔Free anytime (lossless, instant). The team-wide **default is Free**, with a one-click **"all to Free" kill-switch** to pause/end the experiment for everyone at once. (Admin-only, already gated.)
 - **Guided agents:** post-login land on **`/work`**; nav stripped to the rail (no dashboards to idle on). They can open a lead's full detail from the card, but the rail is home.
 - **Free agents:** unchanged — Today / Inbox (with the new triage cockpit) / Leads / Pipeline.
 - **Promotion / coaching:** Guided→Free when a rep proves out; Free→Guided to re-impose cadence on a slipping closer.
@@ -210,13 +212,13 @@ A live **Work panel** (in `/admin` and/or `/dashboard`), fed by the same `work_e
 
 ## 12. SLA, re-defined
 
-"First response" must count **the first human call or first human WhatsApp**, not just a SalesHub message (the old metric understated reality because the work was off-system). `sla_metrics.first_response_at` is set on the first logged **call** or first human reply — which the rail now forces into the system.
+"First response" must count **the first human call or first human WhatsApp**, not just a SalesHub message (the old metric understated reality because the work was off-system). `sla_metrics.first_response_at` is set on the first logged **call** or first human reply — which the rail now forces into the system. Implemented **additively** (first-response simply becomes the earliest human touch across channels); existing SLA reports keep working unchanged.
 
 ---
 
 ## 13. Scope
 
-**v1 (this build):** Role × Mode + owner toggles; the priority engine (both role queues, window-aware, no spam); the guided card (lifecycle strip, window-aware call+WhatsApp, forced outcome); the playbook; forward + reverse handoffs + 7-day auto-bounce; cadence header with progress/target/streak + Won celebration + end-of-day card; the owner Work panel; SLA redefinition.
+**v1 (this build):** Role × Mode + owner toggles; the priority engine (both role queues, window-aware, no spam); the guided card (lifecycle strip, window-aware call+WhatsApp, forced outcome); the playbook; forward + reverse handoffs + 7-day auto-bounce; cadence header with progress/target/streak + Won celebration + end-of-day card; the owner Work panel; SLA redefinition. **All additive and reversible — Free mode is today's app verbatim, and the experiment defaults off (Free) for every agent.**
 
 **Deferred (v1.1+):** deep gamification (badges, idle-timer nudges, rich leaderboard), fully admin-configurable playbook UI, auto load-rebalancing of the historical backlog, pulling closers' personal WhatsApp on-system, per-agent target analytics.
 
