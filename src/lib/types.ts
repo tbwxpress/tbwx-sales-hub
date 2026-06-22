@@ -1,6 +1,9 @@
 export type UserRole = 'admin' | 'agent'
 export type LeadStatus = 'NEW' | 'DECK_SENT' | 'REPLIED' | 'NO_RESPONSE' | 'CALL_DONE_INTERESTED' | 'HOT' | 'FINAL_NEGOTIATION' | 'CONVERTED' | 'DELAYED' | 'LOST' | 'ARCHIVED'
 
+export type WorkMode = 'guided' | 'free'
+export type AgentRole = 'telecaller' | 'closer'
+
 export interface User {
   id: string
   name: string
@@ -14,6 +17,10 @@ export interface User {
   is_closer: boolean
   is_telecaller: boolean
   lead_pool_paused: boolean
+  // Guided Work Mode (additive). work_mode defaults to 'free' for everyone.
+  work_mode: WorkMode
+  agent_role: AgentRole
+  daily_target: number
 }
 
 export interface SessionUser {

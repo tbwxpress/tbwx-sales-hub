@@ -23,6 +23,7 @@ import {
   LogOut,
   Menu,
   X,
+  Briefcase,
   type LucideIcon,
 } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
@@ -33,6 +34,10 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 interface User {
   name: string
   role: string
+  // Guided Work Mode (additive). Defaults to 'free' for everyone — when the
+  // payload omits it (older API / failed enrich) we treat it as 'free' so the
+  // nav is byte-identical to today.
+  work_mode?: 'guided' | 'free'
 }
 
 const brandShort = process.env.NEXT_PUBLIC_BRAND_SHORT || 'TBWX'
@@ -144,6 +149,105 @@ export default function Navbar() {
 
   function isActive(href: string) {
     return pathname === href || (href === '/inbox' && pathname?.startsWith('/inbox'))
+  }
+
+  // Guided Work Mode: when the session user is on the rail, the nav strips down
+  // to brand + a single "Work" link + bell + avatar/logout. Everything below
+  // (the full nav) is untouched for Free users — the default for everyone.
+  const guided = user?.work_mode === 'guided'
+
+  if (guided && user) {
+    return (
+      <nav
+        className="sticky top-0 z-50 border-b"
+        style={{
+          background: 'linear-gradient(90deg, var(--color-bg) 0%, var(--color-card) 50%, var(--color-bg) 100%)',
+          borderColor: 'rgba(212,175,55,0.15)',
+          height: 'clamp(54px, 56px, 58px)',
+        }}
+        ref={menuRef}
+      >
+        <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
+          {/* Brand → the rail (not /dashboard, which guided users don't use) */}
+          <Link href="/work" className="flex items-center gap-2.5 group shrink-0">
+            <Image
+              src={brandLogo}
+              alt={brandShort}
+              width={30}
+              height={30}
+              className="rounded-lg transition-transform duration-200 group-hover:scale-105"
+            />
+            <div className="flex flex-col leading-tight">
+              <span className="text-[13px] font-bold" style={{ color: 'var(--color-accent)' }}>Sales Hub</span>
+              <span className="text-[9px] tracking-widest uppercase" style={{ color: 'var(--color-dim)' }}>{brandShort}</span>
+            </div>
+          </Link>
+
+          {/* Single Work link — the rail is home */}
+          <Link
+            href="/work"
+            className="relative flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold transition-colors duration-150"
+            style={{ color: isActive('/work') ? 'var(--color-accent)' : 'var(--color-muted)' }}
+          >
+            <Briefcase className="w-3.5 h-3.5" strokeWidth={2} />
+            Work
+            {isActive('/work') && (
+              <span
+                className="absolute -bottom-1.5 left-2 right-2 h-[2px] rounded-full"
+                style={{ background: 'var(--color-accent)' }}
+              />
+            )}
+          </Link>
+
+          {/* Bell + avatar/logout only */}
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <div className="relative" ref={avatarRef}>
+              <button
+                onClick={() => setAvatarOpen(v => !v)}
+                className="flex items-center gap-2 rounded-full pl-1 pr-2 py-1 transition-colors duration-150"
+                style={{ background: avatarOpen ? 'var(--color-elevated)' : 'transparent' }}
+              >
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+                  style={{ background: 'var(--color-accent-soft)', border: '1px solid var(--color-accent)' }}
+                >
+                  <span className="text-xs font-bold" style={{ color: 'var(--color-accent)' }}>
+                    {user.name.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <span className="hidden sm:inline text-[11px] font-semibold" style={{ color: 'var(--color-text)' }}>{user.name}</span>
+              </button>
+              {avatarOpen && (
+                <div
+                  className="absolute top-full right-0 mt-1 w-40 rounded-xl py-1 z-[60]"
+                  style={{
+                    background: 'var(--color-card)',
+                    border: '1px solid var(--color-border)',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                  }}
+                >
+                  <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                    <div className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>{user.name}</div>
+                    <div className="text-[10px] capitalize mt-0.5" style={{ color: 'var(--color-muted)' }}>{user.role}</div>
+                  </div>
+                  <button
+                    onClick={() => { setAvatarOpen(false); logout() }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-xs transition-colors duration-150 text-left"
+                    style={{ color: 'var(--color-danger)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-elevated)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <LogOut className="w-3.5 h-3.5" strokeWidth={1.5} />
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </nav>
+    )
   }
 
   return (

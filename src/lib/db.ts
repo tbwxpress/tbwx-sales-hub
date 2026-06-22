@@ -492,6 +492,25 @@ export async function ensureInit(): Promise<Client> {
       );
       CREATE INDEX IF NOT EXISTS idx_lead_merges_target ON lead_merges(target_row);
       CREATE INDEX IF NOT EXISTS idx_lead_merges_source ON lead_merges(source_row);
+
+      -- Guided Work Mode (additive, reversible experiment). One row per logged
+      -- action an agent takes on the work rail — the single source of truth for
+      -- "did the work happen": powers cleared-today / streaks / owner panel.
+      -- channel = 'call' | 'whatsapp' | 'template' | 'system'.
+      CREATE TABLE IF NOT EXISTS work_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT DEFAULT '',
+        user_name TEXT DEFAULT '',
+        lead_row INTEGER,
+        role TEXT DEFAULT '',
+        channel TEXT DEFAULT '',
+        action TEXT DEFAULT '',
+        outcome TEXT DEFAULT '',
+        also_whatsapp INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_work_events_user_date ON work_events(user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_work_events_lead ON work_events(lead_row);
     `)
 
     await db.execute(`
@@ -528,6 +547,12 @@ export async function ensureInit(): Promise<Client> {
     try { await db.execute("ALTER TABLE messages ADD COLUMN error_message TEXT DEFAULT ''") } catch { /* column may already exist */ }
     // Duplicate-merge: target row_number a source lead was merged into (NULL = not merged).
     try { await db.execute('ALTER TABLE leads ADD COLUMN merged_into INTEGER') } catch { /* column may already exist */ }
+
+    // Guided Work Mode (additive). work_mode DEFAULT 'free' is critical — nobody
+    // is on the rail until the owner opts them in, so Free mode is unchanged.
+    try { await db.execute("ALTER TABLE users ADD COLUMN work_mode TEXT DEFAULT 'free'") } catch { /* column may already exist */ }
+    try { await db.execute('ALTER TABLE users ADD COLUMN agent_role TEXT') } catch { /* column may already exist */ }
+    try { await db.execute('ALTER TABLE users ADD COLUMN daily_target INTEGER DEFAULT 40') } catch { /* column may already exist */ }
 
     // Wait up to 5s for a lock instead of failing with SQLITE_BUSY — matters now that
     // auto-send writes every ~2 min alongside agent activity and the sheet-backup job.
@@ -1012,6 +1037,34 @@ export async function getLastMessageByPhone(): Promise<Map<string, { direction: 
   }
 }
 
+// Last INBOUND (received) message timestamp per phone, keyed by last-10 digits
+// (matching getLastMessageByPhone). Lets the closer re-engage bucket spot leads
+// that replied at some point even when the agent's later follow-up is now the
+// absolute-latest message.
+export async function getLastReceivedMessageByPhone(): Promise<Map<string, { last_received_at: string }>> {
+  try {
+    const db = await ensureInit()
+    const result = await db.execute(`
+      SELECT phone, MAX(timestamp) AS last_received_at
+      FROM messages
+      WHERE direction = 'received'
+      GROUP BY phone
+    `)
+    const map = new Map<string, { last_received_at: string }>()
+    for (const row of result.rows) {
+      const key = String(row.phone || '').replace(/\D/g, '').slice(-10)
+      if (!key) continue
+      const candidate = { last_received_at: String(row.last_received_at || '') }
+      const existing = map.get(key)
+      if (!existing || candidate.last_received_at > existing.last_received_at) map.set(key, candidate)
+    }
+    return map
+  } catch (err) {
+    console.error('[getLastReceivedMessageByPhone] non-critical:', err)
+    return new Map()
+  }
+}
+
 // --- Call log operations ---
 
 export async function insertCallLog(data: {
@@ -1156,7 +1209,7 @@ export async function insertStatusChange(data: {
   new_status: string
   changed_by: string
   changed_by_id?: string
-  source?: 'manual' | 'auto-send' | 'webhook' | 'cron'
+  source?: 'manual' | 'auto-send' | 'webhook' | 'cron' | 'work'
 }): Promise<number | null> {
   try {
     const db = await ensureInit()
@@ -1208,6 +1261,128 @@ export async function getStatusChangesForLead(leadRow: number) {
     args: [leadRow],
   })
   return serializeRows(r.rows)
+}
+
+// --- Guided Work Mode: work_events ---
+// One row per logged action on the work rail. The single source of truth for
+// "did the work happen" — powers cleared-today / streaks / owner panel.
+
+export interface WorkEvent {
+  id: number
+  user_id: string
+  user_name: string
+  lead_row: number | null
+  role: string
+  channel: string
+  action: string
+  outcome: string
+  also_whatsapp: boolean
+  created_at: string
+}
+
+function rowToWorkEvent(r: Record<string, unknown>): WorkEvent {
+  return {
+    id: Number(r.id),
+    user_id: String(r.user_id || ''),
+    user_name: String(r.user_name || ''),
+    lead_row: r.lead_row == null ? null : Number(r.lead_row),
+    role: String(r.role || ''),
+    channel: String(r.channel || ''),
+    action: String(r.action || ''),
+    outcome: String(r.outcome || ''),
+    also_whatsapp: Number(r.also_whatsapp ?? 0) === 1,
+    created_at: String(r.created_at || ''),
+  }
+}
+
+export async function insertWorkEvent(data: {
+  user_id: string
+  user_name: string
+  lead_row: number
+  role: string
+  channel: string
+  action: string
+  outcome: string
+  also_whatsapp?: boolean
+}): Promise<number | null> {
+  try {
+    const db = await ensureInit()
+    const r = await db.execute({
+      sql: `INSERT INTO work_events
+              (user_id, user_name, lead_row, role, channel, action, outcome, also_whatsapp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        data.user_id,
+        data.user_name,
+        data.lead_row,
+        data.role,
+        data.channel,
+        data.action,
+        data.outcome,
+        data.also_whatsapp ? 1 : 0,
+      ],
+    })
+    return Number(r.lastInsertRowid)
+  } catch (err) {
+    console.error('[insertWorkEvent] non-critical:', err)
+    return null
+  }
+}
+
+// All work_events for a user at/after an ISO cutoff (ascending). Used for
+// cleared-today and streak computation.
+export async function getWorkEventsForUserSince(userId: string, sinceIso: string): Promise<WorkEvent[]> {
+  const db = await ensureInit()
+  const r = await db.execute({
+    sql: `SELECT * FROM work_events WHERE user_id = ? AND created_at >= ? ORDER BY created_at ASC`,
+    args: [userId, sinceIso],
+  })
+  return serializeRows(r.rows).map(rowToWorkEvent)
+}
+
+// Most-recent work_event per lead_row for a set of leads, keyed by lead_row.
+// Used by the queue/auto-bounce engine to find "last action on the rail".
+export async function getLastWorkEventByLead(leadRows: number[]): Promise<Map<number, WorkEvent>> {
+  const map = new Map<number, WorkEvent>()
+  if (leadRows.length === 0) return map
+  const db = await ensureInit()
+  for (let i = 0; i < leadRows.length; i += 500) {
+    const batch = leadRows.slice(i, i + 500)
+    const placeholders = batch.map(() => '?').join(',')
+    const r = await db.execute({
+      sql: `SELECT * FROM work_events WHERE lead_row IN (${placeholders}) ORDER BY created_at DESC`,
+      args: batch,
+    })
+    for (const e of serializeRows(r.rows).map(rowToWorkEvent)) {
+      if (e.lead_row != null && !map.has(e.lead_row)) map.set(e.lead_row, e) // DESC → first = latest
+    }
+  }
+  return map
+}
+
+// Count of work_events per user since an ISO cutoff (for the owner panel's
+// cleared-today across all agents in one read), keyed by user_id.
+export async function getWorkEventCountsSince(sinceIso: string): Promise<Map<string, number>> {
+  const db = await ensureInit()
+  const r = await db.execute({
+    sql: `SELECT user_id, COUNT(*) AS n FROM work_events WHERE created_at >= ? GROUP BY user_id`,
+    args: [sinceIso],
+  })
+  const map = new Map<string, number>()
+  for (const row of r.rows) map.set(String(row.user_id || ''), Number(row.n || 0))
+  return map
+}
+
+// Latest work_event timestamp per user since a cutoff (owner panel last_action_at).
+export async function getLastWorkEventAtByUser(sinceIso: string): Promise<Map<string, string>> {
+  const db = await ensureInit()
+  const r = await db.execute({
+    sql: `SELECT user_id, MAX(created_at) AS at FROM work_events WHERE created_at >= ? GROUP BY user_id`,
+    args: [sinceIso],
+  })
+  const map = new Map<string, string>()
+  for (const row of r.rows) map.set(String(row.user_id || ''), String(row.at || ''))
+  return map
 }
 
 // --- Tasks/Reminders ---

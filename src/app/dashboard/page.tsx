@@ -9,6 +9,7 @@ import AgentQueue from '@/components/AgentQueue'
 import NeedsAttentionBanner from '@/components/NeedsAttentionBanner'
 import UpdateRequestWidget from '@/components/UpdateRequestWidget'
 import DashboardWidgets from '@/components/DashboardWidgets'
+import OwnerWorkPanel from '@/components/OwnerWorkPanel'
 import { KpiCardSkeleton } from '@/components/KpiCard'
 import { toast } from 'sonner'
 import { timeAgo, followupLabel } from '@/lib/format'
@@ -951,6 +952,9 @@ export default function DashboardPage() {
 
         {/* Forced followup loop — leads requiring an explicit touch right now. */}
         <NeedsAttentionBanner defaultExpanded />
+
+        {/* ─── Owner Work Panel — Guided Work Mode cockpit (admin) ────── */}
+        {user?.role === 'admin' && <OwnerWorkPanel />}
 
         {/* ─── KPI Metric Widgets (admin) ─────────────────────────────── */}
         {user?.role === 'admin' && (

@@ -68,39 +68,35 @@ async function ensureTable(): Promise<void> {
   if (!colNames.has('can_edit_leads')) {
     await db.execute('ALTER TABLE users ADD COLUMN can_edit_leads INTEGER NOT NULL DEFAULT 0')
   }
+  // Guided Work Mode (additive). work_mode DEFAULT 'free' is critical — nobody
+  // is on the rail until the owner opts them in.
+  if (!colNames.has('work_mode')) {
+    await db.execute("ALTER TABLE users ADD COLUMN work_mode TEXT DEFAULT 'free'")
+  }
+  if (!colNames.has('agent_role')) {
+    await db.execute('ALTER TABLE users ADD COLUMN agent_role TEXT')
+  }
+  if (!colNames.has('daily_target')) {
+    await db.execute('ALTER TABLE users ADD COLUMN daily_target INTEGER DEFAULT 40')
+  }
 
   _tableReady = true
 }
 
-export async function getUsers(): Promise<User[]> {
-  await ensureTable()
-  const db = getClient()
-  const result = await db.execute('SELECT * FROM users ORDER BY created_at ASC')
-  return result.rows.map(row => ({
-    id: String(row.id),
-    name: String(row.name),
-    email: String(row.email),
-    password_hash: String(row.password_hash),
-    role: String(row.role) as User['role'],
-    can_assign: Boolean(row.can_assign),
-    can_edit_leads: Boolean(row.can_edit_leads),
-    active: Boolean(row.active),
-    in_lead_pool: Boolean(row.in_lead_pool),
-    is_closer: Boolean(row.is_closer),
-    is_telecaller: Boolean(row.is_telecaller),
-    lead_pool_paused: Boolean(row.lead_pool_paused),
-  }))
-}
-
-export async function getUserByEmail(email: string): Promise<User | null> {
-  await ensureTable()
-  const db = getClient()
-  const result = await db.execute({
-    sql: 'SELECT * FROM users WHERE LOWER(email) = LOWER(?)',
-    args: [email],
-  })
-  if (result.rows.length === 0) return null
-  const row = result.rows[0]
+// Shared row → User mapper. Derives the work-mode fields with safe fallbacks so
+// existing rows (pre-migration NULLs) behave like Free agents: work_mode 'free',
+// daily_target 40, and agent_role inferred from the legacy is_telecaller/is_closer
+// flags (telecaller wins; default 'closer').
+function rowToUser(row: Record<string, unknown>): User {
+  const isTelecaller = Boolean(row.is_telecaller)
+  const isCloser = Boolean(row.is_closer)
+  const rawRole = row.agent_role == null ? '' : String(row.agent_role)
+  const agentRole: User['agent_role'] =
+    rawRole === 'telecaller' || rawRole === 'closer'
+      ? rawRole
+      : isTelecaller ? 'telecaller' : 'closer'
+  const rawMode = row.work_mode == null ? '' : String(row.work_mode)
+  const workMode: User['work_mode'] = rawMode === 'guided' ? 'guided' : 'free'
   return {
     id: String(row.id),
     name: String(row.name),
@@ -111,19 +107,46 @@ export async function getUserByEmail(email: string): Promise<User | null> {
     can_edit_leads: Boolean(row.can_edit_leads),
     active: Boolean(row.active),
     in_lead_pool: Boolean(row.in_lead_pool),
-    is_closer: Boolean(row.is_closer),
-    is_telecaller: Boolean(row.is_telecaller),
+    is_closer: isCloser,
+    is_telecaller: isTelecaller,
     lead_pool_paused: Boolean(row.lead_pool_paused),
+    work_mode: workMode,
+    agent_role: agentRole,
+    daily_target: row.daily_target == null ? 40 : Number(row.daily_target),
   }
 }
 
-export async function createUser(user: Omit<User, 'id'>): Promise<string> {
+export async function getUsers(): Promise<User[]> {
+  await ensureTable()
+  const db = getClient()
+  const result = await db.execute('SELECT * FROM users ORDER BY created_at ASC')
+  return result.rows.map(rowToUser)
+}
+
+export async function getUserByEmail(email: string): Promise<User | null> {
+  await ensureTable()
+  const db = getClient()
+  const result = await db.execute({
+    sql: 'SELECT * FROM users WHERE LOWER(email) = LOWER(?)',
+    args: [email],
+  })
+  if (result.rows.length === 0) return null
+  return rowToUser(result.rows[0])
+}
+
+// The Guided Work Mode fields are optional at create-time — they have DB
+// defaults (work_mode 'free', daily_target 40) and agent_role is derived from
+// the legacy flags on read — so existing callers don't need to supply them.
+export async function createUser(
+  user: Omit<User, 'id' | 'work_mode' | 'agent_role' | 'daily_target'>
+    & Partial<Pick<User, 'work_mode' | 'agent_role' | 'daily_target'>>,
+): Promise<string> {
   await ensureTable()
   const db = getClient()
   const id = `u_${Date.now()}`
   await db.execute({
-    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, can_edit_leads, active, in_lead_pool, is_closer, is_telecaller, lead_pool_paused)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, can_edit_leads, active, in_lead_pool, is_closer, is_telecaller, lead_pool_paused, work_mode, agent_role, daily_target)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       id,
       user.name,
@@ -137,6 +160,9 @@ export async function createUser(user: Omit<User, 'id'>): Promise<string> {
       user.is_closer ? 1 : 0,
       user.is_telecaller ? 1 : 0,
       user.lead_pool_paused ? 1 : 0,
+      user.work_mode || 'free',
+      user.agent_role || null,
+      user.daily_target ?? 40,
     ],
   })
   return id
@@ -147,21 +173,7 @@ export async function getUserById(userId: string): Promise<User | null> {
   const db = getClient()
   const r = await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [userId] })
   if (r.rows.length === 0) return null
-  const row = r.rows[0]
-  return {
-    id: String(row.id),
-    name: String(row.name),
-    email: String(row.email),
-    password_hash: String(row.password_hash),
-    role: String(row.role) as User['role'],
-    can_assign: Boolean(row.can_assign),
-    can_edit_leads: Boolean(row.can_edit_leads),
-    active: Boolean(row.active),
-    in_lead_pool: Boolean(row.in_lead_pool),
-    is_closer: Boolean(row.is_closer),
-    is_telecaller: Boolean(row.is_telecaller),
-    lead_pool_paused: Boolean(row.lead_pool_paused),
-  }
+  return rowToUser(r.rows[0])
 }
 
 export async function deleteUser(userId: string): Promise<void> {
@@ -193,6 +205,9 @@ export async function updateUser(userId: string, fields: Partial<User>): Promise
   if (fields.is_closer !== undefined) { updates.push('is_closer = ?'); values.push(fields.is_closer ? 1 : 0) }
   if (fields.is_telecaller !== undefined) { updates.push('is_telecaller = ?'); values.push(fields.is_telecaller ? 1 : 0) }
   if (fields.lead_pool_paused !== undefined) { updates.push('lead_pool_paused = ?'); values.push(fields.lead_pool_paused ? 1 : 0) }
+  if (fields.work_mode !== undefined) { updates.push('work_mode = ?'); values.push(fields.work_mode) }
+  if (fields.agent_role !== undefined) { updates.push('agent_role = ?'); values.push(fields.agent_role) }
+  if (fields.daily_target !== undefined) { updates.push('daily_target = ?'); values.push(fields.daily_target) }
 
   if (updates.length === 0) return
 

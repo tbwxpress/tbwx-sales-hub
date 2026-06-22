@@ -3,6 +3,7 @@ import './globals.css'
 import { BRAND } from '@/config/client'
 import CommandPalette from '@/components/CommandPalette'
 import KeyboardShortcutsHelp from '@/components/KeyboardShortcutsHelp'
+import GuidedRedirect from '@/components/GuidedRedirect'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Geist } from "next/font/google";
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen antialiased transition-colors duration-200">
         <TooltipProvider>
+          <GuidedRedirect />
           <CommandPalette />
           <KeyboardShortcutsHelp />
           <Toaster position="top-right" richColors closeButton />
