@@ -44,6 +44,9 @@ const ACTIVE_EXCLUDED = new Set(['CONVERTED', 'LOST', 'ARCHIVED'])
 export const AUTOBOUNCE_DAYS = Number(process.env.WORK_AUTOBOUNCE_DAYS || 7)
 // "Stalled HOT" / "no contact" threshold for the closer queue.
 const STALLED_DAYS = 3
+// Outcomes that are a dial/touch but NOT a real conversation — they count toward
+// the attempts target but not the conversations target.
+const NON_CONNECT_ACTIONS = new Set(['no_answer', 'no_response'])
 
 const last10 = (p: string) => String(p || '').replace(/\D/g, '').slice(-10)
 
@@ -84,8 +87,14 @@ export interface WorkCard {
 }
 
 export interface WorkStats {
-  cleared_today: number
-  target: number
+  // Two honest targets: every logged outcome is an "attempt" (dial/touch); an
+  // outcome where the agent actually reached/engaged the lead is a "conversation"
+  // (everything except a pure no-answer / no-response). attempts_target is the
+  // volume bar (~200), conversations_target the quality floor (≥50).
+  attempts_today: number
+  attempts_target: number
+  conversations_today: number
+  conversations_target: number
   streak: number
   queue_depth: number
 }
@@ -315,6 +324,17 @@ function ageDaysOf(iso: string | undefined, now: number): number {
   return (now - t) / DAY_MS
 }
 
+// Parse a timestamp that may be a SQLite 'YYYY-MM-DD HH:MM:SS' (space-separated)
+// OR an ISO 'YYYY-MM-DDTHH:MM:SSZ' string into epoch ms. Normalising the
+// separator is essential: a raw string `>=` between a space-form and a T-form
+// timestamp ALWAYS mis-compares (space 0x20 < 'T' 0x54), so never compare these
+// as strings.
+function tsToMs(s: string | null | undefined): number {
+  if (!s) return 0
+  const t = new Date(String(s).replace(' ', 'T')).getTime()
+  return Number.isNaN(t) ? 0 : t
+}
+
 function isCallbackDue(lead: Lead, now: number): boolean {
   if (!lead.next_followup) return false
   const t = new Date(lead.next_followup).getTime()
@@ -326,13 +346,18 @@ function isCallbackDue(lead: Lead, now: number): boolean {
 function rankTelecaller(
   leads: Lead[],
   lastMsgByPhone: Map<string, { direction: string; timestamp: string; text: string }>,
+  lastWorkByLead: Map<number, WorkEvent>,
   now: number,
 ): RankedLead[] {
   const ranked: RankedLead[] = []
   for (const lead of leads) {
     const lastMsg = lastMsgByPhone.get(last10(lead.phone))
     const window = windowFromLastMsg(lastMsg, now)
-    const everContacted = !!lastMsg || !!lead.first_call_date || lead.attempted_contact === 'Yes'
+    const lastWork = lastWorkByLead.get(lead.row_number)
+    // A logged work event counts as "contacted" too — this is what stops a
+    // no-answer/callback on a fresh NEW lead from re-looping the same card
+    // (bucket ② below excludes everContacted leads).
+    const everContacted = !!lastMsg || !!lead.first_call_date || lead.attempted_contact === 'Yes' || !!lastWork
 
     // ① open-window WhatsApp reply
     if (window.open) {
@@ -361,8 +386,9 @@ function rankTelecaller(
       })
       continue
     }
-    // ④ interested, not yet called
-    if (HOT_SET.has(lead.lead_status)) {
+    // ④ interested, not yet called (a work event means it WAS just handled —
+    // let it return later via its follow-up, don't re-loop it onto the rail).
+    if (HOT_SET.has(lead.lead_status) && !lastWork) {
       ranked.push({
         lead, bucket: 4, window, lastMsg,
         queue_reason: 'interested_not_called',
@@ -438,7 +464,11 @@ function rankCloser(
     // so a lead the agent followed up on after the reply is still surfaced.
     // (Open-window ①, new-handoff ②, and stalled-HOT ④ already `continue`d above,
     // so this can't double-count them.)
-    if (lastReceivedAt && !window.open) {
+    // Suppress if the closer already re-engaged AFTER that last reply (a work
+    // event newer than the inbound) — otherwise the same lead re-loops onto the
+    // rail on every outcome. It returns via ⑤ when its follow-up comes due.
+    const reEngagedAlready = !!lastWork && tsToMs(lastWork.created_at) >= tsToMs(lastReceivedAt)
+    if (lastReceivedAt && !window.open && !reEngagedAlready) {
       ranked.push({
         lead, bucket: 3, window, lastMsg,
         queue_reason: 're_engage',
@@ -501,16 +531,16 @@ export async function getWorkQueue(
     l => l.assigned_to === user.name && !ACTIVE_EXCLUDED.has(l.lead_status),
   )
 
-  const lastMsgByPhone = await getLastMessageByPhone()
+  const [lastMsgByPhone, lastWorkByLead] = await Promise.all([
+    getLastMessageByPhone(),
+    getLastWorkEventByLead(mine.map(l => l.row_number)),
+  ])
 
   let ranked: RankedLead[]
   if (role === 'telecaller') {
-    ranked = rankTelecaller(mine, lastMsgByPhone, now)
+    ranked = rankTelecaller(mine, lastMsgByPhone, lastWorkByLead, now)
   } else {
-    const [lastReceivedByPhone, lastWorkByLead] = await Promise.all([
-      getLastReceivedMessageByPhone(),
-      getLastWorkEventByLead(mine.map(l => l.row_number)),
-    ])
+    const lastReceivedByPhone = await getLastReceivedMessageByPhone()
     ranked = rankCloser(mine, lastMsgByPhone, lastReceivedByPhone, lastWorkByLead, now)
   }
 
@@ -562,32 +592,38 @@ function startOfTodayIso(): string {
 export async function getWorkStats(
   user: Pick<User, 'id' | 'name' | 'agent_role' | 'is_telecaller' | 'daily_target'>,
 ): Promise<WorkStats> {
-  const target = user.daily_target || 40
-  // Pull ~60 days of events once; compute cleared-today + streak from them.
+  // Conversations = the quality floor (≥50 by default); attempts = the volume
+  // bar (~200). daily_target is the conversation target.
+  const conversations_target = user.daily_target || 50
+  const attempts_target = Math.max(200, conversations_target * 4)
+  // Pull ~60 days of events once; compute today's counts + streak from them.
   const since = new Date(Date.now() - 60 * DAY_MS).toISOString()
   const events = await getWorkEventsForUserSince(user.id, since)
 
   const todayKey = new Date().toISOString().split('T')[0]
-  const byDay = new Map<string, number>()
+  const attemptsByDay = new Map<string, number>()
+  const convByDay = new Map<string, number>()
   for (const e of events) {
     const day = String(e.created_at || '').split(/[ T]/)[0]
     if (!day) continue
-    byDay.set(day, (byDay.get(day) || 0) + 1)
+    attemptsByDay.set(day, (attemptsByDay.get(day) || 0) + 1)
+    if (!NON_CONNECT_ACTIONS.has(String(e.action || ''))) {
+      convByDay.set(day, (convByDay.get(day) || 0) + 1)
+    }
   }
-  const cleared_today = byDay.get(todayKey) || 0
+  const attempts_today = attemptsByDay.get(todayKey) || 0
+  const conversations_today = convByDay.get(todayKey) || 0
 
   // Streak = consecutive days (ending today, or yesterday if today not yet hit)
-  // where the user cleared >= target.
+  // where the user hit the CONVERSATION target (the meaningful one).
   let streak = 0
   const cursor = new Date()
-  // If today hasn't hit target yet, the streak is still "alive" counting back
-  // from yesterday; if today HAS hit target, count today too.
-  if ((byDay.get(todayKey) || 0) < target) {
+  if ((convByDay.get(todayKey) || 0) < conversations_target) {
     cursor.setDate(cursor.getDate() - 1)
   }
   for (let i = 0; i < 60; i++) {
     const key = cursor.toISOString().split('T')[0]
-    if ((byDay.get(key) || 0) >= target) {
+    if ((convByDay.get(key) || 0) >= conversations_target) {
       streak++
       cursor.setDate(cursor.getDate() - 1)
     } else {
@@ -596,7 +632,7 @@ export async function getWorkStats(
   }
 
   const { queue_depth } = await getWorkQueue(user, { limit: 1 })
-  return { cleared_today, target, streak, queue_depth }
+  return { attempts_today, attempts_target, conversations_today, conversations_target, streak, queue_depth }
 }
 
 // ─── Playbook ────────────────────────────────────────────────────────
@@ -744,6 +780,14 @@ export async function applyWorkOutcome(input: ApplyOutcomeInput): Promise<ApplyO
     } catch (e) {
       console.error('[work] logAssignment non-critical:', e)
     }
+  }
+
+  // Mark the lead as "touched" on any real human channel so a fresh NEW lead
+  // leaves the never-contacted queue (and the rest of the app shows it as
+  // contacted) — defence-in-depth against a no-answer/callback re-looping.
+  if (channel === 'call' || channel === 'whatsapp') {
+    if (lead.attempted_contact !== 'Yes') patch.attempted_contact = 'Yes'
+    if (!lead.first_call_date) patch.first_call_date = new Date().toISOString().split('T')[0]
   }
   await updateLead(leadRow, patch)
 

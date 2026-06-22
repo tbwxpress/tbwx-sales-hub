@@ -1,30 +1,41 @@
 'use client'
 
-import { Flame } from 'lucide-react'
+import { Flame, Phone, MessageCircle } from 'lucide-react'
 import type { WorkStats } from './types'
 
 /**
- * CadenceHeader — pinned top of the rail. The agent's always-visible momentum:
- * a gold progress ring (cleared / target), a "{queue_depth} left" count, and a
- * streak chip. Tasteful "operator pride," not childish gamification.
+ * CadenceHeader — pinned top of the rail. The agent's always-visible momentum.
+ *
+ * Two honest targets, not one:
+ *   · CONVERSATIONS (the hero gold ring) — leads actually reached/engaged today
+ *     vs the quality floor (≥50). This is what "good work" means.
+ *   · DIALS / ATTEMPTS (the slim bar) — every logged outcome vs the volume bar
+ *     (~200). Effort, not just outcomes.
+ * Plus a "{queue_depth} left" count and a streak chip (consecutive days hitting
+ * the conversation target). Tasteful operator pride, not childish gamification.
  *
  * The ring is a pure SVG radial bar (stroke-dasharray = circumference, animated
  * stroke-dashoffset) so it fills smoothly via a CSS transition — no animation
- * library, matching the rest of the app. Respects prefers-reduced-motion through
- * the global media query (the transition simply lands instantly).
+ * library. Respects prefers-reduced-motion through the global media query.
  */
 export default function CadenceHeader({ stats }: { stats: WorkStats }) {
-  const target = Math.max(1, stats.target || 1)
-  const cleared = Math.max(0, stats.cleared_today || 0)
-  const pct = Math.min(100, Math.round((cleared / target) * 100))
-  const hitTarget = cleared >= target
+  // Conversations — the hero metric.
+  const convTarget = Math.max(1, stats.conversations_target || 1)
+  const conv = Math.max(0, stats.conversations_today || 0)
+  const convPct = Math.min(100, Math.round((conv / convTarget) * 100))
+  const convHit = conv >= convTarget
 
-  // Ring geometry — small, dense, gold.
-  const size = 46
+  // Dials / attempts — the volume bar.
+  const attTarget = Math.max(1, stats.attempts_target || 1)
+  const att = Math.max(0, stats.attempts_today || 0)
+  const attPct = Math.min(100, Math.round((att / attTarget) * 100))
+
+  // Ring geometry — small, dense.
+  const size = 48
   const stroke = 4
   const r = (size - stroke) / 2
   const circ = 2 * Math.PI * r
-  const offset = circ * (1 - pct / 100)
+  const offset = circ * (1 - convPct / 100)
 
   return (
     <header
@@ -32,7 +43,7 @@ export default function CadenceHeader({ stats }: { stats: WorkStats }) {
       style={{ boxShadow: '0 1px 0 0 color-mix(in srgb, var(--color-border) 50%, transparent)' }}
     >
       <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-2.5">
-        {/* Progress ring */}
+        {/* Conversations ring (hero) */}
         <div className="relative shrink-0" style={{ width: size, height: size }}>
           <svg
             width={size}
@@ -40,26 +51,18 @@ export default function CadenceHeader({ stats }: { stats: WorkStats }) {
             viewBox={`0 0 ${size} ${size}`}
             className="-rotate-90"
             role="progressbar"
-            aria-valuenow={cleared}
+            aria-valuenow={conv}
             aria-valuemin={0}
-            aria-valuemax={target}
-            aria-label={`${cleared} of ${target} cleared today`}
+            aria-valuemax={convTarget}
+            aria-label={`${conv} of ${convTarget} conversations today`}
           >
             <circle
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              fill="transparent"
-              strokeWidth={stroke}
+              cx={size / 2} cy={size / 2} r={r} fill="transparent" strokeWidth={stroke}
               stroke="color-mix(in srgb, var(--color-accent) 14%, transparent)"
             />
             <circle
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              fill="transparent"
-              strokeWidth={stroke}
-              stroke={hitTarget ? 'var(--color-success)' : 'var(--color-accent)'}
+              cx={size / 2} cy={size / 2} r={r} fill="transparent" strokeWidth={stroke}
+              stroke={convHit ? 'var(--color-success)' : 'var(--color-accent)'}
               strokeLinecap="round"
               strokeDasharray={circ}
               strokeDashoffset={offset}
@@ -67,24 +70,51 @@ export default function CadenceHeader({ stats }: { stats: WorkStats }) {
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-[13px] font-bold leading-none tabular-nums text-text">{cleared}</span>
-            <span className="text-[7px] font-semibold leading-none text-dim">/{target}</span>
+            <span className="text-[14px] font-bold leading-none tabular-nums text-text">{conv}</span>
+            <span className="text-[8px] font-semibold leading-none text-dim">/{convTarget}</span>
           </div>
         </div>
 
-        {/* Labels */}
+        {/* Labels + dials bar */}
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-1.5">
-            <span className="text-heading font-bold text-text">Today&apos;s rail</span>
-            {hitTarget && (
-              <span className="text-eyebrow text-[var(--color-success)]">target hit</span>
+            <span className="flex items-center gap-1 text-heading font-bold text-text">
+              <MessageCircle className="h-3.5 w-3.5 text-accent" strokeWidth={2.4} />
+              {conv} talks today
+            </span>
+            {convHit && (
+              <span className="text-eyebrow text-[var(--color-success)]">target hit 🎯</span>
             )}
           </div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-caption text-muted">
-            <span className="tabular-nums font-semibold text-body">{stats.queue_depth}</span>
-            <span>left</span>
-            <span className="text-dim">·</span>
-            <span className="tabular-nums">🎯 {target}</span>
+
+          {/* Dials / attempts — slim bar */}
+          <div className="mt-1.5 flex items-center gap-2">
+            <Phone className="h-3 w-3 shrink-0 text-dim" strokeWidth={2.4} aria-hidden />
+            <div
+              className="relative h-1.5 flex-1 overflow-hidden rounded-full"
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}
+              role="progressbar"
+              aria-valuenow={att}
+              aria-valuemin={0}
+              aria-valuemax={attTarget}
+              aria-label={`${att} of ${attTarget} dials today`}
+            >
+              <div
+                className="absolute inset-y-0 left-0 rounded-full"
+                style={{
+                  width: `${attPct}%`,
+                  background: 'var(--color-accent)',
+                  transition: 'width 0.6s cubic-bezier(0.43,0.13,0.23,0.96)',
+                }}
+              />
+            </div>
+            <span className="shrink-0 text-caption tabular-nums text-muted">
+              {att}<span className="text-dim">/{attTarget} dials</span>
+            </span>
+          </div>
+
+          <div className="mt-0.5 text-caption text-dim">
+            <span className="tabular-nums font-semibold text-body">{stats.queue_depth}</span> on your rail
           </div>
         </div>
 
@@ -96,7 +126,7 @@ export default function CadenceHeader({ stats }: { stats: WorkStats }) {
               background: 'color-mix(in srgb, var(--color-hot) 16%, transparent)',
               color: 'var(--color-hot)',
             }}
-            title={`${stats.streak} consecutive days hitting target`}
+            title={`${stats.streak} consecutive days hitting your conversation target`}
           >
             <Flame className="h-3.5 w-3.5" strokeWidth={2.4} />
             {stats.streak}-day

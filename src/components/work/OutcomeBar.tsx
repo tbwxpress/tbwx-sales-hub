@@ -79,32 +79,37 @@ export default function OutcomeBar({
   }
 
   return (
-    <div className="space-y-2.5">
-      {/* Optional note + also-WhatsApp toggle */}
+    <div className="space-y-3">
+      {/* Note + "also contacted on WhatsApp" — clear, tappable chips. */}
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setShowNote((s) => !s)}
-          className="focus-ring inline-flex items-center gap-1 rounded-full px-2 py-1 text-caption text-dim transition-colors hover:text-muted"
+          className="focus-ring inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-caption font-medium transition-colors"
+          style={
+            showNote
+              ? { borderColor: 'color-mix(in srgb, var(--color-accent) 45%, transparent)', background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-text)' }
+              : { borderColor: 'var(--color-border)', color: 'var(--color-muted)' }
+          }
           aria-pressed={showNote}
         >
-          <PenLine className="h-3 w-3" />
+          <PenLine className="h-3.5 w-3.5" />
           {showNote ? 'Hide note' : 'Add note'}
         </button>
         <button
           type="button"
           onClick={() => setAlsoWa((s) => !s)}
-          className="focus-ring inline-flex items-center gap-1 rounded-full px-2 py-1 text-caption transition-colors"
+          className="focus-ring inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-caption font-medium transition-colors"
           style={
             alsoWa
-              ? { background: 'color-mix(in srgb, var(--color-success) 16%, transparent)', color: 'var(--color-success)' }
-              : { color: 'var(--color-dim)' }
+              ? { borderColor: 'var(--color-success)', background: 'color-mix(in srgb, var(--color-success) 16%, transparent)', color: 'var(--color-success)' }
+              : { borderColor: 'var(--color-border)', color: 'var(--color-muted)' }
           }
           aria-pressed={alsoWa}
           title="Record an off-system WhatsApp touch (tracked as a flag, not scored)"
         >
-          {alsoWa ? <Check className="h-3 w-3" /> : <MessageCircle className="h-3 w-3" />}
-          also messaged on WhatsApp
+          {alsoWa ? <Check className="h-3.5 w-3.5" /> : <MessageCircle className="h-3.5 w-3.5" />}
+          Also contacted on WhatsApp
         </button>
       </div>
 
@@ -120,6 +125,12 @@ export default function OutcomeBar({
         />
       )}
 
+      {/* The forced choice — how did it go? */}
+      <div className="flex items-center gap-2 pt-0.5">
+        <span className="text-eyebrow text-dim">How did it go?</span>
+        <span className="h-px flex-1" style={{ background: 'color-mix(in srgb, var(--color-border) 70%, transparent)' }} />
+      </div>
+
       {/* Outcome buttons — rendered straight from card.outcomes */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {card.outcomes.map((o) => {
@@ -131,7 +142,7 @@ export default function OutcomeBar({
               onClick={() => handleOutcomeClick(o)}
               disabled={submitting}
               className={[
-                'focus-ring flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-all active:translate-y-px disabled:opacity-50',
+                'focus-ring flex min-h-[54px] items-center justify-center gap-1.5 rounded-xl px-3 py-3 text-[13.5px] font-semibold transition-all active:translate-y-px disabled:opacity-50',
                 s.variant === 'win' ? 'btn-win text-[var(--color-success)]' : '',
                 s.variant === 'loss' ? 'btn-loss text-[var(--color-danger)]' : '',
                 s.variant === 'neutral' ? 'border border-border bg-elevated text-body hover:border-border-light hover:bg-card' : '',

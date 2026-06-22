@@ -52,10 +52,14 @@ export interface Card {
   remaining: number
 }
 
-/** Cadence stats — drives the progress ring, "left" count, and streak chip. */
+/** Cadence stats — drives the progress rings, "left" count, and streak chip. */
 export interface WorkStats {
-  cleared_today: number
-  target: number
+  /** Every logged outcome (dial/touch) — the volume bar. */
+  attempts_today: number
+  attempts_target: number
+  /** Outcomes where the agent actually reached/engaged the lead — the quality floor. */
+  conversations_today: number
+  conversations_target: number
   streak: number
   queue_depth: number
 }

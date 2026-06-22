@@ -31,7 +31,14 @@ import type { Card, WorkStats } from '@/components/work/types'
  * media query that lands transitions instantly).
  */
 
-const DEFAULT_STATS: WorkStats = { cleared_today: 0, target: 30, streak: 0, queue_depth: 0 }
+const DEFAULT_STATS: WorkStats = {
+  attempts_today: 0,
+  attempts_target: 200,
+  conversations_today: 0,
+  conversations_target: 50,
+  streak: 0,
+  queue_depth: 0,
+}
 
 type Phase = 'loading' | 'card' | 'caught-up' | 'error'
 
@@ -185,7 +192,7 @@ export default function WorkPage() {
         )}
 
         {phase === 'caught-up' && (
-          <CaughtUp cleared={stats.cleared_today} onRefresh={loadQueue} />
+          <CaughtUp cleared={stats.attempts_today} onRefresh={loadQueue} />
         )}
 
         {phase === 'card' && card && (

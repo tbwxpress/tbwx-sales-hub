@@ -53,6 +53,26 @@ interface WaTemplate {
   category: string
 }
 
+// Indian phone → E.164 + a readable display. Leads are stored inconsistently:
+// bare 10-digit ("7876543210"), with country code ("917876543210"), or with a
+// leading 0. A naive `tel:+<digits>` on a bare 10-digit number starting with 7
+// dials KAZAKHSTAN (+7…), so always normalise Indian mobiles to +91.
+function normalizeIndiaPhone(raw: string): { e164: string; display: string } {
+  let d = String(raw || '').replace(/\D/g, '')
+  if (!d) return { e164: '', display: '' }
+  if (d.startsWith('00')) d = d.slice(2) // drop an international "00" prefix
+  if (d.length > 10 && d.startsWith('0')) d = d.replace(/^0+/, '')
+  if (d.length === 10) d = '91' + d // bare Indian mobile → add country code
+  else if (d.length === 11 && d.startsWith('0')) d = '91' + d.slice(1)
+  const e164 = '+' + d
+  let display = e164
+  if (d.length === 12 && d.startsWith('91')) {
+    const local = d.slice(2)
+    display = `+91 ${local.slice(0, 5)} ${local.slice(5)}`
+  }
+  return { e164, display }
+}
+
 // Three short talking-point prompts for novice telecallers on a cold call.
 // Tailored from the qualification fields the engine already attaches.
 function talkingPoints(card: Card): string[] {
@@ -160,21 +180,31 @@ export default function WorkCard({
   function loadTemplates() {
     if (tplLoadedRef.current) return
     tplLoadedRef.current = true
-    fetch('/api/templates')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) {
-          setTemplates(
-            d.data
-              .filter((t: { status: string; name: string }) => t.status === 'APPROVED' && t.name !== 'hello_world')
-              .map((t: { name: string; param_count: number; category: string }) => ({
-                name: t.name,
-                label: t.name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-                param_count: t.param_count,
-                category: t.category,
-              })),
-          )
-        }
+    // Only the two templates actually IN USE — the opt-in message + the deck
+    // carrier ("marketing_first") configured in Admin → Settings — not every
+    // approved template. Fall back to the server defaults if unset.
+    Promise.all([
+      fetch('/api/templates').then((r) => r.json()).catch(() => null),
+      fetch('/api/settings/templates').then((r) => r.json()).catch(() => null),
+    ])
+      .then(([tpl, settings]) => {
+        if (!tpl?.success || !Array.isArray(tpl.data)) return
+        const s = settings?.data || settings || {}
+        const optIn = String(s.opt_in || s.defaults?.opt_in || '').trim()
+        const deck = String(s.marketing_first || s.defaults?.marketing_first || '').trim()
+        const allow: Record<string, string> = {}
+        if (optIn) allow[optIn] = 'Opt-in message'
+        if (deck) allow[deck] = 'Franchise deck'
+        setTemplates(
+          (tpl.data as Array<{ status: string; name: string; param_count: number; category: string }>)
+            .filter((t) => t.status === 'APPROVED' && allow[t.name])
+            .map((t) => ({
+              name: t.name,
+              label: allow[t.name],
+              param_count: t.param_count,
+              category: t.category,
+            })),
+        )
       })
       .catch(() => {})
   }
@@ -210,7 +240,8 @@ export default function WorkCard({
     setTplSending(false)
   }
 
-  const telHref = `tel:+${card.phone.replace(/\D/g, '')}`
+  const { e164: telE164, display: phoneDisplay } = normalizeIndiaPhone(card.phone)
+  const telHref = telE164 ? `tel:${telE164}` : '#'
 
   return (
     <article className="animate-fade-in-up overflow-hidden rounded-2xl border border-border bg-card glow-accent-sm">
@@ -238,6 +269,19 @@ export default function WorkCard({
               </Badge>
             )}
           </div>
+
+          {/* Phone — always visible + tappable to dial (normalised to +91). */}
+          {phoneDisplay && (
+            <a
+              href={telHref}
+              onClick={() => onChannelUsed('call')}
+              className="focus-ring mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border bg-elevated px-2.5 py-1 text-[15px] font-semibold tabular-nums text-accent transition-colors hover:border-accent/50"
+              aria-label={`Call ${phoneDisplay}`}
+            >
+              <Phone className="h-3.5 w-3.5" strokeWidth={2.4} />
+              {phoneDisplay}
+            </a>
+          )}
 
           {/* Qualification one-liner — city · model · timeline · experience */}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-body text-muted">
