@@ -1345,17 +1345,24 @@ export async function getWorkEventsForUserSince(userId: string, sinceIso: string
 export async function getLastWorkEventByLead(leadRows: number[]): Promise<Map<number, WorkEvent>> {
   const map = new Map<number, WorkEvent>()
   if (leadRows.length === 0) return map
-  const db = await ensureInit()
-  for (let i = 0; i < leadRows.length; i += 500) {
-    const batch = leadRows.slice(i, i + 500)
-    const placeholders = batch.map(() => '?').join(',')
-    const r = await db.execute({
-      sql: `SELECT * FROM work_events WHERE lead_row IN (${placeholders}) ORDER BY created_at DESC`,
-      args: batch,
-    })
-    for (const e of serializeRows(r.rows).map(rowToWorkEvent)) {
-      if (e.lead_row != null && !map.has(e.lead_row)) map.set(e.lead_row, e) // DESC → first = latest
+  // Best-effort, like getLastMessageByPhone: a transient DB error must NOT reject
+  // the whole work queue — return what we have (rankers treat a missing lastWork
+  // as "not worked yet").
+  try {
+    const db = await ensureInit()
+    for (let i = 0; i < leadRows.length; i += 500) {
+      const batch = leadRows.slice(i, i + 500)
+      const placeholders = batch.map(() => '?').join(',')
+      const r = await db.execute({
+        sql: `SELECT * FROM work_events WHERE lead_row IN (${placeholders}) ORDER BY created_at DESC`,
+        args: batch,
+      })
+      for (const e of serializeRows(r.rows).map(rowToWorkEvent)) {
+        if (e.lead_row != null && !map.has(e.lead_row)) map.set(e.lead_row, e) // DESC → first = latest
+      }
     }
+  } catch (err) {
+    console.error('[getLastWorkEventByLead] non-critical:', err)
   }
   return map
 }

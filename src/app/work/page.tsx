@@ -205,7 +205,6 @@ export default function WorkPage() {
             <div className="mt-4">
               <OutcomeBar
                 card={card}
-                channel={channelRef.current}
                 submitting={submitting}
                 onSubmit={handleOutcome}
               />

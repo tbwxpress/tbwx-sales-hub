@@ -17,6 +17,7 @@ import { FOLLOWUP_DAYS } from '@/config/client'
 import { getLeads, updateLead } from './sheets'
 import { getUsers } from './users'
 import { notifyQuiet } from './notifications'
+import { istToday, istDate } from './format'
 import {
   getLastMessageByPhone,
   getLastReceivedMessageByPhone,
@@ -149,6 +150,14 @@ function toIsoDate(daysFromNow: number): string {
   const d = new Date()
   d.setDate(d.getDate() + daysFromNow)
   return d.toISOString().split('T')[0]
+}
+
+// A user-picked callback/booked date, never today or in the past: a same-day
+// pick would parse as "due" for the rest of the day and re-loop the card, so
+// clamp it to tomorrow. (YYYY-MM-DD string compare is safe.)
+function futureDateOr(providedTime: string | undefined, fallbackDays = 1): string {
+  if (!providedTime) return toIsoDate(fallbackDays)
+  return providedTime > toIsoDate(0) ? providedTime : toIsoDate(1)
 }
 
 // The effective agent role for a session user, honoring agent_role and falling
@@ -331,7 +340,12 @@ function ageDaysOf(iso: string | undefined, now: number): number {
 // as strings.
 function tsToMs(s: string | null | undefined): number {
   if (!s) return 0
-  const t = new Date(String(s).replace(' ', 'T')).getTime()
+  let str = String(s).trim().replace(' ', 'T')
+  // A bare 'YYYY-MM-DDTHH:MM:SS' with no zone is a SQLite datetime('now') value,
+  // which is UTC — pin it to UTC ('Z') so it isn't read as server-local if the
+  // runtime TZ is ever not UTC. ISO strings with a Z/offset are left alone.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(str)) str += 'Z'
+  const t = new Date(str).getTime()
   return Number.isNaN(t) ? 0 : t
 }
 
@@ -359,8 +373,12 @@ function rankTelecaller(
     // (bucket ② below excludes everContacted leads).
     const everContacted = !!lastMsg || !!lead.first_call_date || lead.attempted_contact === 'Yes' || !!lastWork
 
-    // ① open-window WhatsApp reply
-    if (window.open) {
+    // A work event newer than the customer's last reply = we already handled it;
+    // don't keep re-serving the same open-window card (the re-loop bug).
+    const reEngagedAlready = !!lastWork && tsToMs(lastWork.created_at) >= tsToMs(window.last_received_at)
+
+    // ① open-window WhatsApp reply (unless we already worked it since that reply)
+    if (window.open && !reEngagedAlready) {
       ranked.push({
         lead, bucket: 1, window, lastMsg,
         queue_reason: 'open_window_reply',
@@ -426,9 +444,12 @@ function rankCloser(
     const lastReceivedAt = lastReceivedByPhone.get(last10(lead.phone))?.last_received_at || ''
     const window = windowFromLastMsg(lastMsg, now)
     const lastWork = lastWorkByLead.get(lead.row_number)
+    // A work event newer than the customer's last reply = we already re-engaged;
+    // don't keep re-serving the same card (bucket ① open-window AND ③ re-engage).
+    const reEngagedAlready = !!lastWork && tsToMs(lastWork.created_at) >= tsToMs(lastReceivedAt)
 
     // ① open-window reply (HOT / soonest-closing first handled in sort)
-    if (window.open) {
+    if (window.open && !reEngagedAlready) {
       ranked.push({
         lead, bucket: 1, window, lastMsg,
         queue_reason: 'open_window_reply',
@@ -464,10 +485,9 @@ function rankCloser(
     // so a lead the agent followed up on after the reply is still surfaced.
     // (Open-window ①, new-handoff ②, and stalled-HOT ④ already `continue`d above,
     // so this can't double-count them.)
-    // Suppress if the closer already re-engaged AFTER that last reply (a work
-    // event newer than the inbound) — otherwise the same lead re-loops onto the
-    // rail on every outcome. It returns via ⑤ when its follow-up comes due.
-    const reEngagedAlready = !!lastWork && tsToMs(lastWork.created_at) >= tsToMs(lastReceivedAt)
+    // Suppress if the closer already re-engaged AFTER that last reply (handled by
+    // reEngagedAlready, computed above) — otherwise the same lead re-loops onto
+    // the rail on every outcome. It returns via ⑤ when its follow-up comes due.
     if (lastReceivedAt && !window.open && !reEngagedAlready) {
       ranked.push({
         lead, bucket: 3, window, lastMsg,
@@ -581,13 +601,16 @@ export async function getWorkQueue(
 // Start of "today" as an ISO string (server-local). Matches how the rest of the
 // app derives todayStr (new Date().toISOString().split('T')[0]).
 function startOfTodayIso(): string {
-  return `${new Date().toISOString().split('T')[0]} 00:00:00`
+  // Most-recent IST midnight, expressed as a UTC 'YYYY-MM-DD HH:MM:SS' string so
+  // it compares correctly against work_events.created_at (UTC, space-separated).
+  const istMidnightUtcMs = new Date(`${istToday()}T00:00:00+05:30`).getTime()
+  return new Date(istMidnightUtcMs).toISOString().replace('T', ' ').slice(0, 19)
 }
 
 /**
- * cleared_today / target / streak / queue_depth for the cadence header + owner
- * panel. cleared_today + streak come from work_events; queue_depth from the
- * priority engine.
+ * attempts/conversations (today + targets) + streak + queue_depth for the cadence
+ * header. Counts come from work_events bucketed by IST calendar day; queue_depth
+ * from the priority engine.
  */
 export async function getWorkStats(
   user: Pick<User, 'id' | 'name' | 'agent_role' | 'is_telecaller' | 'daily_target'>,
@@ -600,12 +623,15 @@ export async function getWorkStats(
   const since = new Date(Date.now() - 60 * DAY_MS).toISOString()
   const events = await getWorkEventsForUserSince(user.id, since)
 
-  const todayKey = new Date().toISOString().split('T')[0]
+  // Bucket by IST calendar day (work_events.created_at is UTC; the team is in
+  // India and the app rolls "today" at IST midnight — see format.ts).
+  const todayKey = istToday()
   const attemptsByDay = new Map<string, number>()
   const convByDay = new Map<string, number>()
   for (const e of events) {
-    const day = String(e.created_at || '').split(/[ T]/)[0]
-    if (!day) continue
+    const ms = tsToMs(e.created_at)
+    if (!ms) continue
+    const day = istDate(new Date(ms))
     attemptsByDay.set(day, (attemptsByDay.get(day) || 0) + 1)
     if (!NON_CONNECT_ACTIONS.has(String(e.action || ''))) {
       convByDay.set(day, (convByDay.get(day) || 0) + 1)
@@ -614,18 +640,14 @@ export async function getWorkStats(
   const attempts_today = attemptsByDay.get(todayKey) || 0
   const conversations_today = convByDay.get(todayKey) || 0
 
-  // Streak = consecutive days (ending today, or yesterday if today not yet hit)
-  // where the user hit the CONVERSATION target (the meaningful one).
+  // Streak = consecutive IST days (ending today, or yesterday if today not yet
+  // hit) where the user hit the CONVERSATION target (the meaningful one).
   let streak = 0
-  const cursor = new Date()
-  if ((convByDay.get(todayKey) || 0) < conversations_target) {
-    cursor.setDate(cursor.getDate() - 1)
-  }
-  for (let i = 0; i < 60; i++) {
-    const key = cursor.toISOString().split('T')[0]
+  let i = (convByDay.get(todayKey) || 0) < conversations_target ? 1 : 0
+  for (; i < 60; i++) {
+    const key = istDate(new Date(Date.now() - i * DAY_MS))
     if ((convByDay.get(key) || 0) >= conversations_target) {
       streak++
-      cursor.setDate(cursor.getDate() - 1)
     } else {
       break
     }
@@ -669,7 +691,7 @@ function resolveOutcome(
       case 'interested':
         return { nextStatus: 'CALL_DONE_INTERESTED', nextFollowup: toIsoDate(FOLLOWUP_DAYS.CALL_DONE_INTERESTED ?? 2), route: 'closer', won: false }
       case 'callback':
-        return { nextStatus: keep, nextFollowup: providedTime || toIsoDate(1), route: null, won: false }
+        return { nextStatus: keep, nextFollowup: futureDateOr(providedTime), route: null, won: false }
       case 'no_answer':
         return { nextStatus: keep, nextFollowup: toIsoDate(1), route: null, won: false }
       case 'not_ready':
@@ -686,7 +708,7 @@ function resolveOutcome(
       case 'deck_sent':
         return { nextStatus: 'DECK_SENT', nextFollowup: toIsoDate(2), route: null, won: false }
       case 'booked':
-        return { nextStatus: keep, nextFollowup: providedTime || toIsoDate(1), route: null, won: false }
+        return { nextStatus: keep, nextFollowup: futureDateOr(providedTime), route: null, won: false }
       case 'not_ready':
         return { nextStatus: 'DELAYED', nextFollowup: toIsoDate(FOLLOWUP_DAYS.DELAYED ?? 7), route: null, won: false }
       case 'no_response':

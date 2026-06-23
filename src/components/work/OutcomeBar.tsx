@@ -42,13 +42,10 @@ function outcomeStyle(key: string): { variant: 'win' | 'loss' | 'neutral'; icon:
 
 export default function OutcomeBar({
   card,
-  channel,
   submitting,
   onSubmit,
 }: {
   card: Card
-  /** The channel the agent actually used (whatsapp/call) for this card. */
-  channel: 'call' | 'whatsapp' | 'template' | 'system'
   submitting: boolean
   onSubmit: (args: { outcome: string; note?: string; alsoWhatsapp?: boolean }) => void
 }) {

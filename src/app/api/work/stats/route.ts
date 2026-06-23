@@ -4,7 +4,7 @@ import { getSession, requireAuth } from '@/lib/auth'
 import { getUserById } from '@/lib/users'
 import { getWorkStats } from '@/lib/work'
 
-// GET /api/work/stats → { cleared_today, target, streak, queue_depth }
+// GET /api/work/stats → { attempts_today, attempts_target, conversations_today, conversations_target, streak, queue_depth }
 export async function GET() {
   try {
     const session = await getSession()

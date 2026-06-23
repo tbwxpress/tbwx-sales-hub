@@ -62,7 +62,7 @@ function normalizeIndiaPhone(raw: string): { e164: string; display: string } {
   if (!d) return { e164: '', display: '' }
   if (d.startsWith('00')) d = d.slice(2) // drop an international "00" prefix
   if (d.length > 10 && d.startsWith('0')) d = d.replace(/^0+/, '')
-  if (d.length === 10) d = '91' + d // bare Indian mobile → add country code
+  if (d.length === 10 && /^[6-9]/.test(d)) d = '91' + d // bare Indian mobile (starts 6–9)
   else if (d.length === 11 && d.startsWith('0')) d = '91' + d.slice(1)
   const e164 = '+' + d
   let display = e164
@@ -175,11 +175,11 @@ export default function WorkCard({
   const [templates, setTemplates] = useState<WaTemplate[]>([])
   const [showTemplates, setShowTemplates] = useState(false)
   const [tplSending, setTplSending] = useState(false)
-  const tplLoadedRef = useRef(false)
+  const [tplState, setTplState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle')
 
   function loadTemplates() {
-    if (tplLoadedRef.current) return
-    tplLoadedRef.current = true
+    if (tplState === 'loading' || tplState === 'loaded') return
+    setTplState('loading')
     // Only the two templates actually IN USE — the opt-in message + the deck
     // carrier ("marketing_first") configured in Admin → Settings — not every
     // approved template. Fall back to the server defaults if unset.
@@ -188,7 +188,7 @@ export default function WorkCard({
       fetch('/api/settings/templates').then((r) => r.json()).catch(() => null),
     ])
       .then(([tpl, settings]) => {
-        if (!tpl?.success || !Array.isArray(tpl.data)) return
+        if (!tpl?.success || !Array.isArray(tpl.data)) { setTplState('error'); return }
         const s = settings?.data || settings || {}
         const optIn = String(s.opt_in || s.defaults?.opt_in || '').trim()
         const deck = String(s.marketing_first || s.defaults?.marketing_first || '').trim()
@@ -205,8 +205,9 @@ export default function WorkCard({
               category: t.category,
             })),
         )
+        setTplState('loaded')
       })
-      .catch(() => {})
+      .catch(() => setTplState('error'))
   }
 
   async function sendTemplate(name: string, paramCount: number) {
@@ -383,6 +384,8 @@ export default function WorkCard({
             <div className="flex items-center justify-between gap-2 pt-0.5">
               <TemplateMenu
                 templates={templates}
+                state={tplState}
+                onRetry={loadTemplates}
                 open={showTemplates}
                 onOpenChange={(v) => { setShowTemplates(v); if (v) loadTemplates() }}
                 sending={tplSending}
@@ -436,6 +439,8 @@ export default function WorkCard({
             <div className="flex justify-center pt-0.5">
               <TemplateMenu
                 templates={templates}
+                state={tplState}
+                onRetry={loadTemplates}
                 open={showTemplates}
                 onOpenChange={(v) => { setShowTemplates(v); if (v) loadTemplates() }}
                 sending={tplSending}
@@ -453,6 +458,8 @@ export default function WorkCard({
 /** Shared template picker popover — secondary "send deck/info" action. */
 function TemplateMenu({
   templates,
+  state,
+  onRetry,
   open,
   onOpenChange,
   sending,
@@ -460,6 +467,8 @@ function TemplateMenu({
   label = 'Send template',
 }: {
   templates: WaTemplate[]
+  state: 'idle' | 'loading' | 'loaded' | 'error'
+  onRetry: () => void
   open: boolean
   onOpenChange: (v: boolean) => void
   sending: boolean
@@ -476,8 +485,19 @@ function TemplateMenu({
       </PopoverTrigger>
       <PopoverContent align="center" className="w-72 max-w-[88vw] p-2">
         <div className="text-eyebrow mb-1.5 px-1 text-dim">Approved templates</div>
-        {templates.length === 0 ? (
+        {state === 'loading' ? (
           <p className="px-1 py-2 text-caption text-dim">Loading templates…</p>
+        ) : state === 'error' ? (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="focus-ring w-full rounded-lg px-1 py-2 text-left text-caption transition-colors hover:text-text"
+            style={{ color: 'var(--color-danger)' }}
+          >
+            Couldn’t load templates — tap to retry
+          </button>
+        ) : templates.length === 0 ? (
+          <p className="px-1 py-2 text-caption text-dim">No deck template set yet — configure it in Admin → Settings → Templates.</p>
         ) : (
           <div className="max-h-64 space-y-1 overflow-y-auto">
             {templates.map((t) => (
