@@ -111,9 +111,20 @@ export default function WorkPage() {
 
   // Submit an outcome → POST → animate out + "+1" → render the returned next.
   const handleOutcome = useCallback(
-    async ({ outcome, note, alsoWhatsapp }: { outcome: string; note?: string; alsoWhatsapp?: boolean }) => {
-      if (!card || submitting) return
-      if (inflightRef.current) return
+    async (args: {
+      outcome: string
+      note?: string
+      alsoWhatsapp?: boolean
+      sentiment?: string
+      objection?: string
+      capital_readiness?: string
+      decision_maker?: string
+      buyer_persona?: string
+      next_step?: string
+    }) => {
+      const { outcome } = args
+      if (!card || submitting) return false
+      if (inflightRef.current) return false
       inflightRef.current = true
       setSubmitting(true)
       const isWon = outcome.toLowerCase() === 'won'
@@ -124,10 +135,8 @@ export default function WorkPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             leadRow: card.lead_row,
-            outcome,
             channel: channelRef.current,
-            note,
-            alsoWhatsapp,
+            ...args,
           }),
         })
         const data = await res.json()
@@ -135,11 +144,12 @@ export default function WorkPage() {
           toast.error(data.error || 'Could not log that outcome — try again')
           inflightRef.current = false
           setSubmitting(false)
-          return
+          return false
         }
 
         if (data.stats) setStats(data.stats)
         if (data.routedTo) toast.success(`Routed to ${data.routedTo}`)
+        if (data.suggest_whatsapp) toast('Phone nahi uthaya — WhatsApp bhej do, window khul jayegi 💬')
 
         // Trigger the crisp "+1" and the card slide-out together.
         pendingNext.current = { next: data.next ?? null }
@@ -153,8 +163,10 @@ export default function WorkPage() {
           // Let the slide-out play (~220ms) then swap in the next card.
           window.setTimeout(commitNext, 220)
         }
+        return true
       } catch {
         toast.error('Network error — your outcome was not saved')
+        return false
       } finally {
         inflightRef.current = false
         setSubmitting(false)

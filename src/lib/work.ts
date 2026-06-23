@@ -18,6 +18,7 @@ import { getLeads, updateLead } from './sheets'
 import { getUsers } from './users'
 import { notifyQuiet } from './notifications'
 import { istToday, istDate } from './format'
+import { leadScore } from './scoring'
 import {
   getLastMessageByPhone,
   getLastReceivedMessageByPhone,
@@ -34,7 +35,10 @@ import {
   getLastWorkEventByLead,
   getWorkEventCountsSince,
   getLastWorkEventAtByUser,
+  getLeadSignalsByRows,
+  upsertLeadSignal,
   type WorkEvent,
+  type LeadSignal,
 } from './db'
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -85,6 +89,17 @@ export interface WorkCard {
   outcomes: OutcomeOption[]
   queue_reason: string
   remaining: number
+  // Sales-AI: explainable propensity score + the captured structured signals.
+  score: number
+  score_reasons: string[]
+  temperature: 'warming' | 'flat' | 'cooling'
+  signals: {
+    objection: string | null
+    sentiment: string | null
+    capital_readiness: string | null
+    decision_maker: string | null
+    buyer_persona: string | null
+  } | null
 }
 
 export interface WorkStats {
@@ -322,6 +337,9 @@ interface RankedLead {
   why_now: string
   window: WindowState
   lastMsg?: { direction: string; timestamp: string; text: string }
+  score?: number
+  scoreReasons?: string[]
+  temperature?: 'warming' | 'flat' | 'cooling'
 }
 
 const HOT_SET = new Set(['HOT', 'CALL_DONE_INTERESTED', 'FINAL_NEGOTIATION'])
@@ -530,6 +548,20 @@ export interface WorkQueueResult {
   book_size: number // active leads assigned to this agent (their whole pile)
 }
 
+// Compact the per-lead signal projection down to the card-facing subset (or null
+// when nothing has been captured yet).
+function signalForCard(sig: LeadSignal | undefined): WorkCard['signals'] {
+  if (!sig) return null
+  if (!sig.objection && !sig.sentiment && !sig.capital_readiness && !sig.decision_maker && !sig.buyer_persona) return null
+  return {
+    objection: sig.objection,
+    sentiment: sig.sentiment,
+    capital_readiness: sig.capital_readiness,
+    decision_maker: sig.decision_maker,
+    buyer_persona: sig.buyer_persona,
+  }
+}
+
 /**
  * The agent's ordered work queue: their assigned, active leads only, role-tuned
  * and window-aware, each lead locked to this agent (assigned_to = user.name).
@@ -537,7 +569,7 @@ export interface WorkQueueResult {
  */
 export async function getWorkQueue(
   user: Pick<User, 'name' | 'agent_role' | 'is_telecaller' | 'daily_target'>,
-  opts?: { limit?: number },
+  opts?: { limit?: number; countOnly?: boolean },
 ): Promise<WorkQueueResult> {
   const limit = Math.max(1, opts?.limit ?? 1)
   const role = effectiveRole(user)
@@ -552,20 +584,42 @@ export async function getWorkQueue(
     l => l.assigned_to === user.name && !ACTIVE_EXCLUDED.has(l.lead_status),
   )
 
-  const [lastMsgByPhone, lastWorkByLead] = await Promise.all([
+  const [lastMsgByPhone, lastWorkByLead, lastReceivedByPhone] = await Promise.all([
     getLastMessageByPhone(),
     getLastWorkEventByLead(mine.map(l => l.row_number)),
+    getLastReceivedMessageByPhone(),
   ])
 
   let ranked: RankedLead[]
   if (role === 'telecaller') {
     ranked = rankTelecaller(mine, lastMsgByPhone, lastWorkByLead, now)
   } else {
-    const lastReceivedByPhone = await getLastReceivedMessageByPhone()
     ranked = rankCloser(mine, lastMsgByPhone, lastReceivedByPhone, lastWorkByLead, now)
   }
 
-  ranked.sort((a, b) => (a.bucket - b.bucket) || withinBucketSort(a, b))
+  // Count-only callers (getWorkStats, getOwnerPanel's per-agent loop) need just
+  // the queue depth — skip the signals fetch, the per-lead scoring + sort, and
+  // buildLifecycle below. queue_depth = ranked.length (rankers drop no-bucket leads).
+  if (opts?.countOnly) {
+    return { cards: [], queue_depth: ranked.length, book_size: mine.length }
+  }
+
+  const signalsByRow = await getLeadSignalsByRows(mine.map(l => l.row_number))
+
+  // Sales-AI: score each ranked lead (explainable), then sort by bucket → score →
+  // the legacy tiebreak. Buckets keep the window/recency safety; the score makes
+  // within-bucket order intelligent (a budget-confirmed lead beats a tyre-kicker).
+  for (const r of ranked) {
+    const sc = leadScore(r.lead, signalsByRow.get(r.lead.row_number), {
+      lastReceivedAt: lastReceivedByPhone.get(last10(r.lead.phone))?.last_received_at || null,
+      now,
+    })
+    r.score = sc.score
+    r.scoreReasons = sc.reasons
+    r.temperature = sc.temperature
+  }
+
+  ranked.sort((a, b) => (a.bucket - b.bucket) || ((b.score ?? 0) - (a.score ?? 0)) || withinBucketSort(a, b))
 
   const depth = ranked.length
   const top = ranked.slice(0, limit)
@@ -591,6 +645,10 @@ export async function getWorkQueue(
       outcomes: outcomesForRole(role),
       queue_reason: r.queue_reason,
       remaining: depth,
+      score: r.score ?? 0,
+      score_reasons: r.scoreReasons ?? [],
+      temperature: r.temperature ?? 'flat',
+      signals: signalForCard(signalsByRow.get(r.lead.row_number)),
     })
   }
 
@@ -654,7 +712,7 @@ export async function getWorkStats(
     }
   }
 
-  const { queue_depth, book_size } = await getWorkQueue(user, { limit: 1 })
+  const { queue_depth, book_size } = await getWorkQueue(user, { limit: 1, countOnly: true })
   // Dials/attempts target scales to the agent's active book. Telecallers (high-
   // volume click-to-dial) are floored at a humane 120/day and capped at 200;
   // closers (fewer, deeper touches) floored at 40, capped at 120. 120–150/day is
@@ -677,6 +735,15 @@ export interface ApplyOutcomeInput {
   channel: 'call' | 'whatsapp' | 'template' | 'system'
   note?: string
   alsoWhatsapp?: boolean
+  // Sales-AI structured capture (all optional, tap-not-type). undefined = not
+  // captured (don't overwrite); null = explicitly cleared.
+  objection?: string | null
+  sentiment?: string | null
+  capital_readiness?: string | null
+  decision_maker?: string | null
+  buyer_persona?: string | null
+  next_step?: string | null
+  connected?: boolean | null
 }
 
 export interface ApplyOutcomeResult {
@@ -684,6 +751,8 @@ export interface ApplyOutcomeResult {
   nextStatus: string
   routedTo?: string
   error?: string
+  /** Nudge the rep to send a WhatsApp after a no-answer (re-opens the 24h window). */
+  suggest_whatsapp?: boolean
 }
 
 // Per-outcome status + follow-up resolution. Returns the next status and the
@@ -855,6 +924,11 @@ export async function applyWorkOutcome(input: ApplyOutcomeInput): Promise<ApplyO
     try { await insertNote({ phone: lead.phone, note, created_by: userName }) } catch { /* non-critical */ }
   }
 
+  // Sales-AI: was the lead actually reached on this touch? (no-answer/no-response
+  // = not connected). Explicit input.connected wins; otherwise derive from action.
+  const isNonConnect = outcome === 'no_answer' || outcome === 'no_response'
+  const connected = input.connected ?? (channel === 'call' || channel === 'whatsapp' ? !isNonConnect : null)
+
   // 6) work_events row (the single source of "did the work happen").
   await insertWorkEvent({
     user_id: userId,
@@ -865,7 +939,29 @@ export async function applyWorkOutcome(input: ApplyOutcomeInput): Promise<ApplyO
     action: outcome,
     outcome: nextStatus,
     also_whatsapp: !!alsoWhatsapp,
+    objection: input.objection ?? null,
+    sentiment: input.sentiment ?? null,
+    connected,
   })
+
+  // Project the latest captured signals onto the lead (shared brain — read by the
+  // scorer + BOTH UIs). Only non-undefined fields overwrite; connected_ever sticky.
+  const hasSignal =
+    input.objection !== undefined || input.sentiment !== undefined ||
+    input.capital_readiness !== undefined || input.decision_maker !== undefined ||
+    input.buyer_persona !== undefined || input.next_step !== undefined || connected === true
+  if (hasSignal) {
+    await upsertLeadSignal(leadRow, {
+      objection: input.objection,
+      sentiment: input.sentiment,
+      capital_readiness: input.capital_readiness,
+      decision_maker: input.decision_maker,
+      buyer_persona: input.buyer_persona,
+      next_step: input.next_step,
+      connected_ever: connected === true ? true : undefined,
+      updated_by: userName,
+    })
+  }
 
   // 7) Notifications on handoffs / Won.
   try {
@@ -909,7 +1005,7 @@ export async function applyWorkOutcome(input: ApplyOutcomeInput): Promise<ApplyO
     }
   } catch { /* notifications non-critical */ }
 
-  return { ok: true, nextStatus: nextStatus || lead.lead_status, routedTo }
+  return { ok: true, nextStatus: nextStatus || lead.lead_status, routedTo, suggest_whatsapp: (isNonConnect && channel !== 'whatsapp') || undefined }
 }
 
 // ─── Auto-bounce (anti-rot) ──────────────────────────────────────────
@@ -1091,7 +1187,7 @@ export async function getOwnerPanel(): Promise<OwnerPanel> {
     const role = effectiveRole(u)
     const { queue_depth } = await getWorkQueue(
       { name: u.name, agent_role: u.agent_role, is_telecaller: u.is_telecaller, daily_target: u.daily_target },
-      { limit: 1 },
+      { limit: 1, countOnly: true },
     )
     agents.push({
       name: u.name,

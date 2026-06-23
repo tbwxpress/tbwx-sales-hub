@@ -50,6 +50,17 @@ export interface Card {
   queue_reason: string
   /** How many cards remain in this agent's queue after the current one. */
   remaining: number
+  /** Sales-AI: explainable propensity score (0–100) + reasons + the captured signals. */
+  score: number
+  score_reasons: string[]
+  temperature: 'warming' | 'flat' | 'cooling'
+  signals: {
+    objection: string | null
+    sentiment: string | null
+    capital_readiness: string | null
+    decision_maker: string | null
+    buyer_persona: string | null
+  } | null
 }
 
 /** Cadence stats — drives the progress rings, "left" count, and streak chip. */
@@ -71,12 +82,21 @@ export interface OutcomePayload {
   channel: 'call' | 'whatsapp' | 'template' | 'system'
   note?: string
   alsoWhatsapp?: boolean
+  // Sales-AI structured capture (tap-not-type chips; all optional).
+  objection?: string
+  sentiment?: string
+  capital_readiness?: string
+  decision_maker?: string
+  buyer_persona?: string
+  next_step?: string
+  connected?: boolean
 }
 
 /** POST /api/work/outcome response. */
 export interface OutcomeResponse {
   ok: boolean
   routedTo?: string
+  suggest_whatsapp?: boolean
   next: Card | null
   stats: WorkStats
 }

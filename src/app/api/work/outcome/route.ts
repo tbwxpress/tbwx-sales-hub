@@ -3,11 +3,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getUserById } from '@/lib/users'
 import { applyWorkOutcome, getWorkQueue, getWorkStats } from '@/lib/work'
+import { SENTIMENT_KEYS, OBJECTION_KEYS, CAPITAL_KEYS, DECISION_MAKER_KEYS, PERSONA_KEYS, NEXT_STEP_KEYS } from '@/config/sales-signals'
+
+// Accept a chip value only if it's a known key (ignore junk); missing/'' → undefined
+// (= "not captured", so it never overwrites a previously-set signal).
+const pick = (v: unknown, keys: Set<string>): string | undefined =>
+  typeof v === 'string' && keys.has(v) ? v : undefined
 
 // POST /api/work/outcome
-// Body: { leadRow, outcome, channel, note?, alsoWhatsapp? }
-// Applies the playbook (status + follow-up + routing + audit), then returns the
-// next card + refreshed stats.
+// Body: { leadRow, outcome, channel, note?, alsoWhatsapp?, objection?, sentiment?,
+//         capital_readiness?, decision_maker?, buyer_persona?, next_step?, connected? }
+// Applies the playbook (status + follow-up + routing + audit + structured signals),
+// then returns the next card + refreshed stats + a WhatsApp nudge after no-answer.
 export async function POST(req: NextRequest) {
   try {
     const session = await getSession()
@@ -36,6 +43,13 @@ export async function POST(req: NextRequest) {
       channel: channel as 'call' | 'whatsapp' | 'template' | 'system',
       note: typeof body?.note === 'string' ? body.note : undefined,
       alsoWhatsapp: Boolean(body?.alsoWhatsapp),
+      objection: pick(body?.objection, OBJECTION_KEYS),
+      sentiment: pick(body?.sentiment, SENTIMENT_KEYS),
+      capital_readiness: pick(body?.capital_readiness, CAPITAL_KEYS),
+      decision_maker: pick(body?.decision_maker, DECISION_MAKER_KEYS),
+      buyer_persona: pick(body?.buyer_persona, PERSONA_KEYS),
+      next_step: pick(body?.next_step, NEXT_STEP_KEYS),
+      connected: typeof body?.connected === 'boolean' ? body.connected : undefined,
     })
 
     if (!result.ok) {
@@ -50,6 +64,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       routedTo: result.routedTo,
+      suggest_whatsapp: result.suggest_whatsapp ?? false,
       next: cards[0] ?? null,
       stats,
     })

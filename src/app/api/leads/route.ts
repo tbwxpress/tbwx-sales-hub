@@ -2,10 +2,13 @@ import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, getLeadStats, createLead } from '@/lib/sheets'
-import { computeLeadScore } from '@/lib/scoring'
+import { computeLeadScore, leadScore } from '@/lib/scoring'
 import { STATUS_MIGRATION } from '@/config/client'
 import { getTelecallerVisibleLeadRows, getAllAssignments } from '@/lib/telecaller'
-import { getOptedOutPhones, getLastDiscussionByPhone, normalizePhone, upsertContact, getActiveDelegationsFor, getAllActiveDelegations } from '@/lib/db'
+import { getOptedOutPhones, getLastDiscussionByPhone, normalizePhone, upsertContact, getActiveDelegationsFor, getAllActiveDelegations, getLeadSignalsByRows, getLastReceivedMessageByPhone } from '@/lib/db'
+
+// Last-10 digits of a phone — the key getLastReceivedMessageByPhone() returns.
+const last10 = (p: string | undefined | null) => String(p || '').replace(/\D/g, '').slice(-10)
 
 export async function GET(req: NextRequest) {
   try {
@@ -139,6 +142,13 @@ export async function GET(req: NextRequest) {
       leadDelegationCache = await getAllActiveDelegations()
     }
 
+    // Sales-AI shared brain: bulk-load the captured structured signals + last
+    // inbound-message recency for ONLY the visible leads (keeps it performant —
+    // one query each, not per-lead). Both Free + Guided modes read/write these.
+    const visibleRowsForSignals = leads.map(l => l.row_number)
+    const signalsMap = await getLeadSignalsByRows(visibleRowsForSignals)
+    const lastRecvMap = await getLastReceivedMessageByPhone()
+
     // Attach computed scores + telecaller assignment metadata + last discussion + delegation metadata
     const scoredLeads = leads.map(l => {
       const tc = tcByRow.get(l.row_number)
@@ -168,9 +178,18 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // Signal-aware AI score (shared brain) — additive alongside the legacy
+      // lead_score. Free mode shows ai_score; Guided uses the same source.
+      const sig = signalsMap.get(l.row_number) || null
+      const ai = leadScore(l, sig, { lastReceivedAt: lastRecvMap.get(last10(l.phone))?.last_received_at })
+
       return {
         ...l,
         lead_score: computeLeadScore(l),
+        ai_score: ai.score,
+        ai_reasons: ai.reasons,
+        ai_temperature: ai.temperature,
+        signals: sig,
         telecaller_user_id: tc?.telecaller_user_id || '',
         telecaller_name: tcUser?.name || '',
         telecaller_assigned_at: tc?.assigned_at || '',

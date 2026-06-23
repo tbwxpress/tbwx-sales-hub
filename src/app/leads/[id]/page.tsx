@@ -23,6 +23,7 @@ import CallHistory from '@/components/CallHistory'
 import ActivityLog from '@/components/ActivityLog'
 import LeadComments from '@/components/LeadComments'
 import OpportunityCheckPrompt from '@/components/OpportunityCheckPrompt'
+import LeadSignalsCard from '@/components/leads/LeadSignalsCard'
 import { STATUS_LABELS } from '@/config/client'
 import { toast } from 'sonner'
 import { formatTime } from '@/lib/format'
@@ -962,6 +963,10 @@ export default function LeadDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* Sales Signals Card — read captured signals + signal-aware AI score,
+                and set/correct them with one-tap Hinglish chips (shared brain). */}
+            <LeadSignalsCard leadRow={lead.row_number} />
 
             {/* Drip Sequence Card */}
             <div className="bg-card rounded-lg border border-border p-4">

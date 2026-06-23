@@ -97,6 +97,10 @@ interface Lead {
   notes?: string
   model_interest?: string
   lead_score?: number
+  // Sales-AI shared brain (signal-aware) — additive alongside lead_score.
+  ai_score?: number
+  ai_reasons?: string[]
+  ai_temperature?: 'warming' | 'flat' | 'cooling'
   last_discussion?: LastDiscussion | null
   telecaller_user_id?: string
   telecaller_name?: string
@@ -955,24 +959,43 @@ export default function LeadsPage() {
       accessorKey: 'lead_score',
       header: () => <span className="text-eyebrow uppercase tracking-wider">Score</span>,
       cell: ({ row }) => {
-        const score = row.original.lead_score
+        // Prefer the signal-aware ai_score (shared brain); fall back to the
+        // legacy lead_score if the AI fields aren't present.
+        const score = row.original.ai_score ?? row.original.lead_score
         if (score === undefined) return null
+        const temp = row.original.ai_temperature
+        const tempColor =
+          temp === 'warming' ? 'var(--color-success)'
+          : temp === 'cooling' ? 'var(--color-danger)'
+          : 'var(--color-dim)'
+        const reasons = row.original.ai_reasons
+        const title = `Lead Score: ${score}/100${temp ? ` · ${temp}` : ''}${reasons?.length ? `\n${reasons.join('\n')}` : ''}`
         return (
-          <span
-            className="inline-flex items-center justify-center w-8 h-8 rounded-full text-caption font-bold"
-            style={{
-              backgroundColor: scoreBg(score),
-              color: scoreColor(score),
-              border: `1px solid ${scoreBorder(score)}`,
-            }}
-            title={`Lead Score: ${score}/100`}
-          >
-            {score}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              className="inline-flex items-center justify-center w-8 h-8 rounded-full text-caption font-bold"
+              style={{
+                backgroundColor: scoreBg(score),
+                color: scoreColor(score),
+                border: `1px solid ${scoreBorder(score)}`,
+              }}
+              title={title}
+            >
+              {score}
+            </span>
+            {temp && (
+              <span
+                className="w-1.5 h-1.5 rounded-full shrink-0"
+                style={{ backgroundColor: tempColor }}
+                title={temp}
+                aria-label={`Temperature: ${temp}`}
+              />
+            )}
+          </div>
         )
       },
-      sortingFn: (a, b) => (a.original.lead_score ?? -1) - (b.original.lead_score ?? -1),
-      size: 64,
+      sortingFn: (a, b) => ((a.original.ai_score ?? a.original.lead_score) ?? -1) - ((b.original.ai_score ?? b.original.lead_score) ?? -1),
+      size: 72,
     })
 
     cols.push({

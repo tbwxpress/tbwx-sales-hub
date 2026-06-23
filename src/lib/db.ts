@@ -507,10 +507,31 @@ export async function ensureInit(): Promise<Client> {
         action TEXT DEFAULT '',
         outcome TEXT DEFAULT '',
         also_whatsapp INTEGER DEFAULT 0,
+        objection TEXT,
+        sentiment TEXT,
+        connected INTEGER,
         created_at TEXT DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_work_events_user_date ON work_events(user_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_work_events_lead ON work_events(lead_row);
+    `)
+
+    await db.execute(`
+      -- Sales-AI: the LATEST structured signals per lead (a projection updated by
+      -- BOTH Guided-mode outcomes AND Free-mode lead edits) — the shared brain so
+      -- a senior rep on Free mode and a novice on Guided mode feed the same scorer.
+      CREATE TABLE IF NOT EXISTS lead_signals (
+        lead_row INTEGER PRIMARY KEY,
+        objection TEXT,
+        sentiment TEXT,
+        capital_readiness TEXT,
+        decision_maker TEXT,
+        buyer_persona TEXT,
+        next_step TEXT,
+        connected_ever INTEGER DEFAULT 0,
+        updated_by TEXT DEFAULT '',
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
     `)
 
     await db.execute(`
@@ -553,6 +574,12 @@ export async function ensureInit(): Promise<Client> {
     try { await db.execute("ALTER TABLE users ADD COLUMN work_mode TEXT DEFAULT 'free'") } catch { /* column may already exist */ }
     try { await db.execute('ALTER TABLE users ADD COLUMN agent_role TEXT') } catch { /* column may already exist */ }
     try { await db.execute('ALTER TABLE users ADD COLUMN daily_target INTEGER DEFAULT 40') } catch { /* column may already exist */ }
+
+    // Sales-AI structured signals (additive). work_events gets per-touch why/temp;
+    // lead_signals (created above) holds the per-lead latest projection.
+    try { await db.execute('ALTER TABLE work_events ADD COLUMN objection TEXT') } catch { /* column may already exist */ }
+    try { await db.execute('ALTER TABLE work_events ADD COLUMN sentiment TEXT') } catch { /* column may already exist */ }
+    try { await db.execute('ALTER TABLE work_events ADD COLUMN connected INTEGER') } catch { /* column may already exist */ }
 
     // Wait up to 5s for a lock instead of failing with SQLITE_BUSY — matters now that
     // auto-send writes every ~2 min alongside agent activity and the sheet-backup job.
@@ -1277,6 +1304,9 @@ export interface WorkEvent {
   action: string
   outcome: string
   also_whatsapp: boolean
+  objection: string | null
+  sentiment: string | null
+  connected: boolean | null
   created_at: string
 }
 
@@ -1291,6 +1321,9 @@ function rowToWorkEvent(r: Record<string, unknown>): WorkEvent {
     action: String(r.action || ''),
     outcome: String(r.outcome || ''),
     also_whatsapp: Number(r.also_whatsapp ?? 0) === 1,
+    objection: r.objection == null ? null : String(r.objection),
+    sentiment: r.sentiment == null ? null : String(r.sentiment),
+    connected: r.connected == null ? null : Number(r.connected) === 1,
     created_at: String(r.created_at || ''),
   }
 }
@@ -1304,13 +1337,16 @@ export async function insertWorkEvent(data: {
   action: string
   outcome: string
   also_whatsapp?: boolean
+  objection?: string | null
+  sentiment?: string | null
+  connected?: boolean | null
 }): Promise<number | null> {
   try {
     const db = await ensureInit()
     const r = await db.execute({
       sql: `INSERT INTO work_events
-              (user_id, user_name, lead_row, role, channel, action, outcome, also_whatsapp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              (user_id, user_name, lead_row, role, channel, action, outcome, also_whatsapp, objection, sentiment, connected)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         data.user_id,
         data.user_name,
@@ -1320,12 +1356,114 @@ export async function insertWorkEvent(data: {
         data.action,
         data.outcome,
         data.also_whatsapp ? 1 : 0,
+        data.objection ?? null,
+        data.sentiment ?? null,
+        data.connected == null ? null : (data.connected ? 1 : 0),
       ],
     })
     return Number(r.lastInsertRowid)
   } catch (err) {
     console.error('[insertWorkEvent] non-critical:', err)
     return null
+  }
+}
+
+// --- Sales-AI: per-lead LATEST structured signals (shared by Guided + Free) ---
+
+export interface LeadSignal {
+  lead_row: number
+  objection: string | null
+  sentiment: string | null
+  capital_readiness: string | null
+  decision_maker: string | null
+  buyer_persona: string | null
+  next_step: string | null
+  connected_ever: boolean
+  updated_by: string
+  updated_at: string
+}
+
+function rowToLeadSignal(r: Record<string, unknown>): LeadSignal {
+  return {
+    lead_row: Number(r.lead_row),
+    objection: r.objection == null ? null : String(r.objection),
+    sentiment: r.sentiment == null ? null : String(r.sentiment),
+    capital_readiness: r.capital_readiness == null ? null : String(r.capital_readiness),
+    decision_maker: r.decision_maker == null ? null : String(r.decision_maker),
+    buyer_persona: r.buyer_persona == null ? null : String(r.buyer_persona),
+    next_step: r.next_step == null ? null : String(r.next_step),
+    connected_ever: Number(r.connected_ever ?? 0) === 1,
+    updated_by: String(r.updated_by || ''),
+    updated_at: String(r.updated_at || ''),
+  }
+}
+
+// Latest signals for a set of leads, keyed by lead_row. Best-effort (never throws).
+export async function getLeadSignalsByRows(leadRows: number[]): Promise<Map<number, LeadSignal>> {
+  const map = new Map<number, LeadSignal>()
+  if (leadRows.length === 0) return map
+  try {
+    const db = await ensureInit()
+    for (let i = 0; i < leadRows.length; i += 500) {
+      const batch = leadRows.slice(i, i + 500)
+      const placeholders = batch.map(() => '?').join(',')
+      const r = await db.execute({
+        sql: `SELECT * FROM lead_signals WHERE lead_row IN (${placeholders})`,
+        args: batch,
+      })
+      for (const row of serializeRows(r.rows).map(rowToLeadSignal)) map.set(row.lead_row, row)
+    }
+  } catch (err) {
+    console.error('[getLeadSignalsByRows] non-critical:', err)
+  }
+  return map
+}
+
+export async function getLeadSignal(leadRow: number): Promise<LeadSignal | null> {
+  const m = await getLeadSignalsByRows([leadRow])
+  return m.get(leadRow) || null
+}
+
+// Upsert the latest signals for a lead. Only fields explicitly passed (not
+// undefined) overwrite — so a partial capture (e.g. just sentiment) never wipes a
+// previously-set objection. connected_ever is sticky-true (once they pick up, it
+// stays 1). Called from BOTH the Guided outcome path and Free-mode lead edits.
+export async function upsertLeadSignal(
+  leadRow: number,
+  patch: {
+    objection?: string | null
+    sentiment?: string | null
+    capital_readiness?: string | null
+    decision_maker?: string | null
+    buyer_persona?: string | null
+    next_step?: string | null
+    connected_ever?: boolean
+    updated_by?: string
+  },
+): Promise<void> {
+  try {
+    const db = await ensureInit()
+    await db.execute({ sql: `INSERT OR IGNORE INTO lead_signals (lead_row) VALUES (?)`, args: [leadRow] })
+    const sets: string[] = []
+    const args: (string | number | null)[] = []
+    for (const col of ['objection', 'sentiment', 'capital_readiness', 'decision_maker', 'buyer_persona', 'next_step'] as const) {
+      const v = patch[col]
+      if (v !== undefined) {
+        sets.push(`${col} = ?`)
+        args.push(v === null ? null : String(v))
+      }
+    }
+    if (patch.connected_ever !== undefined) {
+      sets.push(`connected_ever = MAX(connected_ever, ?)`)
+      args.push(patch.connected_ever ? 1 : 0)
+    }
+    sets.push(`updated_by = ?`)
+    args.push(patch.updated_by || '')
+    sets.push(`updated_at = datetime('now')`)
+    args.push(leadRow)
+    await db.execute({ sql: `UPDATE lead_signals SET ${sets.join(', ')} WHERE lead_row = ?`, args })
+  } catch (err) {
+    console.error('[upsertLeadSignal] non-critical:', err)
   }
 }
 

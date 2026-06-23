@@ -1,26 +1,57 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, CalendarClock, Trophy, X, MessageCircle, PenLine } from 'lucide-react'
+import { Check, CalendarClock, Trophy, X, MessageCircle, PenLine, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
+import {
+  SENTIMENT_CHIPS,
+  OBJECTION_CHIPS,
+  CAPITAL_CHIPS,
+  DECISION_MAKER_CHIPS,
+  PERSONA_CHIPS,
+  NEXT_STEP_CHIPS,
+  type Chip,
+} from '@/config/sales-signals'
 import type { Card, Outcome } from './types'
 
 /**
- * OutcomeBar — the forced-choice gate. The ONLY way to advance the rail.
- * Renders buttons straight from `card.outcomes` (never hardcoded). Picking an
- * outcome submits POST /api/work/outcome and pulls the next card.
+ * OutcomeBar — the forced-choice gate + the frictionless "why" capture.
  *
- * - callback / booked outcomes open a tiny date quick-pick (Tomorrow / +3 days /
- *   pick a date) and the chosen `YYYY-MM-DD` is sent as `note`.
- * - An optional one-line note applies to any outcome.
- * - A "✓ also messaged on WhatsApp" toggle records an off-system touch as a flag
- *   (alsoWhatsapp: true) without scoring it.
+ * Flow per outcome:
+ *  - A sentiment strip (Garam / Thoda / Thanda / Cold) sits above the buttons —
+ *    one optional tap on EVERY outcome.
+ *  - HONEST-NEGATIVE / non-connect (no_answer, no_response, not_interested, lost)
+ *    fire on a SINGLE tap — truth is the lazy path.
+ *  - OPTIMISTIC / stall outcomes open a tiny chip panel (tap-not-type): qualify
+ *    (interested) → Paisa? / Decider? / Persona; soft-no (not_ready, going_cold)
+ *    → objection; advance (deck_sent, advanced) → next step. A "Save & next" tap
+ *    confirms (so an optimistic outcome costs one extra honest tap).
+ *  - callback / booked keep the date quick-pick; the chosen YYYY-MM-DD is `note`.
+ *  All chips are optional — skipping is allowed and never punished.
  */
 
-// Outcomes that need a scheduled date captured as the note.
 const DATE_OUTCOMES = new Set(['callback', 'booked'])
+
+type SignalKind = 'objection' | 'capital_readiness' | 'decision_maker' | 'buyer_persona' | 'next_step'
+
+const CHIP_SETS: Record<SignalKind, { label: string; chips: Chip[] }> = {
+  capital_readiness: { label: 'Paisa?', chips: CAPITAL_CHIPS },
+  decision_maker: { label: 'Decision kaun lega?', chips: DECISION_MAKER_CHIPS },
+  buyer_persona: { label: 'Kaisa buyer?', chips: PERSONA_CHIPS },
+  objection: { label: 'Kya rok raha hai?', chips: OBJECTION_CHIPS },
+  next_step: { label: 'Aage kya?', chips: NEXT_STEP_CHIPS },
+}
+
+// Which chips to ask per outcome (only the moments that matter).
+const OUTCOME_DETAIL: Record<string, SignalKind[]> = {
+  interested: ['capital_readiness', 'decision_maker', 'buyer_persona'],
+  not_ready: ['objection'],
+  going_cold: ['objection'],
+  deck_sent: ['next_step'],
+  advanced: ['next_step'],
+}
 
 function toYmd(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -31,7 +62,6 @@ function addDays(n: number): string {
   return toYmd(d)
 }
 
-/** Tone + icon per outcome family — derived from the key so new keys still render. */
 function outcomeStyle(key: string): { variant: 'win' | 'loss' | 'neutral'; icon: React.ReactNode } {
   const k = key.toLowerCase()
   if (k === 'won') return { variant: 'win', icon: <Trophy className="h-4 w-4" /> }
@@ -47,37 +77,93 @@ export default function OutcomeBar({
 }: {
   card: Card
   submitting: boolean
-  onSubmit: (args: { outcome: string; note?: string; alsoWhatsapp?: boolean }) => void
+  onSubmit: (args: {
+    outcome: string
+    note?: string
+    alsoWhatsapp?: boolean
+    sentiment?: string
+    objection?: string
+    capital_readiness?: string
+    decision_maker?: string
+    buyer_persona?: string
+    next_step?: string
+  }) => Promise<boolean | void> | void
 }) {
   const [note, setNote] = useState('')
   const [alsoWa, setAlsoWa] = useState(false)
   const [showNote, setShowNote] = useState(false)
-  // Which date-outcome popover is open (by key), and its picked date.
   const [dateFor, setDateFor] = useState<string | null>(null)
   const [pickedDate, setPickedDate] = useState('')
+  // The captured "why".
+  const [sentiment, setSentiment] = useState<string | null>(null)
+  const [detailFor, setDetailFor] = useState<string | null>(null)
+  const [picked, setPicked] = useState<Partial<Record<SignalKind, string>>>({})
 
-  function fire(outcome: string, dateNote?: string) {
-    if (submitting) return
-    const finalNote = dateNote || note.trim() || undefined
-    onSubmit({ outcome, note: finalNote, alsoWhatsapp: alsoWa || undefined })
+  function reset() {
     setNote('')
     setAlsoWa(false)
     setShowNote(false)
     setDateFor(null)
     setPickedDate('')
+    setSentiment(null)
+    setDetailFor(null)
+    setPicked({})
+  }
+
+  async function fire(outcome: string, opts: { dateNote?: string; signals?: Partial<Record<SignalKind, string>> } = {}) {
+    if (submitting) return
+    const sig = opts.signals || {}
+    const ok = await onSubmit({
+      outcome,
+      note: opts.dateNote || note.trim() || undefined,
+      alsoWhatsapp: alsoWa || undefined,
+      sentiment: sentiment || undefined,
+      objection: sig.objection,
+      capital_readiness: sig.capital_readiness,
+      decision_maker: sig.decision_maker,
+      buyer_persona: sig.buyer_persona,
+      next_step: sig.next_step,
+    })
+    // Keep the rep's captured chips/note if the submit FAILED (handleOutcome
+    // returns false on a non-ok/network error) — only reset on success.
+    if (ok !== false) reset()
   }
 
   function handleOutcomeClick(o: Outcome) {
-    if (DATE_OUTCOMES.has(o.key.toLowerCase())) {
+    const k = o.key.toLowerCase()
+    if (DATE_OUTCOMES.has(k)) {
+      setDetailFor(null) // one outcome at a time — close any open chip panel
       setDateFor(dateFor === o.key ? null : o.key)
       return
     }
+    if (OUTCOME_DETAIL[o.key]) {
+      // Open the chip panel (toggle). The "Save & next" inside it submits.
+      setDateFor(null) // close any open date popover
+      setDetailFor((cur) => (cur === o.key ? null : o.key))
+      setPicked({})
+      return
+    }
+    // fast / honest-negative — single tap. Close any open panels first.
+    setDateFor(null)
+    setDetailFor(null)
     fire(o.key)
   }
 
+  const detailKinds = detailFor ? OUTCOME_DETAIL[detailFor] : null
+
   return (
     <div className="space-y-3">
-      {/* Note + "also contacted on WhatsApp" — clear, tappable chips. */}
+      {/* Sentiment — one optional tap on every outcome. */}
+      <div>
+        <div className="text-eyebrow mb-1.5 text-dim">Lead kaisa laga?</div>
+        <div className="flex flex-wrap gap-1.5">
+          {SENTIMENT_CHIPS.map((c) => (
+            <ChipButton key={c.key} chip={c} active={sentiment === c.key} onClick={() => setSentiment(sentiment === c.key ? null : c.key)} />
+          ))}
+        </div>
+      </div>
+
+      {/* Note + "also contacted on WhatsApp". */}
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -122,29 +208,31 @@ export default function OutcomeBar({
         />
       )}
 
-      {/* The forced choice — how did it go? */}
+      {/* The forced choice. */}
       <div className="flex items-center gap-2 pt-0.5">
         <span className="text-eyebrow text-dim">How did it go?</span>
         <span className="h-px flex-1" style={{ background: 'color-mix(in srgb, var(--color-border) 70%, transparent)' }} />
       </div>
 
-      {/* Outcome buttons — rendered straight from card.outcomes */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {card.outcomes.map((o) => {
           const s = outcomeStyle(o.key)
           const isDate = DATE_OUTCOMES.has(o.key.toLowerCase())
+          const isOpen = detailFor === o.key
           const btn = (
             <button
               type="button"
               onClick={() => handleOutcomeClick(o)}
               disabled={submitting}
               className={[
-                'focus-ring flex min-h-[54px] items-center justify-center gap-1.5 rounded-xl px-3 py-3 text-[13.5px] font-semibold transition-all active:translate-y-px disabled:opacity-50',
+                'focus-ring flex min-h-[54px] w-full items-center justify-center gap-1.5 rounded-xl px-3 py-3 text-[13.5px] font-semibold transition-all active:translate-y-px disabled:opacity-50',
                 s.variant === 'win' ? 'btn-win text-[var(--color-success)]' : '',
                 s.variant === 'loss' ? 'btn-loss text-[var(--color-danger)]' : '',
-                s.variant === 'neutral' ? 'border border-border bg-elevated text-body hover:border-border-light hover:bg-card' : '',
+                s.variant === 'neutral' ? 'border bg-elevated text-body hover:bg-card' : '',
               ].join(' ')}
-              aria-haspopup={isDate ? 'dialog' : undefined}
+              style={s.variant === 'neutral' ? { borderColor: isOpen ? 'var(--color-accent)' : 'var(--color-border)' } : undefined}
+              aria-haspopup={isDate || !!OUTCOME_DETAIL[o.key] ? 'dialog' : undefined}
+              aria-expanded={isOpen || undefined}
             >
               {s.icon}
               <span className="truncate">{o.label}</span>
@@ -153,20 +241,19 @@ export default function OutcomeBar({
 
           if (!isDate) return <div key={o.key}>{btn}</div>
 
-          // Date outcomes wrap the button in a quick-pick popover.
           return (
             <Popover key={o.key} open={dateFor === o.key} onOpenChange={(v) => setDateFor(v ? o.key : null)}>
               <PopoverTrigger render={btn} />
               <PopoverContent align="center" className="w-56">
                 <div className="text-eyebrow mb-1.5 text-dim">When?</div>
                 <div className="grid grid-cols-1 gap-1.5">
-                  <QuickDate label="Tomorrow" onPick={() => fire(o.key, addDays(1))} />
-                  <QuickDate label="In 3 days" onPick={() => fire(o.key, addDays(3))} />
+                  <QuickDate label="Tomorrow" onPick={() => fire(o.key, { dateNote: addDays(1) })} />
+                  <QuickDate label="In 3 days" onPick={() => fire(o.key, { dateNote: addDays(3) })} />
                   <div className="mt-1 flex items-center gap-1.5">
                     <Input
                       type="date"
                       value={pickedDate}
-                      min={toYmd(new Date())}
+                      min={addDays(1)}
                       onChange={(e) => setPickedDate(e.target.value)}
                       className="text-sm"
                       style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
@@ -174,7 +261,7 @@ export default function OutcomeBar({
                     />
                     <Button
                       size="sm"
-                      onClick={() => pickedDate && fire(o.key, pickedDate)}
+                      onClick={() => pickedDate && fire(o.key, { dateNote: pickedDate })}
                       disabled={!pickedDate}
                       style={{ background: 'var(--color-accent)', color: '#1a1209' }}
                     >
@@ -187,7 +274,67 @@ export default function OutcomeBar({
           )
         })}
       </div>
+
+      {/* Inline chip detail panel for optimistic / stall outcomes. */}
+      {detailFor && detailKinds && (
+        <div
+          className="animate-fade-in space-y-3 rounded-xl border p-3"
+          style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 35%, transparent)', background: 'color-mix(in srgb, var(--color-accent) 6%, transparent)' }}
+        >
+          {detailKinds.map((kind) => (
+            <div key={kind}>
+              <div className="text-eyebrow mb-1.5 text-dim">{CHIP_SETS[kind].label}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {CHIP_SETS[kind].chips.map((c) => (
+                  <ChipButton
+                    key={c.key}
+                    chip={c}
+                    active={picked[kind] === c.key}
+                    onClick={() => setPicked((p) => ({ ...p, [kind]: p[kind] === c.key ? undefined : c.key }))}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="flex items-center gap-2 pt-0.5">
+            <Button
+              onClick={() => fire(detailFor, { signals: picked })}
+              disabled={submitting}
+              className="h-11 flex-1 font-bold focus-ring"
+              style={{ background: 'var(--color-accent)', color: '#1a1209' }}
+            >
+              Save &amp; next
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            <button
+              type="button"
+              onClick={() => fire(detailFor)}
+              className="focus-ring rounded-lg px-3 py-2 text-caption font-medium text-dim transition-colors hover:text-muted"
+            >
+              Skip
+            </button>
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+function ChipButton({ chip, active, onClick }: { chip: Chip; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className="focus-ring inline-flex items-center rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors"
+      style={
+        active
+          ? { borderColor: 'var(--color-accent)', background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', color: 'var(--color-text)' }
+          : { borderColor: 'var(--color-border)', color: 'var(--color-muted)' }
+      }
+    >
+      {chip.label}
+    </button>
   )
 }
 

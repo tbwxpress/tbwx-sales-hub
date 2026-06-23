@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import Badge, { statusTone } from '@/components/ui/Badge'
 import WindowCountdown from '@/components/inbox/WindowCountdown'
 import { STATUS_LABELS } from '@/config/client'
+import { labelFor, SENTIMENT_CHIPS, CAPITAL_CHIPS, OBJECTION_CHIPS, DECISION_MAKER_CHIPS, PERSONA_CHIPS } from '@/config/sales-signals'
 import LifecycleStrip from './LifecycleStrip'
 import type { Card } from './types'
 
@@ -71,6 +72,20 @@ function normalizeIndiaPhone(raw: string): { e164: string; display: string } {
     display = `+91 ${local.slice(0, 5)} ${local.slice(5)}`
   }
   return { e164, display }
+}
+
+// Sales-AI score → colour band, and temperature → colour/label.
+function scoreColor(s: number): string {
+  if (s >= 75) return 'var(--color-success)'
+  if (s >= 50) return 'var(--color-accent)'
+  if (s >= 30) return '#f59e0b'
+  return 'var(--color-danger)'
+}
+function tempColor(t: string): string {
+  return t === 'warming' ? 'var(--color-success)' : t === 'cooling' ? 'var(--color-danger)' : 'var(--color-dim)'
+}
+function tempLabel(t: string): string {
+  return t === 'warming' ? 'Warming' : t === 'cooling' ? 'Cooling' : 'Steady'
 }
 
 // Three short talking-point prompts for novice telecallers on a cold call.
@@ -295,6 +310,47 @@ export default function WorkCard({
                 </span>
               ))}
           </div>
+        </div>
+
+        {/* AI score + the captured "why" — explainable, shared with Free mode. */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[13px] font-bold tabular-nums"
+              style={{ borderColor: scoreColor(card.score), color: scoreColor(card.score), background: `color-mix(in srgb, ${scoreColor(card.score)} 12%, transparent)` }}
+              title="AI lead score (0–100)"
+            >
+              <Sparkles className="h-3 w-3" strokeWidth={2.4} />
+              {card.score}
+              <span className="text-[10px] font-semibold opacity-70">/100</span>
+            </span>
+            <span className="inline-flex items-center gap-1 text-caption" style={{ color: tempColor(card.temperature) }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: tempColor(card.temperature) }} aria-hidden />
+              {tempLabel(card.temperature)}
+            </span>
+            {card.score_reasons.slice(0, 3).map((r, i) => (
+              <span key={i} className="rounded-full px-2 py-0.5 text-[11px] text-dim" style={{ background: 'var(--color-elevated)' }}>
+                {r}
+              </span>
+            ))}
+          </div>
+          {card.signals && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[
+                labelFor(SENTIMENT_CHIPS, card.signals.sentiment),
+                labelFor(CAPITAL_CHIPS, card.signals.capital_readiness),
+                labelFor(OBJECTION_CHIPS, card.signals.objection),
+                labelFor(PERSONA_CHIPS, card.signals.buyer_persona),
+                labelFor(DECISION_MAKER_CHIPS, card.signals.decision_maker),
+              ]
+                .filter(Boolean)
+                .map((lbl, i) => (
+                  <span key={i} className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted">
+                    {lbl}
+                  </span>
+                ))}
+            </div>
+          )}
         </div>
 
         {/* 3 · WHY NOW — the reason the engine surfaced this lead now. */}
