@@ -61,6 +61,11 @@ export interface Card {
     decision_maker: string | null
     buyer_persona: string | null
   } | null
+  /** Phase 2: the recommended next move + best-time-to-call + attempt counter. */
+  nba: { action: string; label: string; reason: string }
+  best_call_hint: string | null
+  attempt_count: number
+  attempt_target: number
 }
 
 /** Cadence stats — drives the progress rings, "left" count, and streak chip. */

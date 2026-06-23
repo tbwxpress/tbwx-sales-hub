@@ -1467,6 +1467,60 @@ export async function upsertLeadSignal(
   }
 }
 
+// Best-time-to-call: the lead's MODAL inbound-message hour in IST (0–23), or null
+// if we've never received a message from them. Used to schedule dials into the
+// hour they actually reply (attacks the high no-answer rate). Best-effort.
+export async function getReplyHourForPhone(phone: string): Promise<number | null> {
+  const p10 = String(phone || '').replace(/\D/g, '').slice(-10)
+  if (!p10) return null
+  try {
+    const db = await ensureInit()
+    // Index-friendly: match the known stored phone forms exactly (insertMessage
+    // writes '91'+last10) instead of a non-indexable replace()+leading-wildcard LIKE.
+    const r = await db.execute({
+      sql: `SELECT timestamp FROM messages WHERE direction='received' AND timestamp != '' AND phone IN (?, ?, ?, ?)`,
+      args: ['91' + p10, '+91' + p10, p10, '0' + p10],
+    })
+    const counts = new Array(24).fill(0)
+    let total = 0
+    for (const row of serializeRows(r.rows)) {
+      let s = String(row.timestamp).trim().replace(' ', 'T')
+      // Pin a zone-less timestamp to UTC (matches tsToMs/lastReceivedMs) before getUTC*.
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(s)) s += 'Z'
+      const t = new Date(s)
+      if (Number.isNaN(t.getTime())) continue
+      const istMinutes = (t.getUTCHours() * 60 + t.getUTCMinutes() + 330) % 1440
+      counts[Math.floor(istMinutes / 60)]++
+      total++
+    }
+    // Need enough signal to trust a "best hour" — never give time advice off n=1.
+    if (total < 3) return null
+    let best = 0
+    for (let h = 1; h < 24; h++) if (counts[h] > counts[best]) best = h
+    if (counts[best] < 2) return null
+    return best
+  } catch (err) {
+    console.error('[getReplyHourForPhone] non-critical:', err)
+    return null
+  }
+}
+
+// Number of human contact attempts (call / whatsapp work_events) logged on a lead
+// — drives the "Attempt N of 7" counter. Best-effort.
+export async function getContactCountForLead(leadRow: number): Promise<number> {
+  try {
+    const db = await ensureInit()
+    const r = await db.execute({
+      sql: `SELECT COUNT(*) AS c FROM work_events WHERE lead_row = ? AND channel IN ('call','whatsapp')`,
+      args: [leadRow],
+    })
+    return Number(serializeRows(r.rows)[0]?.c ?? 0)
+  } catch (err) {
+    console.error('[getContactCountForLead] non-critical:', err)
+    return 0
+  }
+}
+
 // All work_events for a user at/after an ISO cutoff (ascending). Used for
 // cleared-today and streak computation.
 export async function getWorkEventsForUserSince(userId: string, sinceIso: string): Promise<WorkEvent[]> {

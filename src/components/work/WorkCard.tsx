@@ -11,6 +11,8 @@ import {
   FileText,
   ChevronRight,
   Quote,
+  Target,
+  Clock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -328,6 +330,12 @@ export default function WorkCard({
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: tempColor(card.temperature) }} aria-hidden />
               {tempLabel(card.temperature)}
             </span>
+            <span
+              className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted"
+              title="Contact attempts (target 7)"
+            >
+              Try {card.attempt_count}/{card.attempt_target}
+            </span>
             {card.score_reasons.slice(0, 3).map((r, i) => (
               <span key={i} className="rounded-full px-2 py-0.5 text-[11px] text-dim" style={{ background: 'var(--color-elevated)' }}>
                 {r}
@@ -372,6 +380,22 @@ export default function WorkCard({
               <span className="italic">{card.queue_reason}</span>
             </p>
           )}
+        </div>
+
+        {/* Next move — the headline "do this now" (NBA). Success-tinted callout. */}
+        <div
+          className="rounded-xl border px-3.5 py-3"
+          style={{
+            borderColor: 'color-mix(in srgb, var(--color-success) 30%, transparent)',
+            background: 'color-mix(in srgb, var(--color-success) 9%, transparent)',
+          }}
+        >
+          <div className="text-eyebrow mb-1 flex items-center gap-1.5" style={{ color: 'var(--color-success)' }}>
+            <Target className="h-3 w-3" strokeWidth={2.4} />
+            Abhi kya karein
+          </div>
+          <p className="text-[15px] font-bold leading-snug text-text">{card.nba.label}</p>
+          <p className="mt-0.5 text-caption text-muted">{card.nba.reason}</p>
         </div>
 
         {/* 4 · Window-aware primary action */}
@@ -477,6 +501,14 @@ export default function WorkCard({
               <Phone className="h-5 w-5" strokeWidth={2.4} />
               Call {card.name ? card.name.split(' ')[0] : 'now'}
             </a>
+
+            {/* Best-time-to-call hint (when the engine inferred a pattern) */}
+            {card.best_call_hint && (
+              <p className="flex items-center justify-center gap-1.5 text-center text-caption text-accent">
+                <Clock className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden />
+                <span>{card.best_call_hint}</span>
+              </p>
+            )}
 
             {/* 3 talking-point prompts for novices */}
             <div className="rounded-xl border border-border bg-elevated/50 p-3">

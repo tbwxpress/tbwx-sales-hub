@@ -19,6 +19,7 @@ import { getUsers } from './users'
 import { notifyQuiet } from './notifications'
 import { istToday, istDate } from './format'
 import { leadScore } from './scoring'
+import { computeNBA, bestCallHint } from './nba'
 import {
   getLastMessageByPhone,
   getLastReceivedMessageByPhone,
@@ -37,6 +38,8 @@ import {
   getLastWorkEventAtByUser,
   getLeadSignalsByRows,
   upsertLeadSignal,
+  getReplyHourForPhone,
+  getContactCountForLead,
   type WorkEvent,
   type LeadSignal,
 } from './db'
@@ -100,6 +103,11 @@ export interface WorkCard {
     decision_maker: string | null
     buyer_persona: string | null
   } | null
+  // Phase 2: the recommended next move + best-time-to-call + attempt counter.
+  nba: { action: string; label: string; reason: string }
+  best_call_hint: string | null
+  attempt_count: number
+  attempt_target: number
 }
 
 export interface WorkStats {
@@ -625,7 +633,17 @@ export async function getWorkQueue(
   const top = ranked.slice(0, limit)
   const cards: WorkCard[] = []
   for (const r of top) {
-    const lifecycle = await buildLifecycle(r.lead, r.lastMsg, now)
+    const sig = signalsByRow.get(r.lead.row_number)
+    const [lifecycle, attempt_count, bestHour] = await Promise.all([
+      buildLifecycle(r.lead, r.lastMsg, now),
+      getContactCountForLead(r.lead.row_number),
+      getReplyHourForPhone(r.lead.phone),
+    ])
+    const nba = computeNBA(r.lead, sig, {
+      windowOpen: r.window.open,
+      deckSent: r.lead.lead_status === 'DECK_SENT',
+      attemptCount: attempt_count,
+    })
     cards.push({
       lead_row: r.lead.row_number,
       name: r.lead.full_name || r.lead.phone,
@@ -648,7 +666,11 @@ export async function getWorkQueue(
       score: r.score ?? 0,
       score_reasons: r.scoreReasons ?? [],
       temperature: r.temperature ?? 'flat',
-      signals: signalForCard(signalsByRow.get(r.lead.row_number)),
+      signals: signalForCard(sig),
+      nba,
+      best_call_hint: r.window.open ? null : bestCallHint(bestHour),
+      attempt_count,
+      attempt_target: 7,
     })
   }
 

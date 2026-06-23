@@ -1,9 +1,10 @@
 import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
-import { upsertLeadSignal, getLeadSignal, getLastReceivedMessageByPhone } from '@/lib/db'
+import { upsertLeadSignal, getLeadSignal, getLastReceivedMessageByPhone, getContactCountForLead } from '@/lib/db'
 import { getLeadByRow } from '@/lib/sheets'
 import { leadScore } from '@/lib/scoring'
+import { computeNBA } from '@/lib/nba'
 import type { Lead } from '@/lib/types'
 import {
   SENTIMENT_KEYS,
@@ -64,8 +65,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const signals = await getLeadSignal(leadRow)
     const lastRecvMap = await getLastReceivedMessageByPhone()
-    const ai = leadScore(gate.lead, signals, { lastReceivedAt: lastRecvMap.get(last10(gate.lead.phone))?.last_received_at })
-    return NextResponse.json({ success: true, signals, ai })
+    const lr = lastRecvMap.get(last10(gate.lead.phone))?.last_received_at
+    const ai = leadScore(gate.lead, signals, { lastReceivedAt: lr })
+
+    // Phase 2: the recommended next move, mirroring Guided Mode's card.nba. Pin a
+    // zone-less timestamp to UTC (matches the rail's tsToMs) before the 24h math.
+    let lrMs = NaN
+    if (lr) {
+      let s = String(lr).trim().replace(' ', 'T')
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(s)) s += 'Z'
+      lrMs = new Date(s).getTime()
+    }
+    const windowOpen = !Number.isNaN(lrMs) && (Date.now() - lrMs) < 24 * 60 * 60 * 1000
+    const nba = computeNBA(gate.lead, signals, {
+      windowOpen,
+      deckSent: gate.lead.lead_status === 'DECK_SENT',
+      attemptCount: await getContactCountForLead(leadRow),
+    })
+
+    return NextResponse.json({ success: true, signals, ai, nba })
   } catch (err) {
     return NextResponse.json({ success: false, error: apiError(err, 'Failed to load signals') }, { status: 500 })
   }

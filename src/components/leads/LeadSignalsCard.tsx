@@ -19,6 +19,12 @@ interface AiScore {
   temperature: 'warming' | 'flat' | 'cooling'
 }
 
+interface Nba {
+  action: string
+  label: string
+  reason: string
+}
+
 // The signal fields a Free-mode rep can set/correct here, mapped to their chip
 // taxonomy. next_step / connected_ever are captured elsewhere (Guided/Calls).
 const GROUPS: { field: keyof LeadSignal; label: string; chips: Chip[] }[] = [
@@ -42,6 +48,7 @@ function tempColor(t: AiScore['temperature']): string {
 export default function LeadSignalsCard({ leadRow }: { leadRow: number }) {
   const [signals, setSignals] = useState<LeadSignal | null>(null)
   const [ai, setAi] = useState<AiScore | null>(null)
+  const [nba, setNba] = useState<Nba | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -51,6 +58,7 @@ export default function LeadSignalsCard({ leadRow }: { leadRow: number }) {
       if (data.success) {
         setSignals(data.signals ?? null)
         setAi(data.ai ?? null)
+        setNba(data.nba ?? null)
       }
     } catch { /* non-critical */ }
   }, [leadRow])
@@ -118,6 +126,15 @@ export default function LeadSignalsCard({ leadRow }: { leadRow: number }) {
               {r}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* Recommended next move (NBA) — same brain Guided Mode uses */}
+      {nba && (
+        <div className="rounded-md border border-success/30 bg-success/5 px-2.5 py-1.5">
+          <p className="text-[10px] uppercase tracking-wider text-success/80 mb-0.5">Aage kya karein</p>
+          <p className="text-[12px] font-semibold text-text leading-snug">{nba.label}</p>
+          <p className="text-[11px] text-muted leading-snug">{nba.reason}</p>
         </div>
       )}
 
