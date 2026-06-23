@@ -527,6 +527,7 @@ function withinBucketSort(a: RankedLead, b: RankedLead): number {
 export interface WorkQueueResult {
   cards: WorkCard[]
   queue_depth: number
+  book_size: number // active leads assigned to this agent (their whole pile)
 }
 
 /**
@@ -593,7 +594,7 @@ export async function getWorkQueue(
     })
   }
 
-  return { cards, queue_depth: depth }
+  return { cards, queue_depth: depth, book_size: mine.length }
 }
 
 // ─── Stats ───────────────────────────────────────────────────────────
@@ -615,10 +616,10 @@ function startOfTodayIso(): string {
 export async function getWorkStats(
   user: Pick<User, 'id' | 'name' | 'agent_role' | 'is_telecaller' | 'daily_target'>,
 ): Promise<WorkStats> {
-  // Conversations = the quality floor (≥50 by default); attempts = the volume
-  // bar (~200). daily_target is the conversation target.
+  // Conversations = the quality floor (≥50 by default). daily_target is the
+  // conversation target. The attempts/dials target is computed below, scaled to
+  // the agent's actual book.
   const conversations_target = user.daily_target || 50
-  const attempts_target = Math.max(200, conversations_target * 4)
   // Pull ~60 days of events once; compute today's counts + streak from them.
   const since = new Date(Date.now() - 60 * DAY_MS).toISOString()
   const events = await getWorkEventsForUserSince(user.id, since)
@@ -653,7 +654,16 @@ export async function getWorkStats(
     }
   }
 
-  const { queue_depth } = await getWorkQueue(user, { limit: 1 })
+  const { queue_depth, book_size } = await getWorkQueue(user, { limit: 1 })
+  // Dials/attempts target scales to the agent's active book. Telecallers (high-
+  // volume click-to-dial) are floored at a humane 120/day and capped at 200;
+  // closers (fewer, deeper touches) floored at 40, capped at 120. 120–150/day is
+  // the sustainable telecaller band — beyond ~200 manual dials, quality drops and
+  // burnout follows. A small book still gets the floor; a big backlog the cap.
+  const role = effectiveRole(user)
+  const floor = role === 'telecaller' ? 120 : 40
+  const cap = role === 'telecaller' ? 200 : 120
+  const attempts_target = Math.min(cap, Math.max(floor, book_size))
   return { attempts_today, attempts_target, conversations_today, conversations_target, streak, queue_depth }
 }
 
