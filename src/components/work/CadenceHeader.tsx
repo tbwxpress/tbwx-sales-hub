@@ -1,6 +1,6 @@
 'use client'
 
-import { Flame, Phone, MessageCircle } from 'lucide-react'
+import { Flame, Phone, MessageCircle, LogOut } from 'lucide-react'
 import type { WorkStats } from './types'
 
 /**
@@ -132,6 +132,22 @@ export default function CadenceHeader({ stats }: { stats: WorkStats }) {
             {stats.streak}-day
           </div>
         )}
+
+        {/* Sign out — the rail is immersive (no Navbar), so logout lives here so
+            guided telecallers + closers can always log out. */}
+        <button
+          type="button"
+          onClick={async () => {
+            try { await fetch('/api/auth/logout', { method: 'POST' }) } catch { /* ignore */ }
+            window.location.href = '/login'
+          }}
+          title="Sign out"
+          aria-label="Sign out"
+          className="focus-ring flex shrink-0 items-center justify-center rounded-full p-2 text-dim transition-colors hover:text-text"
+          style={{ background: 'color-mix(in srgb, var(--color-border) 30%, transparent)' }}
+        >
+          <LogOut className="h-4 w-4" strokeWidth={2} />
+        </button>
       </div>
     </header>
   )
