@@ -133,6 +133,33 @@ export default function WorkCard({
   const [sent, setSent] = useState(false)
   const aiTriedRef = useRef(false)
 
+  // ── AI brief (POST /api/work/reason) ──────────────────────────────────
+  // A richer, lead-specific brief than the static talking points: a one-line
+  // summary, bespoke talking points, an objection rebuttal, and an opener.
+  // Always returns something useful (deterministic Hinglish fallback when the
+  // Gemini key isn't set). Loaded once per card, silent on failure.
+  const [brief, setBrief] = useState<{ summary: string; talking_points: string[]; rebuttal: string | null; opener: string; model: string } | null>(null)
+  const [briefLoading, setBriefLoading] = useState(false)
+  const briefTriedRef = useRef(false)
+
+  const loadBrief = useCallback(async () => {
+    if (briefTriedRef.current) return
+    briefTriedRef.current = true
+    setBriefLoading(true)
+    try {
+      const res = await fetch('/api/work/reason', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadRow: card.lead_row, windowOpen: card.window?.open === true }),
+      })
+      const data = await res.json()
+      if (data.success && data.data) setBrief(data.data)
+    } catch {
+      /* silent — the static talking points remain */
+    }
+    setBriefLoading(false)
+  }, [card.lead_row])
+
   // Lazy-load the AI draft the first time a WhatsApp-first card mounts — saves a
   // model call on call-first cards, and never re-fires for the same card.
   const loadAiDraft = useCallback(async (force = false) => {
@@ -158,7 +185,13 @@ export default function WorkCard({
     setDraft('')
     setSent(false)
     aiTriedRef.current = false
+    setBrief(null)
+    briefTriedRef.current = false
+    // Debounce the brief so power-skipping the queue doesn't fire a Gemini call
+    // for every card glanced at for <1s — only leads the rep dwells on get one.
+    const briefTimer = window.setTimeout(() => loadBrief(), 700)
     if (whatsappFirst) loadAiDraft(true)
+    return () => window.clearTimeout(briefTimer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.lead_row])
 
@@ -480,6 +513,23 @@ export default function WorkCard({
                 Call instead
               </a>
             </div>
+
+            {/* Objection rebuttal — the highest-value line, accent/success-tinted */}
+            {brief?.rebuttal && (
+              <div
+                className="rounded-xl border px-3.5 py-3"
+                style={{
+                  borderColor: 'color-mix(in srgb, var(--color-success) 30%, transparent)',
+                  background: 'color-mix(in srgb, var(--color-success) 9%, transparent)',
+                }}
+              >
+                <div className="text-eyebrow mb-1 flex items-center gap-1.5" style={{ color: 'var(--color-success)' }}>
+                  <Sparkles className="h-3 w-3" strokeWidth={2.4} aria-hidden />
+                  Agar objection aaye, ye bolo:
+                </div>
+                <p className="text-[14px] font-medium leading-snug text-text">{brief.rebuttal}</p>
+              </div>
+            )}
           </div>
         ) : (
           /* ── Call-first (window closed / cold) ───────────────────────── */
@@ -510,11 +560,22 @@ export default function WorkCard({
               </p>
             )}
 
-            {/* 3 talking-point prompts for novices */}
+            {/* 3 talking-point prompts for novices — AI brief when loaded, else static */}
             <div className="rounded-xl border border-border bg-elevated/50 p-3">
-              <div className="text-eyebrow mb-2 text-dim">Talking points</div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-eyebrow text-dim">Talking points</span>
+                {briefLoading && !brief && (
+                  <span className="inline-flex items-center gap-1 text-[11px] text-accent">
+                    <Sparkles className="h-3 w-3 animate-pulse" strokeWidth={2.4} aria-hidden />
+                    AI brief bana raha hai…
+                  </span>
+                )}
+              </div>
+              {brief?.summary && (
+                <p className="mb-2 text-[12px] leading-snug text-muted">{brief.summary}</p>
+              )}
               <ul className="space-y-2">
-                {talkingPoints(card).map((pt, i) => (
+                {(brief?.talking_points?.length ? brief.talking_points : talkingPoints(card)).map((pt, i) => (
                   <li key={i} className="flex gap-2 text-[13px] leading-snug text-body">
                     <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2.4} aria-hidden />
                     <span>{pt}</span>
@@ -522,6 +583,23 @@ export default function WorkCard({
                 ))}
               </ul>
             </div>
+
+            {/* Objection rebuttal — the highest-value line, accent/success-tinted */}
+            {brief?.rebuttal && (
+              <div
+                className="rounded-xl border px-3.5 py-3"
+                style={{
+                  borderColor: 'color-mix(in srgb, var(--color-success) 30%, transparent)',
+                  background: 'color-mix(in srgb, var(--color-success) 9%, transparent)',
+                }}
+              >
+                <div className="text-eyebrow mb-1 flex items-center gap-1.5" style={{ color: 'var(--color-success)' }}>
+                  <Sparkles className="h-3 w-3" strokeWidth={2.4} aria-hidden />
+                  Agar objection aaye, ye bolo:
+                </div>
+                <p className="text-[14px] font-medium leading-snug text-text">{brief.rebuttal}</p>
+              </div>
+            )}
 
             {/* Secondary: send deck/info template */}
             <div className="flex justify-center pt-0.5">

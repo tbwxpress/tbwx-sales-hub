@@ -75,3 +75,22 @@ export function bestCallHint(hourIst: number | null): string | null {
   const ampm = hourIst === 0 ? '12am' : hourIst < 12 ? `${hourIst}am` : hourIst === 12 ? '12pm' : `${hourIst - 12}pm`
   return `Aksar ~${ampm} message karta hai — us time call karo`
 }
+
+// Objection → a ready, on-brand Hinglish rebuttal the rep can say verbatim. Used
+// as the deterministic fallback for the AI brief (and as a guardrail anchor when
+// the LLM is available). Keep facts honest: ₹4–7L · 5% royalty · 8–12mo ROI.
+export const REBUTTALS: Record<string, string> = {
+  roi_doubt: 'Payback aam taur pe 8–12 mahine ka hota hai. Main aapko paas wale outlet ke actual numbers dikha sakta hoon — kitna kamaata hai.',
+  location_risk: 'Location hum khud survey karke approve karte hain — footfall aur competition dekh ke — taaki risk kam ho.',
+  brand_unknown: '40+ outlets already chal rahe hain. Main running outlets ke videos aur owners ke testimonials bhej deta hoon.',
+  support_fear: 'Setup, training, marketing aur supply — sab end-to-end support milti hai, aapko akele nahi chhodte.',
+  capital_not_ready: 'Koi baat nahi — main exact investment breakdown bhej deta hoon, aur loan/MUDRA ka option bhi hai.',
+  needs_family_approval: 'Bilkul, family ke saath decision lena sahi hai. Main unke liye ek short video + numbers bhej deta hoon, aur chahein to ek saath baat kar lete hain.',
+  saturation: 'Demand abhi bhi strong hai — hum location aise choose karte hain ki aapka catchment alag ho, cannibalization na ho.',
+  just_exploring: 'Koi pressure nahi — main basics bhej deta hoon, aaram se dekh lijiye; jab ready ho tab aage badhte hain.',
+}
+
+export function objectionRebuttal(objection: string | null | undefined): string | null {
+  if (!objection) return null
+  return REBUTTALS[objection] || null
+}
