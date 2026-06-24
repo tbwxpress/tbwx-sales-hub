@@ -1314,7 +1314,9 @@ export async function getConversionInsights(): Promise<ConversionInsights> {
     [...m.entries()]
       .map(([key, v]) => ({ key, label: labelFor(chips, key), won: v.won, lost: v.lost, n: v.won + v.lost, rate: v.won + v.lost ? Math.round((100 * v.won) / (v.won + v.lost)) : 0 }))
       .filter(r => r.n >= 3)
-      .sort((a, b) => b.rate - a.rate)
+      // Rate first, but break ties by volume so a trustworthy 18/20 isn't buried
+      // under a noisy 3/3 — sample size = confidence.
+      .sort((a, b) => (b.rate - a.rate) || (b.n - a.n))
 
   const n = overall.won + overall.lost
   return {

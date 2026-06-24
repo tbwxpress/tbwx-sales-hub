@@ -166,7 +166,7 @@ export default function InsightsPanel() {
         <h2 className="text-heading" style={{ color: 'var(--color-text)' }}>
           What&apos;s converting{' '}
           <span className="text-caption font-normal" style={{ color: 'var(--color-dim)' }}>
-            · AI insights
+            · AI insights · all-time
           </span>
         </h2>
       </div>
