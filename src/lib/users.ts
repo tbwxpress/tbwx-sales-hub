@@ -152,8 +152,8 @@ export async function createUser(
   const db = getClient()
   const id = `u_${Date.now()}`
   await db.execute({
-    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, can_edit_leads, active, in_lead_pool, is_closer, is_telecaller, lead_pool_paused, work_mode, agent_role, daily_target)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, can_edit_leads, active, in_lead_pool, is_closer, is_telecaller, lead_pool_paused, work_mode, agent_role, daily_target, receives_new_leads)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       id,
       user.name,
@@ -170,6 +170,9 @@ export async function createUser(
       user.work_mode || 'free',
       user.agent_role || null,
       user.daily_target ?? 40,
+      // New-lead pool membership. Default = in_lead_pool, so a new Closer joins the
+      // round-robin and a new Telecaller stays out until an admin toggles them in.
+      (user.receives_new_leads ?? user.in_lead_pool) ? 1 : 0,
     ],
   })
   return id

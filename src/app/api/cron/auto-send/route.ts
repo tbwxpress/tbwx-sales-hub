@@ -135,9 +135,14 @@ function calcPriority(experience: string, timeline: string): string {
 }
 
 // --- Auto-assignment: STRICT ALTERNATION ---
-// Fully data-driven, configured per user in Admin → Users:
-//   - active && in_lead_pool && !lead_pool_paused → eligible for new leads
-//   - lead_pool_paused: admin can pause an agent without removing them as a Closer
+// Fully data-driven, configured per user in Admin → Agents:
+//   - active && receives_new_leads && !lead_pool_paused → eligible for new leads
+//   - receives_new_leads: the "New leads" toggle. Decoupled from in_lead_pool
+//     (which still means "is a Closer" for commissions) so a TELECALLER can be
+//     toggled into the fresh-lead pool to act as a qualifying layer WITHOUT being
+//     mis-counted as a closer. Backfilled = in_lead_pool, so existing closers
+//     stay in the pool by default.
+//   - lead_pool_paused: admin can pause an in-pool Closer without un-toggling them
 // A persistent counter (settings.auto_assign.counter) advances by one per
 // assignment so leads alternate strictly: pool[counter % pool.length].
 // No HOT special-casing — every lead alternates. No load cap. If the pool
@@ -328,10 +333,10 @@ export async function POST(request: NextRequest) {
     try {
       const [users, cachedLeads] = await Promise.all([getUsers(), getLeads()])
       agentData = {
-        // Eligible: active + in_lead_pool + not paused. Sorted by created_at (already
+        // Eligible: active + receives_new_leads + not paused. Sorted by created_at (already
         // returned from getUsers in that order) so alternation is deterministic across runs.
         activeAgents: users
-          .filter(u => u.active && u.in_lead_pool && !u.lead_pool_paused)
+          .filter(u => u.active && u.receives_new_leads && !u.lead_pool_paused)
           .map(u => ({ name: u.name })),
         allLeads: cachedLeads,
       }
