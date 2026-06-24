@@ -66,6 +66,8 @@ export interface Card {
   best_call_hint: string | null
   attempt_count: number
   attempt_target: number
+  age_minutes: number | null
+  speed_urgency: 'now' | 'soon' | 'aging' | null
 }
 
 /** Cadence stats — drives the progress rings, "left" count, and streak chip. */

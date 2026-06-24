@@ -90,6 +90,50 @@ function tempLabel(t: string): string {
   return t === 'warming' ? 'Warming' : t === 'cooling' ? 'Cooling' : 'Steady'
 }
 
+// Format an age in minutes into a short, readable string: "<60" → "{n}m",
+// 60–119 → "1h 5m" / "1h", ≥120 → "{h}h". Keeps the urgency strip terse.
+function formatAge(mins: number): string {
+  const m = Math.max(0, Math.round(mins))
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  const rem = m % 60
+  if (h < 2) return rem > 0 ? `${h}h ${rem}m` : `${h}h`
+  return `${h}h`
+}
+
+// Speed-to-lead urgency strip — non-null ONLY for fresh NEW leads. Renders a
+// compact, bold, on-brand pill near the top of the card (just below the
+// lifecycle strip). Drives reps to call fresh leads fast.
+function UrgencyStrip({ urgency, ageMinutes }: { urgency: 'now' | 'soon' | 'aging'; ageMinutes: number | null }) {
+  const mins = ageMinutes ?? 0
+  let text: string
+  let color: string
+  if (urgency === 'now') {
+    color = 'var(--color-danger)'
+    text = `🔴 Abhi aaya · ${formatAge(mins)} — turant call karo!`
+  } else if (urgency === 'soon') {
+    color = '#f59e0b'
+    text = `🟠 Naya lead · ${formatAge(mins)} — jaldi call karo`
+  } else {
+    color = 'var(--color-dim)'
+    const hrs = Math.max(1, Math.round(mins / 60))
+    text = `Naya lead · ${hrs}h pehle aaya — call karo`
+  }
+  return (
+    <div
+      className="flex items-center gap-2 rounded-lg border px-3 py-2 text-[13px] font-bold leading-snug"
+      style={{
+        borderColor: `color-mix(in srgb, ${color} 35%, transparent)`,
+        background: `color-mix(in srgb, ${color} 12%, transparent)`,
+        color,
+      }}
+      role="status"
+    >
+      {text}
+    </div>
+  )
+}
+
 // Three short talking-point prompts for novice telecallers on a cold call.
 // Tailored from the qualification fields the engine already attaches.
 function talkingPoints(card: Card): string[] {
@@ -299,6 +343,11 @@ export default function WorkCard({
       <div className="space-y-4 p-4 sm:p-5">
         {/* 1 · Lifecycle strip */}
         <LifecycleStrip lifecycle={card.lifecycle} />
+
+        {/* Speed-to-lead urgency — fresh NEW leads only (non-null only then) */}
+        {card.speed_urgency && (
+          <UrgencyStrip urgency={card.speed_urgency} ageMinutes={card.age_minutes} />
+        )}
 
         {/* 2 · WHO */}
         <div>

@@ -20,6 +20,7 @@ import { notifyQuiet } from './notifications'
 import { istToday, istDate } from './format'
 import { leadScore } from './scoring'
 import { computeNBA, bestCallHint } from './nba'
+import { labelFor, OBJECTION_CHIPS, CAPITAL_CHIPS, PERSONA_CHIPS } from '@/config/sales-signals'
 import {
   getLastMessageByPhone,
   getLastReceivedMessageByPhone,
@@ -108,6 +109,8 @@ export interface WorkCard {
   best_call_hint: string | null
   attempt_count: number
   attempt_target: number
+  age_minutes: number | null
+  speed_urgency: 'now' | 'soon' | 'aging' | null
 }
 
 export interface WorkStats {
@@ -644,6 +647,14 @@ export async function getWorkQueue(
       deckSent: r.lead.lead_status === 'DECK_SENT',
       attemptCount: attempt_count,
     })
+    // Speed-to-lead: how fresh is this lead (urgency only for NEW leads — a Meta
+    // lead converts multiples better when called in the first minutes).
+    const createdMs = tsToMs(r.lead.created_time)
+    const age_minutes = createdMs ? Math.max(0, Math.floor((now - createdMs) / 60000)) : null
+    const speed_urgency: 'now' | 'soon' | 'aging' | null =
+      r.lead.lead_status === 'NEW' && age_minutes != null && age_minutes < 240
+        ? (age_minutes < 5 ? 'now' : age_minutes < 30 ? 'soon' : 'aging')
+        : null
     cards.push({
       lead_row: r.lead.row_number,
       name: r.lead.full_name || r.lead.phone,
@@ -671,6 +682,8 @@ export async function getWorkQueue(
       best_call_hint: r.window.open ? null : bestCallHint(bestHour),
       attempt_count,
       attempt_target: 7,
+      age_minutes,
+      speed_urgency,
     })
   }
 
@@ -1245,5 +1258,69 @@ export async function getOwnerPanel(): Promise<OwnerPanel> {
   return {
     agents,
     pipeline: { qualified_handoffs_today: qualified, rewarm_bounces_today: rewarm, wins_today: wins },
+  }
+}
+
+// ─── Phase 3: conversion learning (read-only owner insights) ─────────────
+
+export interface InsightRow {
+  key: string
+  label: string
+  won: number
+  lost: number
+  n: number
+  rate: number // % won of decided
+}
+
+export interface ConversionInsights {
+  overall: { won: number; lost: number; n: number; rate: number }
+  by_objection: InsightRow[]
+  by_capital: InsightRow[]
+  by_persona: InsightRow[]
+}
+
+/**
+ * What actually converts: empirical won/lost rates per captured signal, joined
+ * from the leads' terminal status (CONVERTED/LOST) and lead_signals. READ-ONLY —
+ * the owner report; promote to live score weights only after enough data has
+ * accumulated. Buckets with < 3 decided leads are hidden (no n=1 noise).
+ */
+export async function getConversionInsights(): Promise<ConversionInsights> {
+  const allLeads = await getLeads()
+  const terminal = allLeads.filter(l => l.lead_status === 'CONVERTED' || l.lead_status === 'LOST')
+  const signals = await getLeadSignalsByRows(terminal.map(l => l.row_number))
+
+  const overall = { won: 0, lost: 0 }
+  const objMap = new Map<string, { won: number; lost: number }>()
+  const capMap = new Map<string, { won: number; lost: number }>()
+  const perMap = new Map<string, { won: number; lost: number }>()
+  const bump = (m: Map<string, { won: number; lost: number }>, k: string | null | undefined, won: boolean) => {
+    if (!k) return
+    const e = m.get(k) || { won: 0, lost: 0 }
+    if (won) e.won++; else e.lost++
+    m.set(k, e)
+  }
+
+  for (const l of terminal) {
+    const won = l.lead_status === 'CONVERTED'
+    if (won) overall.won++; else overall.lost++
+    const sig = signals.get(l.row_number)
+    bump(objMap, sig?.objection, won)
+    bump(capMap, sig?.capital_readiness, won)
+    bump(perMap, sig?.buyer_persona, won)
+  }
+
+  const toRows = (m: Map<string, { won: number; lost: number }>, chips: { key: string; label: string }[]): InsightRow[] =>
+    [...m.entries()]
+      .map(([key, v]) => ({ key, label: labelFor(chips, key), won: v.won, lost: v.lost, n: v.won + v.lost, rate: v.won + v.lost ? Math.round((100 * v.won) / (v.won + v.lost)) : 0 }))
+      .filter(r => r.n >= 3)
+      .sort((a, b) => b.rate - a.rate)
+
+  const n = overall.won + overall.lost
+  return {
+    overall: { won: overall.won, lost: overall.lost, n, rate: n ? Math.round((100 * overall.won) / n) : 0 },
+    by_objection: toRows(objMap, OBJECTION_CHIPS),
+    by_capital: toRows(capMap, CAPITAL_CHIPS),
+    by_persona: toRows(perMap, PERSONA_CHIPS),
   }
 }

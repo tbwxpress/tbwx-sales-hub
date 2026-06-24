@@ -201,6 +201,19 @@ export function leadScore(lead: Lead, signals?: LeadSignal | null, ctx: ScoreCon
     if (why) reasons.push(why)
   }
 
+  // Speed-to-lead: a fresh NEW lead is most convertible in the first minutes —
+  // the boost decays with age so a 2-min lead always outranks a 40-min one.
+  if (lead.lead_status === 'NEW' && lead.created_time) {
+    let cs = String(lead.created_time).trim().replace(' ', 'T')
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(cs)) cs += 'Z'
+    const ageMin = (now - new Date(cs).getTime()) / 60000
+    if (!Number.isNaN(ageMin) && ageMin >= 0) {
+      if (ageMin < 15) add(28, 'Abhi aaya — turant call +28')
+      else if (ageMin < 60) add(18, 'Naya lead (<1h) +18')
+      else if (ageMin < 240) add(8, '')
+    }
+  }
+
   // Reply recency — behaviour out-predicts the (often blank) ad-form fields.
   const lr = lastReceivedMs(ctx.lastReceivedAt)
   if (!Number.isNaN(lr)) {

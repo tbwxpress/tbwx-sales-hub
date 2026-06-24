@@ -10,6 +10,7 @@ import NeedsAttentionBanner from '@/components/NeedsAttentionBanner'
 import UpdateRequestWidget from '@/components/UpdateRequestWidget'
 import DashboardWidgets from '@/components/DashboardWidgets'
 import OwnerWorkPanel from '@/components/OwnerWorkPanel'
+import InsightsPanel from '@/components/InsightsPanel'
 import { KpiCardSkeleton } from '@/components/KpiCard'
 import { toast } from 'sonner'
 import { timeAgo, followupLabel } from '@/lib/format'
@@ -955,6 +956,9 @@ export default function DashboardPage() {
 
         {/* ─── Owner Work Panel — Guided Work Mode cockpit (admin) ────── */}
         {user?.role === 'admin' && <OwnerWorkPanel />}
+
+        {/* ─── What's converting — AI conversion insights (admin) ─────── */}
+        {user?.role === 'admin' && <InsightsPanel />}
 
         {/* ─── KPI Metric Widgets (admin) ─────────────────────────────── */}
         {user?.role === 'admin' && (
