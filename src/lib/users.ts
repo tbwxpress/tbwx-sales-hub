@@ -79,6 +79,11 @@ async function ensureTable(): Promise<void> {
   if (!colNames.has('daily_target')) {
     await db.execute('ALTER TABLE users ADD COLUMN daily_target INTEGER DEFAULT 40')
   }
+  // Lead-distribution toggle (additive). DEFAULT 1 = everyone receives new leads,
+  // so existing behaviour is unchanged until an admin turns an agent off.
+  if (!colNames.has('receives_new_leads')) {
+    await db.execute('ALTER TABLE users ADD COLUMN receives_new_leads INTEGER NOT NULL DEFAULT 1')
+  }
 
   _tableReady = true
 }
@@ -113,6 +118,8 @@ function rowToUser(row: Record<string, unknown>): User {
     work_mode: workMode,
     agent_role: agentRole,
     daily_target: row.daily_target == null ? 40 : Number(row.daily_target),
+    // Default true (column DEFAULT 1) so a pre-migration NULL = "receives leads".
+    receives_new_leads: row.receives_new_leads == null ? true : Number(row.receives_new_leads) === 1,
   }
 }
 
@@ -138,8 +145,8 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 // defaults (work_mode 'free', daily_target 40) and agent_role is derived from
 // the legacy flags on read — so existing callers don't need to supply them.
 export async function createUser(
-  user: Omit<User, 'id' | 'work_mode' | 'agent_role' | 'daily_target'>
-    & Partial<Pick<User, 'work_mode' | 'agent_role' | 'daily_target'>>,
+  user: Omit<User, 'id' | 'work_mode' | 'agent_role' | 'daily_target' | 'receives_new_leads'>
+    & Partial<Pick<User, 'work_mode' | 'agent_role' | 'daily_target' | 'receives_new_leads'>>,
 ): Promise<string> {
   await ensureTable()
   const db = getClient()
@@ -208,6 +215,7 @@ export async function updateUser(userId: string, fields: Partial<User>): Promise
   if (fields.work_mode !== undefined) { updates.push('work_mode = ?'); values.push(fields.work_mode) }
   if (fields.agent_role !== undefined) { updates.push('agent_role = ?'); values.push(fields.agent_role) }
   if (fields.daily_target !== undefined) { updates.push('daily_target = ?'); values.push(fields.daily_target) }
+  if (fields.receives_new_leads !== undefined) { updates.push('receives_new_leads = ?'); values.push(fields.receives_new_leads ? 1 : 0) }
 
   if (updates.length === 0) return
 

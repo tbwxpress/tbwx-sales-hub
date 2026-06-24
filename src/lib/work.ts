@@ -212,7 +212,7 @@ async function activeLeadCountByAgentName(leads: Lead[]): Promise<Map<string, nu
 // spreads evenly across repeated calls within a tick.
 export async function pickLeastLoadedCloser(): Promise<string | null> {
   const [users, leads] = await Promise.all([getUsers(), getLeads()])
-  const closers = users.filter(u => u.active && effectiveRole(u) === 'closer')
+  const closers = users.filter(u => u.active && u.receives_new_leads && effectiveRole(u) === 'closer')
   if (closers.length === 0) return null
   const counts = await activeLeadCountByAgentName(leads)
   let best: User | null = null
@@ -230,7 +230,7 @@ export async function pickLeastLoadedCloser(): Promise<string | null> {
 export async function pickTelecallerForReWarm(originalQualifier?: string): Promise<string | null> {
   void originalQualifier
   const [users, leads] = await Promise.all([getUsers(), getLeads()])
-  const telecallers = users.filter(u => u.active && effectiveRole(u) === 'telecaller')
+  const telecallers = users.filter(u => u.active && u.receives_new_leads && effectiveRole(u) === 'telecaller')
   if (telecallers.length === 0) return null
   const counts = await activeLeadCountByAgentName(leads)
   let best: User | null = null

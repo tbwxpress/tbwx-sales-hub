@@ -21,6 +21,10 @@ export interface User {
   work_mode: WorkMode
   agent_role: AgentRole
   daily_target: number
+  // Lead distribution: is this agent in the pool to receive new/routed leads?
+  // Defaults true. Telecallers-as-qualifying-layer can keep this on while a
+  // closer who should only get handoffs can be turned off.
+  receives_new_leads: boolean
 }
 
 export interface SessionUser {

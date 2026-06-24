@@ -28,6 +28,7 @@ interface AgentUser {
   work_mode: WorkMode
   agent_role: AgentRole
   daily_target: number
+  receives_new_leads: boolean
 }
 
 // ─── Page ───────────────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ export default function AdminAgentsPage() {
               ? (u.agent_role as AgentRole)
               : null,
           daily_target: typeof u.daily_target === 'number' ? u.daily_target : Number(u.daily_target) || 40,
+          receives_new_leads: u.receives_new_leads !== false,
         }))
         setUsers(mapped)
       }
@@ -90,7 +92,7 @@ export default function AdminAgentsPage() {
   // back to the prior snapshot on failure. Lossless + instant, as the spec demands.
   async function patchAgent(
     id: string,
-    patch: Partial<Pick<AgentUser, 'work_mode' | 'agent_role' | 'daily_target'>>,
+    patch: Partial<Pick<AgentUser, 'work_mode' | 'agent_role' | 'daily_target' | 'receives_new_leads'>>,
     successMsg: string,
   ) {
     const prev = users
@@ -113,6 +115,7 @@ export default function AdminAgentsPage() {
                 work_mode: data.data.work_mode,
                 agent_role: data.data.agent_role,
                 daily_target: data.data.daily_target,
+                receives_new_leads: data.data.receives_new_leads,
               }
             : u,
         ),
@@ -366,6 +369,30 @@ export default function AdminAgentsPage() {
                           <span
                             className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform"
                             style={{ left: isGuided ? '22px' : '2px' }}
+                          />
+                        </button>
+                      </label>
+
+                      {/* Receives-new-leads toggle (the lead-distribution pool) */}
+                      <label className="flex items-center gap-2 text-xs cursor-pointer" title="On = this agent is in the pool for new + routed leads (qualified handoffs to closers, re-warm bounces to telecallers). Off = they only keep leads already assigned to them.">
+                        <span className={u.receives_new_leads ? 'text-success font-semibold' : 'text-dim'}>New leads</span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={u.receives_new_leads}
+                          aria-label={`${u.receives_new_leads ? 'Stop' : 'Start'} sending new leads to ${u.name}`}
+                          disabled={rowBusy}
+                          onClick={() => patchAgent(
+                            u.id,
+                            { receives_new_leads: !u.receives_new_leads },
+                            u.receives_new_leads ? `${u.name} → not receiving new leads` : `${u.name} → receiving new leads`,
+                          )}
+                          className="w-11 h-6 rounded-full transition-colors relative disabled:opacity-50"
+                          style={{ background: u.receives_new_leads ? 'var(--color-success)' : 'var(--color-border)' }}
+                        >
+                          <span
+                            className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform"
+                            style={{ left: u.receives_new_leads ? '22px' : '2px' }}
                           />
                         </button>
                       </label>

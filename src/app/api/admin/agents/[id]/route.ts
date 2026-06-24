@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const body = await req.json()
-    const updates: { work_mode?: WorkMode; agent_role?: AgentRole; daily_target?: number } = {}
+    const updates: { work_mode?: WorkMode; agent_role?: AgentRole; daily_target?: number; receives_new_leads?: boolean } = {}
 
     if (body?.work_mode !== undefined) {
       if (body.work_mode !== 'guided' && body.work_mode !== 'free') {
@@ -47,6 +47,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       updates.daily_target = Math.round(n)
     }
+    if (body?.receives_new_leads !== undefined) {
+      if (typeof body.receives_new_leads !== 'boolean') {
+        return NextResponse.json({ success: false, error: 'receives_new_leads must be a boolean' }, { status: 400 })
+      }
+      updates.receives_new_leads = body.receives_new_leads
+    }
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ success: false, error: 'Nothing to update' }, { status: 400 })
@@ -57,7 +63,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({
       success: true,
       data: fresh
-        ? { id: fresh.id, work_mode: fresh.work_mode, agent_role: fresh.agent_role, daily_target: fresh.daily_target }
+        ? { id: fresh.id, work_mode: fresh.work_mode, agent_role: fresh.agent_role, daily_target: fresh.daily_target, receives_new_leads: fresh.receives_new_leads }
         : null,
     })
   } catch (err) {
