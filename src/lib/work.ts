@@ -61,7 +61,9 @@ const STALLED_DAYS = 3
 const NON_CONNECT_ACTIONS = new Set(['no_answer', 'no_response'])
 // The approved Meta UTILITY template fired as the automatic "we tried to reach
 // you" 2nd touchpoint when a call doesn't connect. Capped once-per-lead-per-24h.
-const MISSED_CALL_TEMPLATE = 'missed_call_franchise'
+// UTILITY (not MARKETING) so it's exempt from Meta's 131049 marketing-frequency
+// cap that silently drops marketing templates. Body params: {{1}}=name, {{2}}=ref.
+const MISSED_CALL_TEMPLATE = 'missed_call_followup'
 
 const last10 = (p: string) => String(p || '').replace(/\D/g, '').slice(-10)
 
@@ -870,7 +872,11 @@ async function fireMissedCallTemplate(lead: Lead): Promise<void> {
     )
     if (sentRecently) return
     const firstName = String(lead.full_name || '').trim().split(/\s+/)[0] || 'there'
-    const res = await sendTemplate(lead.phone, MISSED_CALL_TEMPLATE, [{ type: 'text', text: firstName }])
+    const ref = `TBWX-${lead.row_number}`
+    const res = await sendTemplate(lead.phone, MISSED_CALL_TEMPLATE, [
+      { type: 'text', text: firstName },
+      { type: 'text', text: ref },
+    ])
     if (res.success) {
       await insertMessage({
         phone: lead.phone,
