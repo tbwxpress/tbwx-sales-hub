@@ -41,9 +41,12 @@ import {
   upsertLeadSignal,
   getReplyHourForPhone,
   getContactCountForLead,
+  insertMessage,
+  getMessages,
   type WorkEvent,
   type LeadSignal,
 } from './db'
+import { sendTemplate } from './whatsapp'
 
 // ─── Constants ───────────────────────────────────────────────────────
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
@@ -56,6 +59,9 @@ const STALLED_DAYS = 3
 // Outcomes that are a dial/touch but NOT a real conversation — they count toward
 // the attempts target but not the conversations target.
 const NON_CONNECT_ACTIONS = new Set(['no_answer', 'no_response'])
+// The approved Meta UTILITY template fired as the automatic "we tried to reach
+// you" 2nd touchpoint when a call doesn't connect. Capped once-per-lead-per-24h.
+const MISSED_CALL_TEMPLATE = 'missed_call_franchise'
 
 const last10 = (p: string) => String(p || '').replace(/\D/g, '').slice(-10)
 
@@ -846,6 +852,43 @@ function resolveOutcome(
  *
  * Mirrors the leads PATCH route's status + CAPI behavior for CONVERTED/HOT.
  */
+// Auto 2nd-touchpoint: fire the approved missed-call WhatsApp template when a
+// call doesn't connect, so every no-answer lead still gets a WhatsApp follow-up
+// (the calling number sometimes flags as spam — this is the second channel).
+// Best-effort: never throws into the outcome path. Guardrail: at most once per
+// lead per 24h, deduped via the messages.template_used log. A not-yet-approved
+// template simply fails the send silently and retries on the next no-answer.
+async function fireMissedCallTemplate(lead: Lead): Promise<void> {
+  try {
+    if (!lead.phone) return
+    const recent = await getMessages(lead.phone, 50)
+    const now = Date.now()
+    const sentRecently = recent.some((m: Record<string, unknown>) =>
+      m.direction === 'sent' &&
+      String(m.template_used || '') === MISSED_CALL_TEMPLATE &&
+      now - new Date(String(m.timestamp || '')).getTime() < TWENTY_FOUR_HOURS_MS,
+    )
+    if (sentRecently) return
+    const firstName = String(lead.full_name || '').trim().split(/\s+/)[0] || 'there'
+    const res = await sendTemplate(lead.phone, MISSED_CALL_TEMPLATE, [{ type: 'text', text: firstName }])
+    if (res.success) {
+      await insertMessage({
+        phone: lead.phone,
+        direction: 'sent',
+        text: `[Template: ${MISSED_CALL_TEMPLATE}] missed-call auto follow-up`,
+        timestamp: new Date().toISOString(),
+        sent_by: 'auto: missed-call',
+        wa_message_id: res.message_id || '',
+        status: 'sent',
+        template_used: MISSED_CALL_TEMPLATE,
+        read: true,
+      })
+    }
+  } catch (err) {
+    console.error('[fireMissedCallTemplate] non-critical:', err)
+  }
+}
+
 export async function applyWorkOutcome(input: ApplyOutcomeInput): Promise<ApplyOutcomeResult> {
   const { userId, userName, leadRow, outcome, channel, note, alsoWhatsapp } = input
 
@@ -1039,6 +1082,13 @@ export async function applyWorkOutcome(input: ApplyOutcomeInput): Promise<ApplyO
       }
     }
   } catch { /* notifications non-critical */ }
+
+  // Auto 2nd-touchpoint on a non-connecting call: fire the missed-call WhatsApp
+  // template (once per lead per 24h) so a no-answer lead always gets a follow-up.
+  // Scoped to call channel + non-connect + still-active (enquiry) lead.
+  if (channel === 'call' && isNonConnect && !ACTIVE_EXCLUDED.has(lead.lead_status)) {
+    await fireMissedCallTemplate(lead)
+  }
 
   return { ok: true, nextStatus: nextStatus || lead.lead_status, routedTo, suggest_whatsapp: (isNonConnect && channel !== 'whatsapp') || undefined }
 }
