@@ -2,11 +2,16 @@ import { apiError } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads } from '@/lib/sheets'
+import { isLockedGuidedAgent } from '@/lib/users'
 
 export async function GET() {
   try {
     const session = await getSession()
     const user = requireAuth(session)
+
+    if (user.role === 'agent' && await isLockedGuidedAgent(user.id)) {
+      return NextResponse.json({ success: false, error: 'Not available in guided mode' }, { status: 403 })
+    }
 
     let leads = await getLeads()
 

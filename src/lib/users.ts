@@ -84,6 +84,11 @@ async function ensureTable(): Promise<void> {
   if (!colNames.has('receives_new_leads')) {
     await db.execute('ALTER TABLE users ADD COLUMN receives_new_leads INTEGER NOT NULL DEFAULT 1')
   }
+  // Guided surface (additive). Only matters when work_mode === 'guided'.
+  // DEFAULT 'guided_free' = guided agents roam the full app until locked down.
+  if (!colNames.has('guided_surface')) {
+    await db.execute("ALTER TABLE users ADD COLUMN guided_surface TEXT DEFAULT 'guided_free'")
+  }
 
   _tableReady = true
 }
@@ -102,6 +107,8 @@ function rowToUser(row: Record<string, unknown>): User {
       : isTelecaller ? 'telecaller' : 'closer'
   const rawMode = row.work_mode == null ? '' : String(row.work_mode)
   const workMode: User['work_mode'] = rawMode === 'guided' ? 'guided' : 'free'
+  const rawSurface = row.guided_surface == null ? '' : String(row.guided_surface)
+  const guidedSurface: User['guided_surface'] = rawSurface === 'guided_inbox' ? 'guided_inbox' : 'guided_free'
   return {
     id: String(row.id),
     name: String(row.name),
@@ -116,6 +123,7 @@ function rowToUser(row: Record<string, unknown>): User {
     is_telecaller: isTelecaller,
     lead_pool_paused: Boolean(row.lead_pool_paused),
     work_mode: workMode,
+    guided_surface: guidedSurface,
     agent_role: agentRole,
     daily_target: row.daily_target == null ? 40 : Number(row.daily_target),
     // Default true (column DEFAULT 1) so a pre-migration NULL = "receives leads".
@@ -145,15 +153,15 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 // defaults (work_mode 'free', daily_target 40) and agent_role is derived from
 // the legacy flags on read — so existing callers don't need to supply them.
 export async function createUser(
-  user: Omit<User, 'id' | 'work_mode' | 'agent_role' | 'daily_target' | 'receives_new_leads'>
-    & Partial<Pick<User, 'work_mode' | 'agent_role' | 'daily_target' | 'receives_new_leads'>>,
+  user: Omit<User, 'id' | 'work_mode' | 'guided_surface' | 'agent_role' | 'daily_target' | 'receives_new_leads'>
+    & Partial<Pick<User, 'work_mode' | 'guided_surface' | 'agent_role' | 'daily_target' | 'receives_new_leads'>>,
 ): Promise<string> {
   await ensureTable()
   const db = getClient()
   const id = `u_${Date.now()}`
   await db.execute({
-    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, can_edit_leads, active, in_lead_pool, is_closer, is_telecaller, lead_pool_paused, work_mode, agent_role, daily_target, receives_new_leads)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO users (id, name, email, password_hash, role, can_assign, can_edit_leads, active, in_lead_pool, is_closer, is_telecaller, lead_pool_paused, work_mode, guided_surface, agent_role, daily_target, receives_new_leads)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       id,
       user.name,
@@ -168,6 +176,7 @@ export async function createUser(
       user.is_telecaller ? 1 : 0,
       user.lead_pool_paused ? 1 : 0,
       user.work_mode || 'free',
+      user.guided_surface || 'guided_free',
       user.agent_role || null,
       user.daily_target ?? 40,
       // New-lead pool membership. Default = in_lead_pool, so a new Closer joins the
@@ -184,6 +193,15 @@ export async function getUserById(userId: string): Promise<User | null> {
   const r = await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [userId] })
   if (r.rows.length === 0) return null
   return rowToUser(r.rows[0])
+}
+
+// True when the user is an agent LOCKED to the Guided rail + WhatsApp Inbox only
+// (work_mode 'guided' + guided_surface 'guided_inbox'). Fresh DB read so the gate
+// can't be bypassed by a stale JWT — used to server-block the free-mode lead-browse
+// endpoints (/api/leads, /api/today, /api/follow-ups).
+export async function isLockedGuidedAgent(userId: string): Promise<boolean> {
+  const u = await getUserById(userId)
+  return !!u && u.role === 'agent' && u.work_mode === 'guided' && u.guided_surface === 'guided_inbox'
 }
 
 export async function deleteUser(userId: string): Promise<void> {
@@ -216,6 +234,7 @@ export async function updateUser(userId: string, fields: Partial<User>): Promise
   if (fields.is_telecaller !== undefined) { updates.push('is_telecaller = ?'); values.push(fields.is_telecaller ? 1 : 0) }
   if (fields.lead_pool_paused !== undefined) { updates.push('lead_pool_paused = ?'); values.push(fields.lead_pool_paused ? 1 : 0) }
   if (fields.work_mode !== undefined) { updates.push('work_mode = ?'); values.push(fields.work_mode) }
+  if (fields.guided_surface !== undefined) { updates.push('guided_surface = ?'); values.push(fields.guided_surface) }
   if (fields.agent_role !== undefined) { updates.push('agent_role = ?'); values.push(fields.agent_role) }
   if (fields.daily_target !== undefined) { updates.push('daily_target = ?'); values.push(fields.daily_target) }
   if (fields.receives_new_leads !== undefined) { updates.push('receives_new_leads = ?'); values.push(fields.receives_new_leads ? 1 : 0) }

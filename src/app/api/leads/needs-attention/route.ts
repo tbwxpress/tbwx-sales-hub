@@ -4,7 +4,7 @@ import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads } from '@/lib/sheets'
 import { getTelecallerVisibleLeadRows, getAllAssignments } from '@/lib/telecaller'
 import { getOptedOutPhones, normalizePhone, getLastDiscussionByPhone } from '@/lib/db'
-import { getUserByEmail } from '@/lib/users'
+import { getUserByEmail, isLockedGuidedAgent } from '@/lib/users'
 import { STATUS_MIGRATION } from '@/config/client'
 import { computeLeadScore } from '@/lib/scoring'
 
@@ -65,6 +65,11 @@ export async function GET() {
   try {
     const session = await getSession()
     const user = requireAuth(session)
+
+    // Server lock: locked-guided agents (guided_inbox) get the rail + Inbox only.
+    if (user.role === 'agent' && await isLockedGuidedAgent(user.id)) {
+      return NextResponse.json({ success: false, error: 'Not available in guided mode' }, { status: 403 })
+    }
 
     // Live telecaller flag (avoid stale JWT)
     let liveIsTelecaller = Boolean(session!.is_telecaller)

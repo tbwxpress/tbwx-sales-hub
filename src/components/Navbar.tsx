@@ -38,6 +38,9 @@ interface User {
   // payload omits it (older API / failed enrich) we treat it as 'free' so the
   // nav is byte-identical to today.
   work_mode?: 'guided' | 'free'
+  // Only matters when work_mode === 'guided'. Defaults to 'guided_free' (full
+  // nav + a Work tab). 'guided_inbox' = locked to the rail + Inbox.
+  guided_surface?: 'guided_free' | 'guided_inbox'
 }
 
 const brandShort = process.env.NEXT_PUBLIC_BRAND_SHORT || 'TBWX'
@@ -120,7 +123,15 @@ export default function Navbar() {
 
   type NavLink = { href: string; label: string; Icon: LucideIcon; badge?: number | null }
 
+  // Guided Work Mode flags. work_mode === 'guided' && guided_surface === 'guided_inbox'
+  // is the locked rail (stripped nav). guided_free (the default) gets the FULL nav
+  // below with a "Work" tab prepended so they can reach the rail. Free = unchanged.
+  const lockedGuided = user?.work_mode === 'guided' && user?.guided_surface === 'guided_inbox'
+  const guidedFree = user?.work_mode === 'guided' && !lockedGuided
+
   const primaryLinks: NavLink[] = [
+    // guided_free agents keep the full nav but get a Work tab to reach the rail.
+    ...(guidedFree ? [{ href: '/work', label: 'Work', Icon: Briefcase, badge: null } as NavLink] : []),
     { href: '/today', label: 'Today', Icon: Calendar, badge: null },
     { href: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, badge: null },
     { href: '/inbox', label: 'Inbox', Icon: MessageSquare, badge: unreadCount },
@@ -151,12 +162,10 @@ export default function Navbar() {
     return pathname === href || (href === '/inbox' && pathname?.startsWith('/inbox'))
   }
 
-  // Guided Work Mode: when the session user is on the rail, the nav strips down
-  // to brand + a single "Work" link + bell + avatar/logout. Everything below
-  // (the full nav) is untouched for Free users — the default for everyone.
-  const guided = user?.work_mode === 'guided'
-
-  if (guided && user) {
+  // Guided Work Mode: only a LOCKED guided agent (guided_inbox) gets the stripped
+  // nav — brand + "Work" + "Inbox" + bell + avatar/logout. guided_free agents and
+  // Free users (the default for everyone) fall through to the full nav below.
+  if (lockedGuided && user) {
     return (
       <nav
         className="sticky top-0 z-50 border-b"
@@ -183,21 +192,42 @@ export default function Navbar() {
             </div>
           </Link>
 
-          {/* Single Work link — the rail is home */}
-          <Link
-            href="/work"
-            className="relative flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold transition-colors duration-150"
-            style={{ color: isActive('/work') ? 'var(--color-accent)' : 'var(--color-muted)' }}
-          >
-            <Briefcase className="w-3.5 h-3.5" strokeWidth={2} />
-            Work
-            {isActive('/work') && (
-              <span
-                className="absolute -bottom-1.5 left-2 right-2 h-[2px] rounded-full"
-                style={{ background: 'var(--color-accent)' }}
-              />
-            )}
-          </Link>
+          {/* Work + Inbox links — the rail is home, Inbox is the only extra surface */}
+          <div className="flex items-center gap-1">
+            <Link
+              href="/work"
+              className="relative flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold transition-colors duration-150"
+              style={{ color: isActive('/work') ? 'var(--color-accent)' : 'var(--color-muted)' }}
+            >
+              <Briefcase className="w-3.5 h-3.5" strokeWidth={2} />
+              Work
+              {isActive('/work') && (
+                <span
+                  className="absolute -bottom-1.5 left-2 right-2 h-[2px] rounded-full"
+                  style={{ background: 'var(--color-accent)' }}
+                />
+              )}
+            </Link>
+            <Link
+              href="/inbox"
+              className="relative flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold transition-colors duration-150"
+              style={{ color: isActive('/inbox') ? 'var(--color-accent)' : 'var(--color-muted)' }}
+            >
+              <MessageSquare className="w-3.5 h-3.5" strokeWidth={2} />
+              Inbox
+              {isActive('/inbox') && (
+                <span
+                  className="absolute -bottom-1.5 left-2 right-2 h-[2px] rounded-full"
+                  style={{ background: 'var(--color-accent)' }}
+                />
+              )}
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-[#25d366] text-white text-caption font-bold rounded-full min-w-[14px] h-3.5 px-1 flex items-center justify-center badge-pulse">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Link>
+          </div>
 
           {/* Bell + avatar/logout only */}
           <div className="flex items-center gap-2">

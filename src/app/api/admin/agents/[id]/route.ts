@@ -2,7 +2,7 @@ import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getUserById, updateUser } from '@/lib/users'
-import type { WorkMode, AgentRole } from '@/lib/types'
+import type { WorkMode, AgentRole, GuidedSurface } from '@/lib/types'
 
 // PATCH /api/admin/agents/:id (ADMIN)
 // Set { work_mode?, agent_role?, daily_target? } for a user. The two Guided
@@ -26,13 +26,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const body = await req.json()
-    const updates: { work_mode?: WorkMode; agent_role?: AgentRole; daily_target?: number; receives_new_leads?: boolean } = {}
+    const updates: { work_mode?: WorkMode; guided_surface?: GuidedSurface; agent_role?: AgentRole; daily_target?: number; receives_new_leads?: boolean } = {}
 
     if (body?.work_mode !== undefined) {
       if (body.work_mode !== 'guided' && body.work_mode !== 'free') {
         return NextResponse.json({ success: false, error: "work_mode must be 'guided' or 'free'" }, { status: 400 })
       }
       updates.work_mode = body.work_mode
+    }
+    if (body?.guided_surface !== undefined) {
+      if (body.guided_surface !== 'guided_free' && body.guided_surface !== 'guided_inbox') {
+        return NextResponse.json({ success: false, error: "guided_surface must be 'guided_free' or 'guided_inbox'" }, { status: 400 })
+      }
+      updates.guided_surface = body.guided_surface
     }
     if (body?.agent_role !== undefined) {
       if (body.agent_role !== 'telecaller' && body.agent_role !== 'closer') {
@@ -63,7 +69,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({
       success: true,
       data: fresh
-        ? { id: fresh.id, work_mode: fresh.work_mode, agent_role: fresh.agent_role, daily_target: fresh.daily_target, receives_new_leads: fresh.receives_new_leads }
+        ? { id: fresh.id, work_mode: fresh.work_mode, guided_surface: fresh.guided_surface, agent_role: fresh.agent_role, daily_target: fresh.daily_target, receives_new_leads: fresh.receives_new_leads }
         : null,
     })
   } catch (err) {

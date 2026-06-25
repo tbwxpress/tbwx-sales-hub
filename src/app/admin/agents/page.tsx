@@ -17,6 +17,7 @@ import {
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type WorkMode = 'guided' | 'free'
+type GuidedSurface = 'guided_free' | 'guided_inbox'
 type AgentRole = 'telecaller' | 'closer' | null
 
 interface AgentUser {
@@ -26,6 +27,7 @@ interface AgentUser {
   role: string
   active: boolean
   work_mode: WorkMode
+  guided_surface: GuidedSurface
   agent_role: AgentRole
   daily_target: number
   receives_new_leads: boolean
@@ -70,6 +72,7 @@ export default function AdminAgentsPage() {
           role: String(u.role),
           active: Boolean(u.active),
           work_mode: (u.work_mode === 'guided' ? 'guided' : 'free') as WorkMode,
+          guided_surface: (u.guided_surface === 'guided_inbox' ? 'guided_inbox' : 'guided_free') as GuidedSurface,
           agent_role:
             u.agent_role === 'telecaller' || u.agent_role === 'closer'
               ? (u.agent_role as AgentRole)
@@ -92,7 +95,7 @@ export default function AdminAgentsPage() {
   // back to the prior snapshot on failure. Lossless + instant, as the spec demands.
   async function patchAgent(
     id: string,
-    patch: Partial<Pick<AgentUser, 'work_mode' | 'agent_role' | 'daily_target' | 'receives_new_leads'>>,
+    patch: Partial<Pick<AgentUser, 'work_mode' | 'guided_surface' | 'agent_role' | 'daily_target' | 'receives_new_leads'>>,
     successMsg: string,
   ) {
     const prev = users
@@ -113,6 +116,7 @@ export default function AdminAgentsPage() {
             ? {
                 ...u,
                 work_mode: data.data.work_mode,
+                guided_surface: data.data.guided_surface,
                 agent_role: data.data.agent_role,
                 daily_target: data.data.daily_target,
                 receives_new_leads: data.data.receives_new_leads,
@@ -372,6 +376,24 @@ export default function AdminAgentsPage() {
                           />
                         </button>
                       </label>
+
+                      {/* Guided surface select — only shown when this agent is Guided.
+                          Guided + Free = full nav + a Work tab (roams freely).
+                          Guided + Inbox = locked to the rail + WhatsApp Inbox only. */}
+                      {isGuided && (
+                        <label className="flex items-center gap-1.5 text-xs text-dim" title="Guided + Free = full app plus a Work tab. Guided + Inbox = locked to the work rail and the WhatsApp Inbox only.">
+                          <span className="hidden lg:inline">Surface</span>
+                          <select
+                            value={u.guided_surface}
+                            disabled={rowBusy}
+                            onChange={e => patchAgent(u.id, { guided_surface: e.target.value as GuidedSurface }, `${u.name} → ${e.target.value === 'guided_inbox' ? 'Guided + Inbox' : 'Guided + Free'}`)}
+                            className="bg-elevated border border-border rounded-md px-2 py-1 text-xs text-text focus:outline-none focus:border-accent/50 disabled:opacity-50"
+                          >
+                            <option value="guided_free">Guided + Free</option>
+                            <option value="guided_inbox">Guided + Inbox</option>
+                          </select>
+                        </label>
+                      )}
 
                       {/* Receives-new-leads toggle (the lead-distribution pool) */}
                       <label className="flex items-center gap-2 text-xs cursor-pointer" title="On = this agent is in the pool for new + routed leads (qualified handoffs to closers, re-warm bounces to telecallers). Off = they only keep leads already assigned to them.">

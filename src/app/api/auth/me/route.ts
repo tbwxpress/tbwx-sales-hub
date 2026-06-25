@@ -12,12 +12,14 @@ export async function GET() {
   // back to safe Free-mode defaults if the lookup fails — existing consumers of
   // `data` (the session shape) keep working unchanged.
   let work_mode = 'free'
+  let guided_surface = 'guided_free'
   let agent_role: string | null = null
   let daily_target = 40
   try {
     const fresh = await getUserById(session.id)
     if (fresh) {
       work_mode = fresh.work_mode
+      guided_surface = fresh.guided_surface
       agent_role = fresh.agent_role
       daily_target = fresh.daily_target
     }
@@ -25,6 +27,6 @@ export async function GET() {
 
   return NextResponse.json({
     success: true,
-    data: { ...session, work_mode, agent_role, daily_target },
+    data: { ...session, work_mode, guided_surface, agent_role, daily_target },
   })
 }

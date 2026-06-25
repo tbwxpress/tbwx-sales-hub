@@ -3,6 +3,7 @@ export type LeadStatus = 'NEW' | 'DECK_SENT' | 'REPLIED' | 'NO_RESPONSE' | 'CALL
 
 export type WorkMode = 'guided' | 'free'
 export type AgentRole = 'telecaller' | 'closer'
+export type GuidedSurface = 'guided_free' | 'guided_inbox'
 
 export interface User {
   id: string
@@ -19,6 +20,8 @@ export interface User {
   lead_pool_paused: boolean
   // Guided Work Mode (additive). work_mode defaults to 'free' for everyone.
   work_mode: WorkMode
+  // Only matters when work_mode === 'guided'. Defaults to 'guided_free'.
+  guided_surface: GuidedSurface
   agent_role: AgentRole
   daily_target: number
   // Lead distribution: is this agent in the pool to receive new/routed leads?

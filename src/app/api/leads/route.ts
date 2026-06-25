@@ -6,6 +6,7 @@ import { computeLeadScore, leadScore } from '@/lib/scoring'
 import { STATUS_MIGRATION } from '@/config/client'
 import { getTelecallerVisibleLeadRows, getAllAssignments } from '@/lib/telecaller'
 import { getOptedOutPhones, getLastDiscussionByPhone, normalizePhone, upsertContact, getActiveDelegationsFor, getAllActiveDelegations, getLeadSignalsByRows, getLastReceivedMessageByPhone } from '@/lib/db'
+import { isLockedGuidedAgent } from '@/lib/users'
 
 // Last-10 digits of a phone — the key getLastReceivedMessageByPhone() returns.
 const last10 = (p: string | undefined | null) => String(p || '').replace(/\D/g, '').slice(-10)
@@ -14,6 +15,13 @@ export async function GET(req: NextRequest) {
   try {
     const session = await getSession()
     requireAuth(session)
+
+    // Server lock for locked-guided agents (guided_inbox): the leads LIST is off
+    // limits — they only get the rail (/work) + the WhatsApp Inbox. Fresh DB read
+    // so the gate can't be bypassed by a stale JWT. Free + guided_free pass through.
+    if (session!.role === 'agent' && await isLockedGuidedAgent(session!.id)) {
+      return NextResponse.json({ success: false, error: 'Not available in guided mode' }, { status: 403 })
+    }
 
     const url = new URL(req.url)
     const status = url.searchParams.get('status')

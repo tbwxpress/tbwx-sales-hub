@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { apiError } from '@/lib/api-error'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads } from '@/lib/sheets'
-import { getUserByEmail } from '@/lib/users'
+import { getUserByEmail, isLockedGuidedAgent } from '@/lib/users'
 import { getLastMessageByPhone, getOptedOutPhones } from '@/lib/db'
 import { getTelecallerVisibleLeadRows, getAllAssignments } from '@/lib/telecaller'
 import { STATUS_MIGRATION } from '@/config/client'
@@ -25,6 +25,11 @@ export async function GET() {
   try {
     const session = await getSession()
     const user = requireAuth(session)
+
+    // Server lock: locked-guided agents (guided_inbox) get the rail + Inbox only.
+    if (user.role === 'agent' && await isLockedGuidedAgent(user.id)) {
+      return NextResponse.json({ success: false, error: 'Not available in guided mode' }, { status: 403 })
+    }
 
     // Resolve live telecaller flag (don't trust JWT)
     const live = await getUserByEmail(user.email)

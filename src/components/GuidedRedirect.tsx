@@ -27,12 +27,16 @@ export default function GuidedRedirect() {
   useEffect(() => {
     let cancelled = false
 
-    // Paths the redirect must never fight with.
+    // Paths the redirect must never fight with. /inbox + /sso are exempt so a
+    // guided_inbox agent can reach the WhatsApp Inbox tab without being bounced.
     function isExempt(path: string | null): boolean {
       if (!path) return true
       return (
         path === '/work' ||
         path.startsWith('/work/') ||
+        path === '/inbox' ||
+        path.startsWith('/inbox/') ||
+        path.startsWith('/sso') ||
         path === '/login' ||
         path.startsWith('/api') ||
         path.startsWith('/admin')
@@ -48,6 +52,10 @@ export default function GuidedRedirect() {
         if (cancelled || redirected.current) return
         // The ONLY branch that does anything. Free (default) users fall through.
         if (d?.success && d.data?.work_mode === 'guided') {
+          // guided_free (default): the agent roams the full app — never redirect.
+          // Only guided_inbox is locked to the rail (+ exempt Inbox/SSO).
+          const guidedSurface = d.data?.guided_surface || 'guided_free'
+          if (guidedSurface !== 'guided_inbox') return
           // Re-read the live path: the user may have navigated since the fetch
           // started (e.g. opened a lead). Only redirect from a non-exempt home.
           if (!isExempt(window.location.pathname)) {
