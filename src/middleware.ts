@@ -6,6 +6,10 @@ const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET)
 const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'saleshub_session'
 const PUBLIC_PATHS = [
   '/login',
+  // SOP cockpit SSO landing. It verifies the signed token itself, then mints a
+  // native session — so it must be reachable without an existing session.
+  // Additive; does not change any other gate.
+  '/sso/callback',
   '/api/auth/login',
   '/api/auth/logout',
   '/api/webhook/whatsapp',
