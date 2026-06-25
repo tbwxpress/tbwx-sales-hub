@@ -37,7 +37,8 @@ export async function GET(req: Request) {
   const token = url.searchParams.get('token') ?? ''
   const dest = safeRedirect(url.searchParams.get('redirect'))
 
-  const secret = process.env.SSO_JWT_SECRET
+  // Per-app secret (breach containment): Sales Hub only knows its own.
+  const secret = process.env.SSO_JWT_SECRET_SALESHUB
   if (!secret) return fail('unavailable')
 
   const claims = verifySso(token, secret, 'saleshub')
