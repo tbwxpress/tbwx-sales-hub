@@ -576,6 +576,36 @@ export async function ensureInit(): Promise<Client> {
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_update_requests_lead ON update_requests(lead_row)`)
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_update_requests_status_due ON update_requests(status, due_date)`)
 
+    // Recorded telecalling calls. One row per click-to-call bridge: a telecaller
+    // is rung, connected to the lead, and the conversation is recorded by the
+    // telephony provider (Twilio today, TeleCMI/Exotel later). When the recording
+    // lands, Gemini transcribes + scores it and we store the report_card JSON.
+    // status: initiated → ringing/in-progress → completed (scored) |
+    //         recorded_unscored (audio saved, scoring failed) | failed/no_answer/busy.
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS call_recordings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lead_row INTEGER,
+        lead_phone TEXT NOT NULL DEFAULT '',
+        lead_name TEXT DEFAULT '',
+        agent_name TEXT DEFAULT '',
+        agent_phone TEXT DEFAULT '',
+        ref TEXT DEFAULT '',
+        call_sid TEXT DEFAULT '',
+        recording_sid TEXT DEFAULT '',
+        recording_url TEXT DEFAULT '',
+        duration_seconds INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'initiated',
+        transcript TEXT DEFAULT '',
+        report_card TEXT DEFAULT '',
+        overall_score REAL,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `)
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_call_recordings_phone ON call_recordings(lead_phone)`)
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_call_recordings_sid ON call_recordings(call_sid)`)
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_call_recordings_created ON call_recordings(created_at DESC)`)
+
     // Additive migrations (try-catch for existing DBs)
     try { await db.execute('ALTER TABLE drip_state ADD COLUMN resumed_at TEXT') } catch { /* column may already exist */ }
     try { await db.execute('ALTER TABLE drip_state ADD COLUMN opted_out INTEGER DEFAULT 0') } catch { /* column may already exist */ }
@@ -1137,6 +1167,101 @@ export async function getCallLogs(phone: string) {
   const result = await db.execute({
     sql: 'SELECT * FROM call_logs WHERE phone = ? OR phone = ? ORDER BY created_at DESC',
     args: [norm, phone],
+  })
+  return serializeRows(result.rows)
+}
+
+// --- Recorded call operations (click-to-call + AI scoring) ---
+
+export async function insertCallRecording(data: {
+  lead_row?: number | null
+  lead_phone: string
+  lead_name?: string
+  agent_name?: string
+  agent_phone?: string
+  ref?: string
+  call_sid?: string
+  status?: string
+}): Promise<number> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `INSERT INTO call_recordings
+            (lead_row, lead_phone, lead_name, agent_name, agent_phone, ref, call_sid, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      data.lead_row ?? null,
+      normalizePhone(data.lead_phone),
+      data.lead_name || '',
+      data.agent_name || '',
+      data.agent_phone || '',
+      data.ref || '',
+      data.call_sid || '',
+      data.status || 'initiated',
+    ],
+  })
+  return Number(result.lastInsertRowid)
+}
+
+// Patch a recording row found by its provider call id. Only the provided fields
+// are written. Used by the recording-status and call-status webhooks.
+export async function updateCallRecordingByCallSid(
+  callSid: string,
+  fields: {
+    recording_sid?: string
+    recording_url?: string
+    duration_seconds?: number
+    status?: string
+    transcript?: string
+    report_card?: string
+    overall_score?: number | null
+  }
+): Promise<void> {
+  if (!callSid) return
+  const db = await ensureInit()
+  // Whitelist columns so a key can never be interpolated into SQL unsafely.
+  const ALLOWED = new Set([
+    'recording_sid', 'recording_url', 'duration_seconds',
+    'status', 'transcript', 'report_card', 'overall_score',
+  ])
+  const sets: string[] = []
+  const args: (string | number | null)[] = []
+  for (const [key, val] of Object.entries(fields)) {
+    if (val === undefined || !ALLOWED.has(key)) continue
+    sets.push(`${key} = ?`)
+    args.push(val as string | number | null)
+  }
+  if (sets.length === 0) return
+  args.push(callSid)
+  await db.execute({
+    sql: `UPDATE call_recordings SET ${sets.join(', ')} WHERE call_sid = ?`,
+    args,
+  })
+}
+
+export async function getCallRecordingsByPhone(phone: string) {
+  const db = await ensureInit()
+  const norm = normalizePhone(phone)
+  const result = await db.execute({
+    sql: 'SELECT * FROM call_recordings WHERE lead_phone = ? OR lead_phone = ? ORDER BY created_at DESC',
+    args: [norm, phone],
+  })
+  return serializeRows(result.rows)
+}
+
+export async function getCallRecordingById(id: number) {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT * FROM call_recordings WHERE id = ?',
+    args: [id],
+  })
+  return result.rows[0] ? serializeRow(result.rows[0]) : null
+}
+
+export async function listRecentCallRecordings(limit = 100) {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT * FROM call_recordings ORDER BY created_at DESC LIMIT ?',
+    args: [limit],
   })
   return serializeRows(result.rows)
 }

@@ -19,6 +19,10 @@ const LogCallModal = dynamic(() => import('@/components/LogCallModal'), {
   loading: () => null,
   ssr: false,
 })
+const RecordedCallCard = dynamic(() => import('./_components/RecordedCallCard'), {
+  loading: () => null,
+  ssr: false,
+})
 import CallHistory from '@/components/CallHistory'
 import ActivityLog from '@/components/ActivityLog'
 import LeadComments from '@/components/LeadComments'
@@ -1189,6 +1193,13 @@ export default function LeadDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Recorded telecalling + AI quality scoring */}
+            <RecordedCallCard
+              phone={lead.phone}
+              leadName={lead.full_name}
+              leadRow={Number(lead.row_number || 0)}
+            />
 
             {/* Log Call + Call History */}
             <div className="bg-card rounded-lg border border-border p-4">
