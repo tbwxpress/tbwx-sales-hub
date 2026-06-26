@@ -1266,6 +1266,42 @@ export async function listRecentCallRecordings(limit = 100) {
   return serializeRows(result.rows)
 }
 
+// Per-telecaller call-quality roll-up since `sinceSql` (SQLite datetime format,
+// 'YYYY-MM-DD HH:MM:SS' — NOT raw ISO, so it string-compares against created_at).
+// avg_score / avg_duration are over SCORED calls only; NULL agents → no scored
+// calls yet (sorted last by the DESC default NULL ordering).
+export async function getTelecallerScorecard(sinceSql: string) {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `
+      SELECT
+        agent_name,
+        COUNT(*) AS total_recorded,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS scored,
+        AVG(CASE WHEN status = 'completed' THEN overall_score END) AS avg_score,
+        AVG(CASE WHEN duration_seconds > 0 THEN duration_seconds END) AS avg_duration,
+        SUM(CASE WHEN status = 'completed' AND overall_score < 5 THEN 1 ELSE 0 END) AS low_score,
+        MAX(created_at) AS last_call_at
+      FROM call_recordings
+      WHERE created_at >= ? AND agent_name != ''
+      GROUP BY agent_name
+      ORDER BY avg_score DESC
+    `,
+    args: [sinceSql],
+  })
+  return serializeRows(result.rows)
+}
+
+// Recent recordings since `sinceSql`, newest first. Powers the manager QA feed.
+export async function listCallRecordingsSince(sinceSql: string, limit = 200) {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT * FROM call_recordings WHERE created_at >= ? ORDER BY created_at DESC LIMIT ?',
+    args: [sinceSql, limit],
+  })
+  return serializeRows(result.rows)
+}
+
 // --- Last discussion lookup (lead list view) ---
 // Returns a Map from normalized phone (91XXXXXXXXXX) to the most recent
 // human-curated interaction across notes, calls, and inbound messages.

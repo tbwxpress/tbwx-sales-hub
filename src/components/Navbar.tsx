@@ -24,6 +24,7 @@ import {
   Menu,
   X,
   Briefcase,
+  Headphones,
   type LucideIcon,
 } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
@@ -150,6 +151,7 @@ export default function Navbar() {
     // Admin-only links: Payment Followups + Commissions are owner-private
     // (hidden from agents until exposed), alongside the Admin cockpit.
     ...(user?.role === 'admin' ? [
+      { href: '/call-quality', label: 'Call Quality', Icon: Headphones } as NavLink,
       { href: '/payment-followups', label: 'Payment Followups', Icon: CreditCard } as NavLink,
       { href: '/commissions', label: 'Commissions', Icon: Banknote } as NavLink,
       { href: '/admin', label: 'Admin', Icon: Settings } as NavLink,
