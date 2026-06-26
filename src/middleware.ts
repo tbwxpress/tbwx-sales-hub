@@ -14,6 +14,12 @@ const PUBLIC_PATHS = [
   '/api/auth/logout',
   '/api/webhook/whatsapp',
   '/api/voice-agent/log',
+  // Telephony webhooks — the provider (Twilio) calls these with no session.
+  // Each enforces the CALL_WEBHOOK_SECRET shared key itself. The other
+  // /api/calls/* routes (bridge, recording proxy, by-lead) stay session-gated.
+  '/api/calls/twiml',
+  '/api/calls/recording-status',
+  '/api/calls/call-status',
   // Cron endpoints — they enforce CRON_SECRET bearer auth themselves OR fall back to admin session
   '/api/cron/auto-send',
   '/api/cron/sheet-backup',
