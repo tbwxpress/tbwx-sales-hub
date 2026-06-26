@@ -69,6 +69,19 @@ export const NEXT_STEP_CHIPS: Chip[] = [
   { key: 'awaiting_family', label: 'Family se poochega' },
 ]
 
+// "Shouldn't be here?" — why the agent thinks this card was surfaced wrongly
+// (Guided-rail ranking feedback; tap-only, one per flag). Plain English — these
+// describe the engine's mistake, not the buyer.
+export const FEEDBACK_REASONS: Chip[] = [
+  { key: 'already_handled', label: 'Already handled' },
+  { key: 'wrong_priority', label: 'Wrong priority' },
+  { key: 'dead', label: 'Dead / not interested' },
+  { key: 'too_soon', label: 'Too soon to call' },
+  { key: 'not_mine', label: 'Not my lead' },
+  { key: 'duplicate', label: 'Duplicate' },
+  { key: 'other', label: 'Other' },
+]
+
 const keysOf = (c: Chip[]) => new Set(c.map((x) => x.key))
 export const SENTIMENT_KEYS = keysOf(SENTIMENT_CHIPS)
 export const OBJECTION_KEYS = keysOf(OBJECTION_CHIPS)
@@ -76,6 +89,7 @@ export const CAPITAL_KEYS = keysOf(CAPITAL_CHIPS)
 export const DECISION_MAKER_KEYS = keysOf(DECISION_MAKER_CHIPS)
 export const PERSONA_KEYS = keysOf(PERSONA_CHIPS)
 export const NEXT_STEP_KEYS = keysOf(NEXT_STEP_CHIPS)
+export const FEEDBACK_REASON_KEYS = keysOf(FEEDBACK_REASONS)
 
 /** Human label for a stored key (for read-only display in either UI). */
 export function labelFor(chips: Chip[], key: string | null | undefined): string {

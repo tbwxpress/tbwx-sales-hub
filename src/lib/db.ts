@@ -517,6 +517,27 @@ export async function ensureInit(): Promise<Client> {
     `)
 
     await db.execute(`
+      -- "Shouldn't be here?" — Guided-rail ranking feedback. An agent flags that a
+      -- card was surfaced wrongly; we record WHY the system showed it (queue_reason
+      -- + score + lead_status at flag-time) alongside the agent's reason so the
+      -- owner sees the exact mismatch. Never changes the lead or advances the card.
+      CREATE TABLE IF NOT EXISTS work_feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT DEFAULT '',
+        user_name TEXT DEFAULT '',
+        lead_row INTEGER,
+        role TEXT DEFAULT '',
+        reason_code TEXT DEFAULT '',
+        note TEXT DEFAULT '',
+        queue_reason TEXT DEFAULT '',
+        score INTEGER,
+        lead_status TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_work_feedback_date ON work_feedback(created_at);
+    `)
+
+    await db.execute(`
       -- Sales-AI: the LATEST structured signals per lead (a projection updated by
       -- BOTH Guided-mode outcomes AND Free-mode lead edits) — the shared brain so
       -- a senior rep on Free mode and a novice on Guided mode feed the same scorer.
@@ -1366,6 +1387,69 @@ export async function insertWorkEvent(data: {
     console.error('[insertWorkEvent] non-critical:', err)
     return null
   }
+}
+
+// --- Guided Work Mode: work_feedback ("Shouldn't be here?") ---
+// One row per "this card was surfaced wrongly" flag. Captures the agent's reason
+// PLUS the system's case for showing it (queue_reason + score + lead_status at
+// flag-time) so the owner sees the exact ranking mismatch. Read-only learning
+// signal — it never touches the lead or the queue.
+
+export async function insertWorkFeedback(data: {
+  user_id: string
+  user_name: string
+  lead_row: number
+  role: string
+  reason_code: string
+  note?: string | null
+  queue_reason?: string | null
+  score?: number | null
+  lead_status?: string | null
+}): Promise<number | null> {
+  try {
+    const db = await ensureInit()
+    const r = await db.execute({
+      sql: `INSERT INTO work_feedback
+              (user_id, user_name, lead_row, role, reason_code, note, queue_reason, score, lead_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        data.user_id,
+        data.user_name,
+        data.lead_row,
+        data.role,
+        data.reason_code,
+        data.note ?? '',
+        data.queue_reason ?? '',
+        data.score ?? null,
+        data.lead_status ?? '',
+      ],
+    })
+    return Number(r.lastInsertRowid)
+  } catch (err) {
+    console.error('[insertWorkFeedback] non-critical:', err)
+    return null
+  }
+}
+
+// Recent ranking-feedback rows for the owner panel, enriched with the lead's name
+// + city (LEFT JOIN so a flag survives even if the lead row is gone).
+export async function getRecentWorkFeedback(limit = 100) {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: `
+      SELECT
+        w.id, w.user_id, w.user_name, w.lead_row, w.role, w.reason_code, w.note,
+        w.queue_reason, w.score, w.lead_status, w.created_at,
+        l.full_name AS full_name,
+        l.city AS city
+      FROM work_feedback w
+      LEFT JOIN leads l ON l.row_number = w.lead_row
+      ORDER BY w.created_at DESC
+      LIMIT ?
+    `,
+    args: [limit],
+  })
+  return serializeRows(result.rows)
 }
 
 // --- Sales-AI: per-lead LATEST structured signals (shared by Guided + Free) ---

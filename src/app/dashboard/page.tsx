@@ -11,6 +11,7 @@ import UpdateRequestWidget from '@/components/UpdateRequestWidget'
 import DashboardWidgets from '@/components/DashboardWidgets'
 import OwnerWorkPanel from '@/components/OwnerWorkPanel'
 import InsightsPanel from '@/components/InsightsPanel'
+import RankingFeedbackPanel from '@/components/RankingFeedbackPanel'
 import { KpiCardSkeleton } from '@/components/KpiCard'
 import { toast } from 'sonner'
 import { timeAgo, followupLabel } from '@/lib/format'
@@ -959,6 +960,9 @@ export default function DashboardPage() {
 
         {/* ─── What's converting — AI conversion insights (admin) ─────── */}
         {user?.role === 'admin' && <InsightsPanel />}
+
+        {/* ─── Ranking feedback — "Shouldn't be here?" flags (admin) ───── */}
+        {user?.role === 'admin' && <RankingFeedbackPanel />}
 
         {/* ─── KPI Metric Widgets (admin) ─────────────────────────────── */}
         {user?.role === 'admin' && (

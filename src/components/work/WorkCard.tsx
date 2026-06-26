@@ -22,6 +22,7 @@ import WindowCountdown from '@/components/inbox/WindowCountdown'
 import { STATUS_LABELS } from '@/config/client'
 import { labelFor, SENTIMENT_CHIPS, CAPITAL_CHIPS, OBJECTION_CHIPS, DECISION_MAKER_CHIPS, PERSONA_CHIPS } from '@/config/sales-signals'
 import LifecycleStrip from './LifecycleStrip'
+import CardFeedback from './CardFeedback'
 import type { Card } from './types'
 
 /**
@@ -462,6 +463,16 @@ export default function WorkCard({
               <span className="italic">{card.queue_reason}</span>
             </p>
           )}
+          {/* Quiet "Shouldn't be here?" — dispute the engine surfacing this card.
+              Records feedback only; never advances the card or touches the lead. */}
+          <div className="mt-2">
+            <CardFeedback
+              leadRow={card.lead_row}
+              queueReason={card.queue_reason}
+              score={card.score}
+              leadStatus={card.lead_status}
+            />
+          </div>
         </div>
 
         {/* Next move — the headline "do this now" (NBA). Success-tinted callout. */}
