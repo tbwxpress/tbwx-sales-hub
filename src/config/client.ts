@@ -214,6 +214,26 @@ export const PRIORITY_COLORS: Record<string, string> = {
   COLD: 'text-blue-400 bg-blue-400/10',
 }
 
+// ─── Lost reasons ────────────────────────────────────────────────────
+// Every LOST transition must carry one of these keys (enforced server-side in
+// the leads PATCH route and the work-rail outcome path). Management needs to
+// answer "why are we losing" — free-text notes alone can't.
+export const LOST_REASONS: Record<string, string> = {
+  price: 'Budget / price too high',
+  timeline: 'Timeline pushed / not now',
+  competitor: 'Chose a competitor',
+  not_qualified: 'Not qualified (capital/location)',
+  unreachable: 'Unreachable after attempts',
+  wrong_number: 'Wrong number / junk lead',
+  opted_out: 'Opted out (tapped stop / not interested)',
+  other: 'Other',
+}
+
+// A lead can't be parked as NO_RESPONSE until this many call attempts are
+// logged (work-rail calls + manual call logs + recorded bridge calls).
+// Admins bypass. Shares the spirit of the rail's "Try N of 7" target.
+export const MIN_CALL_ATTEMPTS_BEFORE_NO_RESPONSE = 3
+
 // ─── Drip Sequences ──────────────────────────────────────────────────
 // Automated follow-up message sequences per pipeline stage.
 // Each step defines days since sequence started and the template to send.

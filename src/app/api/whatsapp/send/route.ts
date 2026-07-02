@@ -1,9 +1,10 @@
 import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
-import { logSentMessage, updateLead, getLeadByRow, getReceivedMessages } from '@/lib/sheets'
+import { logSentMessage, updateLead, getLeadByRow, getLeads, getReceivedMessages } from '@/lib/sheets'
 import { sendTextMessage, sendTemplate, isWithin24Hours } from '@/lib/whatsapp'
 import { WHATSAPP } from '@/config/client'
+import { recordFirstResponse } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   try {
@@ -58,18 +59,35 @@ export async function POST(req: NextRequest) {
       })
 
       // Update lead's followup date (never regress advanced statuses)
+      let followupLead = null
       if (lead_row) {
-        const lead = await getLeadByRow(lead_row)
+        followupLead = await getLeadByRow(lead_row)
         const nextDate = new Date()
         nextDate.setDate(nextDate.getDate() + WHATSAPP.autoFollowupDays)
         const updateFields: Record<string, string> = {
           next_followup: nextDate.toISOString().split('T')[0],
         }
         // Only set DECK_SENT if lead is still NEW
-        if (!lead || lead.lead_status === 'NEW') {
+        if (!followupLead || followupLead.lead_status === 'NEW') {
           updateFields.lead_status = WHATSAPP.autoSentStatus
         }
         await updateLead(lead_row, updateFields)
+      }
+
+      // Record first-response SLA — non-critical, must never fail the send.
+      try {
+        let slaLead = followupLead
+        if (!slaLead) {
+          // No lead_row supplied — match by last-10 digits of phone
+          const normPhone = String(phone).replace(/\D/g, '').slice(-10)
+          const all = await getLeads()
+          slaLead = all.find(l => String(l.phone).replace(/\D/g, '').slice(-10) === normPhone) ?? null
+        }
+        if (slaLead?.created_time) {
+          await recordFirstResponse(slaLead.phone, slaLead.created_time)
+        }
+      } catch (slaErr) {
+        console.error('[whatsapp/send] recordFirstResponse failed (non-fatal):', slaErr)
       }
     }
 

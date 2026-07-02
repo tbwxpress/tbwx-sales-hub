@@ -632,6 +632,10 @@ export async function ensureInit(): Promise<Client> {
     try { await db.execute('ALTER TABLE work_events ADD COLUMN sentiment TEXT') } catch { /* column may already exist */ }
     try { await db.execute('ALTER TABLE work_events ADD COLUMN connected INTEGER') } catch { /* column may already exist */ }
 
+    // Lost-reason audit: LOST transitions carry a structured reason key so
+    // management can answer "why are we losing" without mining free text.
+    try { await db.execute('ALTER TABLE lead_status_changes ADD COLUMN reason TEXT DEFAULT \'\'') } catch { /* column may already exist */ }
+
     // Wait up to 5s for a lock instead of failing with SQLITE_BUSY — matters now that
     // auto-send writes every ~2 min alongside agent activity and the sheet-backup job.
     try { await db.execute('PRAGMA busy_timeout = 5000') } catch { /* non-critical */ }
@@ -1257,6 +1261,16 @@ export async function getCallRecordingById(id: number) {
   return result.rows[0] ? serializeRow(result.rows[0]) : null
 }
 
+export async function getCallRecordingByCallSid(callSid: string): Promise<Record<string, unknown> | null> {
+  if (!callSid) return null
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT * FROM call_recordings WHERE call_sid = ? LIMIT 1',
+    args: [callSid],
+  })
+  return result.rows[0] ? serializeRow(result.rows[0]) : null
+}
+
 export async function listRecentCallRecordings(limit = 100) {
   const db = await ensureInit()
   const result = await db.execute({
@@ -1419,13 +1433,14 @@ export async function insertStatusChange(data: {
   changed_by: string
   changed_by_id?: string
   source?: 'manual' | 'auto-send' | 'webhook' | 'cron' | 'work'
+  reason?: string
 }): Promise<number | null> {
   try {
     const db = await ensureInit()
     const r = await db.execute({
       sql: `INSERT INTO lead_status_changes
-              (lead_row, phone, old_status, new_status, changed_by, changed_by_id, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              (lead_row, phone, old_status, new_status, changed_by, changed_by_id, source, reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         data.lead_row,
         data.phone ? normalizePhone(data.phone) : '',
@@ -1434,6 +1449,7 @@ export async function insertStatusChange(data: {
         data.changed_by,
         data.changed_by_id || '',
         data.source || 'manual',
+        data.reason || '',
       ],
     })
     return Number(r.lastInsertRowid)
@@ -1764,6 +1780,58 @@ export async function getContactCountForLead(leadRow: number): Promise<number> {
     console.error('[getContactCountForLead] non-critical:', err)
     return 0
   }
+}
+
+// Unified CALL attempt count across the three call stores (work-rail call
+// outcomes + manual call logs + recorded bridge calls). The stores don't
+// cross-write automatically, so summing is a fair dial count; the one manual
+// overlap (an agent bridge-records a call AND separately logs it) double-counts
+// in the lenient direction, which is acceptable for a guard. Drives the block
+// on parking a lead as NO_RESPONSE before MIN_CALL_ATTEMPTS_BEFORE_NO_RESPONSE.
+export async function countCallAttempts(leadRow: number, phone: string): Promise<number> {
+  try {
+    const db = await ensureInit()
+    const norm = normalizePhone(phone || '')
+    const r = await db.execute({
+      sql: `SELECT
+              (SELECT COUNT(*) FROM work_events WHERE lead_row = ? AND channel = 'call')
+            + (SELECT COUNT(*) FROM call_logs WHERE phone IN (?, ?))
+            + (SELECT COUNT(*) FROM call_recordings WHERE (lead_row = ? OR phone IN (?, ?))
+                 AND status NOT IN ('initiated', 'failed', 'canceled')) AS c`,
+      args: [leadRow, norm, phone || '', leadRow, norm, phone || ''],
+    })
+    return Number(serializeRows(r.rows)[0]?.c ?? 0)
+  } catch (err) {
+    // -1 = "count unavailable" (DB error). Callers must treat this as
+    // guard-bypass, NOT as zero attempts — otherwise a transient DB failure
+    // blocks every agent from parking leads as NO_RESPONSE.
+    console.error('[countCallAttempts] DB error — returning -1 (guard bypass):', err)
+    return -1
+  }
+}
+
+// Hand-raisers: phones that tapped a positive quick-reply during a drip /
+// reactivation blast ("yes, tell me more", "yes, lock my price", ...). Keyed by
+// last-10 digits → paused_at, so the work rail can surface leads still parked
+// in NO_RESPONSE despite having said YES. Best-effort (empty map on error).
+export async function getPositiveDripPhones(): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  try {
+    const db = await ensureInit()
+    const r = await db.execute({
+      sql: `SELECT phone, paused_at FROM drip_state
+            WHERE paused_at IS NOT NULL AND opted_out = 0
+              AND (pause_reason LIKE 'yes%' OR pause_reason LIKE '%interested%' OR pause_reason LIKE '%call me%')`,
+      args: [],
+    })
+    for (const row of serializeRows(r.rows)) {
+      const p = String(row.phone || '').replace(/\D/g, '').slice(-10)
+      if (p.length === 10) out.set(p, String(row.paused_at || ''))
+    }
+  } catch (err) {
+    console.error('[getPositiveDripPhones] non-critical:', err)
+  }
+  return out
 }
 
 // All work_events for a user at/after an ISO cutoff (ascending). Used for
@@ -3218,6 +3286,8 @@ export interface BulkInsertResult {
   updated: number
   skipped: number
   errors: string[]
+  /** phone (normalized) -> row_number for every row that was freshly INSERTed this run */
+  insertedPhoneToRow: Record<string, number>
 }
 
 // Fields a CSV row may carry into the leads table.
@@ -3231,7 +3301,7 @@ export async function bulkInsertLeads(
   opts: { dedupe: 'skip' | 'update' },
 ): Promise<BulkInsertResult> {
   const db = await ensureInit()
-  const result: BulkInsertResult = { inserted: 0, updated: 0, skipped: 0, errors: [] }
+  const result: BulkInsertResult = { inserted: 0, updated: 0, skipped: 0, errors: [], insertedPhoneToRow: {} }
   if (!Array.isArray(rows) || rows.length === 0) return result
 
   // Map normalized phone → existing row_number, for dedupe. (Read-only; done
@@ -3343,12 +3413,33 @@ export async function bulkInsertLeads(
             ],
           })
           batchPhoneToRow.set(op.phone, rowNumber)
+          result.insertedPhoneToRow[op.phone] = rowNumber
           result.inserted++
         } else {
           // 'update' (known DB row) or 'update-batch' (row inserted earlier here).
           const rowNumber = op.kind === 'update' ? op.rowNumber : batchPhoneToRow.get(op.phone)
           if (rowNumber === undefined) {
             // The dependent insert failed earlier in this batch — nothing to update.
+            result.skipped++
+            continue
+          }
+          // Compare incoming values against existing row — skip UPDATE when nothing actually changed
+          // so re-imports/syncs stop stamping updated_at on untouched rows.
+          const existingRowRes = await tx.execute({ sql: 'SELECT * FROM leads WHERE row_number = ?', args: [rowNumber] })
+          const existingLead = existingRowRes.rows[0] as Record<string, unknown> | undefined
+          let actuallyChanged = false
+          if (!existingLead) {
+            actuallyChanged = true
+          } else {
+            // op.updates entries are like 'field = ?'; compare each against the DB value
+            for (let fi = 0; fi < op.updates.length; fi++) {
+              const fieldName = (op.updates[fi] as string).replace(' = ?', '')
+              const incoming = String(op.args[fi] ?? '')
+              const current = String(existingLead[fieldName] ?? '')
+              if (incoming !== current) { actuallyChanged = true; break }
+            }
+          }
+          if (!actuallyChanged) {
             result.skipped++
             continue
           }

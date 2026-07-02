@@ -263,6 +263,7 @@ export async function POST(req: NextRequest) {
                       lead_row: Number(contact.lead_row), phone,
                       old_status: prev.lead_status || '', new_status: 'LOST',
                       changed_by: 'System (Webhook)', source: 'webhook',
+                      reason: 'opted_out',
                     })
                   }
                 }

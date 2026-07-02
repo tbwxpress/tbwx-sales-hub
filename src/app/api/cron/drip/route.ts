@@ -1,6 +1,6 @@
 import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
-import { getDripLeads, getDripSequences, upsertDripState, insertMessage, upsertContact } from '@/lib/db'
+import { getDripLeads, getDripSequences, upsertDripState, insertMessage, upsertContact, getSetting } from '@/lib/db'
 import { getLeads } from '@/lib/sheets'
 import { DRIP_PAUSE_STATUSES, DRIP_DELAY_STATUSES, WHATSAPP } from '@/config/client'
 
@@ -43,10 +43,18 @@ const RESUME_DAYS: Record<string, number> = { HOT: 3, WARM: 5, COLD: 7 }
  * Auto-resumes paused drips if no manual message for N days.
  */
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  const auth = req.headers.get('authorization') || ''
+  const secret = process.env.CRON_SECRET
+  if (!secret || auth !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Global kill-switch: sending WhatsApp drips to every eligible lead is an
+  // outward-facing action — it stays OFF until the owner sets drip.enabled=true
+  // in settings. Lets the cron be scheduled safely ahead of the decision.
+  const dripEnabled = await getSetting('drip.enabled').catch(() => null)
+  if (dripEnabled !== 'true') {
+    return NextResponse.json({ success: true, skipped: 'drip.enabled is not true — set it in settings to activate' })
   }
 
   try {

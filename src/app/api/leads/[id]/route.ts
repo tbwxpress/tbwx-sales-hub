@@ -2,8 +2,9 @@ import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads, getLeadByRow, updateLead, clearLeadRow } from '@/lib/sheets'
-import { logAssignment, recordLeadClose, insertLeadEdit, getPipelineStages } from '@/lib/db'
+import { logAssignment, recordLeadClose, insertLeadEdit, getPipelineStages, countCallAttempts, insertNote } from '@/lib/db'
 import { computeLeadScore } from '@/lib/scoring'
+import { FOLLOWUP_DAYS, LOST_REASONS, MIN_CALL_ATTEMPTS_BEFORE_NO_RESPONSE } from '@/config/client'
 
 // Fields that require admin or can_edit_leads permission
 const PROFILE_FIELDS = new Set(['full_name', 'email', 'city', 'state', 'model_interest'])
@@ -100,12 +101,62 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const targetStage = body.lead_status ? stages.find(s => s.key === body.lead_status) : undefined
     const isTerminalStatus = Boolean(targetStage?.isWon || targetStage?.isLost)
 
+    // Pull the reason fields out of the body up front — they are audit payload,
+    // not lead columns, and must never reach updateLead/the sheet mirror.
+    const lostReason = typeof body.lost_reason === 'string' ? body.lost_reason.trim() : ''
+    const lostReasonNote = typeof body.lost_reason_note === 'string' ? body.lost_reason_note.trim() : ''
+    delete body.lost_reason
+    delete body.lost_reason_note
+
+    // Current lead snapshot for the transition guards below (getLeads() is
+    // cached ~30s, so repeated calls in this route hit the cache).
+    const currentLead = body.lead_status
+      ? (await getLeads()).find(l => l.row_number === rowNum)
+      : undefined
+    const isStatusTransition = Boolean(
+      body.lead_status && currentLead && currentLead.lead_status !== body.lead_status,
+    )
+
+    // Mandatory lost reason: every real transition into a lost stage must say
+    // why, so "why are we losing?" is answerable from data instead of memory.
+    if (isStatusTransition && targetStage?.isLost) {
+      if (!lostReason || !LOST_REASONS[lostReason]) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'A lost reason is required to mark this lead LOST',
+            code: 'LOST_REASON_REQUIRED',
+            reasons: LOST_REASONS,
+          },
+          { status: 422 },
+        )
+      }
+    }
+
+    // Attempts guard: don't let a lead be parked as NO_RESPONSE before it has
+    // actually been dialed enough times (96% of NO_RESPONSE leads never reached
+    // 3 attempts in the June audit). Counts rail calls + manual call logs +
+    // recorded bridge calls. Admins bypass (bulk hygiene / data fixes).
+    if (isStatusTransition && body.lead_status === 'NO_RESPONSE' && user.role !== 'admin' && currentLead) {
+      const attempts = await countCallAttempts(rowNum, currentLead.phone || '')
+      // attempts === -1 means the count query failed — fail open rather than
+      // blocking agents on a transient DB error (the guard is a nudge, not a vault).
+      if (attempts >= 0 && attempts < MIN_CALL_ATTEMPTS_BEFORE_NO_RESPONSE) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Only ${attempts} call attempt${attempts === 1 ? '' : 's'} logged — make at least ${MIN_CALL_ATTEMPTS_BEFORE_NO_RESPONSE} before marking No Response`,
+            code: 'MIN_ATTEMPTS_NOT_MET',
+            attempts,
+            required: MIN_CALL_ATTEMPTS_BEFORE_NO_RESPONSE,
+          },
+          { status: 422 },
+        )
+      }
+    }
+
     // Status-specific follow-up intervals
     if (body.lead_status && !body.next_followup) {
-      const FOLLOWUP_DAYS: Record<string, number> = {
-        NEW: 1, DECK_SENT: 1, REPLIED: 0, NO_RESPONSE: 1,
-        CALL_DONE_INTERESTED: 2, HOT: 2, FINAL_NEGOTIATION: 2, DELAYED: 7,
-      }
       const days = FOLLOWUP_DAYS[body.lead_status]
       if (days !== undefined) {
         const nextDate = new Date()
@@ -241,7 +292,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             changed_by: user.name,
             changed_by_id: user.id,
             source: 'manual',
+            reason: lostReason,
           })
+          // Human-readable trace on the lead itself (timeline + notes views).
+          if (targetStage?.isLost && lostReason && lead.phone) {
+            const label = LOST_REASONS[lostReason] || lostReason
+            await insertNote({
+              phone: lead.phone,
+              note: `[LOST] ${label}${lostReasonNote ? ` — ${lostReasonNote}` : ''}`,
+              created_by: user.name,
+            }).catch(() => { /* non-critical */ })
+          }
         }
       } catch { /* audit log is non-critical */ }
     }

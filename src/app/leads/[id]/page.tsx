@@ -28,13 +28,20 @@ import ActivityLog from '@/components/ActivityLog'
 import LeadComments from '@/components/LeadComments'
 import OpportunityCheckPrompt from '@/components/OpportunityCheckPrompt'
 import LeadSignalsCard from '@/components/leads/LeadSignalsCard'
-import { STATUS_LABELS } from '@/config/client'
+import { STATUS_LABELS, LOST_REASONS } from '@/config/client'
 import { toast } from 'sonner'
 import { formatTime } from '@/lib/format'
 import Badge, { statusTone, priorityTone } from '@/components/ui/Badge'
 import { ChevronRight } from 'lucide-react'
-import StatusEditPopover from './_components/StatusEditPopover'
+import StatusEditPopover from '../_components/StatusEditPopover'
 import FollowupDatePicker from './_components/FollowupDatePicker'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
 
 // Status and priority options
 const PRIORITIES = ['HOT', 'WARM', 'COLD'] as const
@@ -272,6 +279,12 @@ export default function LeadDetailPage() {
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [agreementsOpen, setAgreementsOpen] = useState(false)
+
+  // Mark-as-lost dialog state
+  const [showLostDialog, setShowLostDialog] = useState(false)
+  const [lostReason, setLostReason] = useState('')
+  const [lostNote, setLostNote] = useState('')
+  const [savingLost, setSavingLost] = useState(false)
 
   // Delete
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -721,10 +734,38 @@ export default function LeadDetailPage() {
     setShowQuickReplies(false)
   }
 
-  // Mark as lost
-  const handleMarkLost = async () => {
-    if (!confirm('Are you sure you want to mark this lead as LOST?')) return
-    await updateField('lead_status', 'LOST')
+  // Mark as lost — opens reason dialog instead of browser confirm()
+  const handleMarkLost = () => {
+    setLostReason('')
+    setLostNote('')
+    setShowLostDialog(true)
+  }
+
+  const handleLostConfirm = async () => {
+    if (!lostReason) return
+    setSavingLost(true)
+    try {
+      const res = await fetch(`/api/leads/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_status: 'LOST',
+          lost_reason: lostReason,
+          lost_reason_note: lostNote.trim() || undefined,
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setLead(prev => prev ? { ...prev, lead_status: 'LOST' } : prev)
+        toast.success('Lead marked as Lost')
+        setShowLostDialog(false)
+      } else {
+        toast.error(json.error || 'Failed to mark as lost')
+      }
+    } catch {
+      toast.error('Network error')
+    }
+    setSavingLost(false)
   }
 
   // Mark as converted
@@ -823,7 +864,7 @@ export default function LeadDetailPage() {
                 value={lead.lead_status}
                 size="sm"
                 disabled={savingField === 'lead_status'}
-                onChange={(next) => setLead(prev => prev ? { ...prev, lead_status: next } : prev)}
+                onChange={(next) => setLead(prev => prev ? { ...prev, lead_status: next as import('@/lib/types').LeadStatus } : prev)}
               />
             ) : (
               <Badge tone={statusTone(lead.lead_status)}>
@@ -1250,7 +1291,7 @@ export default function LeadDetailPage() {
                         value={lead.lead_status}
                         disabled={savingField === 'lead_status'}
                         className="w-full justify-between bg-elevated border border-border !px-3 !py-2 !rounded-md"
-                        onChange={(next) => setLead(prev => prev ? { ...prev, lead_status: next } : prev)}
+                        onChange={(next) => setLead(prev => prev ? { ...prev, lead_status: next as import('@/lib/types').LeadStatus } : prev)}
                       />
                     </div>
                   )
@@ -1856,7 +1897,60 @@ export default function LeadDetailPage() {
         />
       )}
 
-      {/* Toast */}
+      {/* Mark-as-Lost Dialog */}
+      <Dialog open={showLostDialog} onOpenChange={(o) => { if (!savingLost) setShowLostDialog(o) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Mark as Lost</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-xs text-dim">Select a reason (required)</p>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(LOST_REASONS).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setLostReason(key)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+                    lostReason === key
+                      ? 'bg-red-500/20 border-red-500/60 text-red-400 font-semibold'
+                      : 'bg-elevated border-border text-muted hover:border-red-500/40 hover:text-text'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              value={lostNote}
+              onChange={e => setLostNote(e.target.value)}
+              placeholder="Optional note..."
+              maxLength={200}
+              className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50"
+              onKeyDown={e => { if (e.key === 'Enter' && lostReason) handleLostConfirm() }}
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <button
+              type="button"
+              onClick={() => setShowLostDialog(false)}
+              disabled={savingLost}
+              className="text-sm text-dim hover:text-text transition-colors px-3 py-1.5"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleLostConfirm}
+              disabled={!lostReason || savingLost}
+              className="text-sm font-semibold bg-red-500/80 hover:bg-red-500 disabled:bg-red-500/30 disabled:cursor-not-allowed text-white rounded-md px-4 py-1.5 transition-colors"
+            >
+              {savingLost ? 'Saving...' : 'Confirm Lost'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

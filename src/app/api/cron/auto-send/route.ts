@@ -4,7 +4,7 @@ import { google } from 'googleapis'
 import { sendTemplate } from '@/lib/whatsapp'
 import { sendFranchiseEmail } from '@/lib/email'
 import { logSentMessage, updateLead, getLeads } from '@/lib/sheets'
-import { upsertContact, insertMessage, getMessages, getSetting, setSetting } from '@/lib/db'
+import { upsertContact, insertMessage, getMessages, getSetting, setSetting, logAssignment } from '@/lib/db'
 import { getUsers } from '@/lib/users'
 import { getOptInTemplateName } from '@/lib/template-settings'
 
@@ -428,6 +428,13 @@ export async function POST(request: NextRequest) {
 
         // Update Google Sheet — mark as contacted + assigned in the correct tab
         await markContacted(lead, waMessageId, assignedTo)
+
+        // Log assignment to assignment_log (non-critical)
+        if (assignedTo) {
+          try {
+            await logAssignment({ lead_row: lead.row_number, phone: lead.phone_formatted, from_agent: '', to_agent: assignedTo, assigned_by: 'auto-send' })
+          } catch { /* assignment log non-critical */ }
+        }
 
         // Log to SQLite DB (inbox)
         await upsertContact(lead.phone_formatted, {

@@ -452,12 +452,26 @@ export default function WorkCard({
             background: 'color-mix(in srgb, var(--color-accent) 7%, transparent)',
           }}
         >
-          <div className="text-eyebrow mb-1 flex items-center gap-1.5 text-accent">
-            <Sparkles className="h-3 w-3" strokeWidth={2.4} />
-            Why now
+          <div className="mb-1 flex items-center gap-2">
+            <div className="text-eyebrow flex items-center gap-1.5 text-accent">
+              <Sparkles className="h-3 w-3" strokeWidth={2.4} />
+              Why now
+            </div>
+            {card.queue_reason === 'hand_raiser' && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold"
+                style={{
+                  borderColor: 'color-mix(in srgb, #f59e0b 45%, transparent)',
+                  background: 'color-mix(in srgb, #f59e0b 14%, transparent)',
+                  color: '#f59e0b',
+                }}
+              >
+                ✋ Said YES — re-engage
+              </span>
+            )}
           </div>
           <p className="text-[15px] font-semibold leading-snug text-text">{card.why_now}</p>
-          {card.queue_reason && card.queue_reason !== card.why_now && (
+          {card.queue_reason && card.queue_reason !== 'hand_raiser' && card.queue_reason !== card.why_now && (
             <p className="mt-1 flex items-start gap-1.5 text-caption text-muted">
               <Quote className="mt-0.5 h-3 w-3 shrink-0 text-dim" strokeWidth={2} aria-hidden />
               <span className="italic">{card.queue_reason}</span>

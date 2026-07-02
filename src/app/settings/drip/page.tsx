@@ -25,6 +25,9 @@ export default function DripSettingsPage() {
   const [sequences, setSequences] = useState<DripSequence[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  // Master switch — the drip cron refuses to send while this is off.
+  const [dripEnabled, setDripEnabled] = useState(false)
+  const [togglingDrip, setTogglingDrip] = useState(false)
   // Editing state
   const [editBand, setEditBand] = useState<string | null>(null)
   const [editSteps, setEditSteps] = useState<DripStep[]>([])
@@ -39,10 +42,36 @@ export default function DripSettingsPage() {
       const res = await fetch('/api/drip/sequences')
       const data = await res.json()
       if (data.success) setSequences(data.data)
+      try {
+        const s = await fetch('/api/settings/drip')
+        const sd = await s.json()
+        setDripEnabled(Boolean(sd.drip_enabled))
+      } catch { /* toggle stays off on error */ }
       setLoading(false)
     }
     load()
   }, [router])
+
+  async function toggleDrip() {
+    setTogglingDrip(true)
+    try {
+      const res = await fetch('/api/settings/drip', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !dripEnabled }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setDripEnabled(data.drip_enabled)
+        toast.success(data.drip_enabled ? 'Drip sending is ON — the cron will now send follow-ups' : 'Drip sending is OFF')
+      } else {
+        toast.error(data.error || 'Could not update the switch')
+      }
+    } catch {
+      toast.error('Could not update the switch')
+    }
+    setTogglingDrip(false)
+  }
 
   function getSequenceForBand(band: string): { seq: DripSequence | null; steps: DripStep[] } {
     const seq = sequences.find(s => s.priority_band === band)
@@ -116,6 +145,27 @@ export default function DripSettingsPage() {
           <a href="/dashboard" className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors bg-elevated text-muted hover:text-text">
             &larr; Dashboard
           </a>
+        </div>
+
+        {/* Master switch — mirrors settings key drip.enabled; the cron is a no-op while off */}
+        <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 mb-6">
+          <div>
+            <div className="text-sm font-semibold text-text">Drip sending</div>
+            <p className="text-xs text-dim mt-0.5">
+              {dripEnabled
+                ? 'ON — eligible leads receive automated follow-ups on the cadences below'
+                : 'OFF — nothing is sent; sequences below only take effect after you switch this on'}
+            </p>
+          </div>
+          <button
+            onClick={toggleDrip}
+            disabled={togglingDrip}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${dripEnabled ? 'bg-accent' : 'bg-elevated'}`}
+            aria-checked={dripEnabled}
+            role="switch"
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-bg transition-transform ${dripEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
         </div>
 
         {/* Sequence Cards */}

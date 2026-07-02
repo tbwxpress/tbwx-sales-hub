@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   const cronSecret = authHeader?.replace('Bearer ', '')
 
-  if (CRON_SECRET && cronSecret !== CRON_SECRET) {
+  if (!CRON_SECRET || cronSecret !== CRON_SECRET) {
     const { getSession, requireAuth } = await import('@/lib/auth')
     const session = await getSession()
     try {

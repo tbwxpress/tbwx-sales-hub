@@ -13,7 +13,7 @@
  */
 
 import type { Lead, User, AgentRole } from './types'
-import { FOLLOWUP_DAYS } from '@/config/client'
+import { FOLLOWUP_DAYS, LOST_REASONS } from '@/config/client'
 import { getLeads, updateLead } from './sheets'
 import { getUsers } from './users'
 import { notifyQuiet } from './notifications'
@@ -41,6 +41,7 @@ import {
   upsertLeadSignal,
   getReplyHourForPhone,
   getContactCountForLead,
+  getPositiveDripPhones,
   insertMessage,
   getMessages,
   type WorkEvent,
@@ -399,6 +400,7 @@ function rankTelecaller(
   lastMsgByPhone: Map<string, { direction: string; timestamp: string; text: string }>,
   lastWorkByLead: Map<number, WorkEvent>,
   now: number,
+  handRaisers?: Map<string, string>,
 ): RankedLead[] {
   const ranked: RankedLead[] = []
   for (const lead of leads) {
@@ -420,6 +422,19 @@ function rankTelecaller(
         lead, bucket: 1, window, lastMsg,
         queue_reason: 'open_window_reply',
         why_now: lastMsg?.text ? `replied ${humanizeRel(window.last_received_at, now)}: "${lastMsg.text.slice(0, 80)}"` : 'customer messaged — window open',
+      })
+      continue
+    }
+    // ①½ hand-raiser — tapped a positive quick-reply during a drip/reactivation
+    // blast but is still parked in NO_RESPONSE (warm lead worked as cold). Served
+    // until someone actually works it after the YES (any newer work event mutes it).
+    const hrPausedAt = handRaisers?.get(last10(lead.phone))
+    if (hrPausedAt && lead.lead_status === 'NO_RESPONSE' &&
+        (!lastWork || tsToMs(lastWork.created_at) < tsToMs(hrPausedAt))) {
+      ranked.push({
+        lead, bucket: 1.5, window, lastMsg,
+        queue_reason: 'hand_raiser',
+        why_now: `said YES to re-engagement ${humanizeRel(hrPausedAt, now)} — still filed as No Response`,
       })
       continue
     }
@@ -474,6 +489,7 @@ function rankCloser(
   lastReceivedByPhone: Map<string, { last_received_at: string }>,
   lastWorkByLead: Map<number, WorkEvent>,
   now: number,
+  handRaisers?: Map<string, string>,
 ): RankedLead[] {
   const ranked: RankedLead[] = []
   for (const lead of leads) {
@@ -491,6 +507,18 @@ function rankCloser(
         lead, bucket: 1, window, lastMsg,
         queue_reason: 'open_window_reply',
         why_now: lastMsg?.text ? `replied ${humanizeRel(window.last_received_at, now)}: "${lastMsg.text.slice(0, 80)}"` : 'customer waiting — window open',
+      })
+      continue
+    }
+    // ①½ hand-raiser — said YES to a drip/reactivation but still parked in
+    // NO_RESPONSE. Same rule as the telecaller ranker.
+    const hrPausedAt = handRaisers?.get(last10(lead.phone))
+    if (hrPausedAt && lead.lead_status === 'NO_RESPONSE' &&
+        (!lastWork || tsToMs(lastWork.created_at) < tsToMs(hrPausedAt))) {
+      ranked.push({
+        lead, bucket: 1.5, window, lastMsg,
+        queue_reason: 'hand_raiser',
+        why_now: `said YES to re-engagement ${humanizeRel(hrPausedAt, now)} — still filed as No Response`,
       })
       continue
     }
@@ -603,17 +631,18 @@ export async function getWorkQueue(
     l => l.assigned_to === user.name && !ACTIVE_EXCLUDED.has(l.lead_status),
   )
 
-  const [lastMsgByPhone, lastWorkByLead, lastReceivedByPhone] = await Promise.all([
+  const [lastMsgByPhone, lastWorkByLead, lastReceivedByPhone, handRaisers] = await Promise.all([
     getLastMessageByPhone(),
     getLastWorkEventByLead(mine.map(l => l.row_number)),
     getLastReceivedMessageByPhone(),
+    getPositiveDripPhones(),
   ])
 
   let ranked: RankedLead[]
   if (role === 'telecaller') {
-    ranked = rankTelecaller(mine, lastMsgByPhone, lastWorkByLead, now)
+    ranked = rankTelecaller(mine, lastMsgByPhone, lastWorkByLead, now, handRaisers)
   } else {
-    ranked = rankCloser(mine, lastMsgByPhone, lastReceivedByPhone, lastWorkByLead, now)
+    ranked = rankCloser(mine, lastMsgByPhone, lastReceivedByPhone, lastWorkByLead, now, handRaisers)
   }
 
   // Count-only callers (getWorkStats, getOwnerPanel's per-agent loop) need just
@@ -787,6 +816,10 @@ export interface ApplyOutcomeInput {
   buyer_persona?: string | null
   next_step?: string | null
   connected?: boolean | null
+  // Mandatory when the outcome resolves to LOST ('lost' / 'not_interested'):
+  // one of the LOST_REASONS keys, with optional free-text detail.
+  lost_reason?: string
+  lost_reason_note?: string
 }
 
 export interface ApplyOutcomeResult {
@@ -926,6 +959,14 @@ export async function applyWorkOutcome(input: ApplyOutcomeInput): Promise<ApplyO
   const providedTime = (outcome === 'callback' || outcome === 'booked') && m ? m[1] : undefined
   const { nextStatus, nextFollowup, route, won } = resolveOutcome(role, outcome, lead, providedTime)
 
+  // Mandatory lost reason on the rail too — 'lost' (closer) and 'not_interested'
+  // (telecaller) both resolve to LOST. Same rule as the leads PATCH route.
+  const lostReason = (input.lost_reason || '').trim()
+  const lostReasonNote = (input.lost_reason_note || '').trim()
+  if (nextStatus === 'LOST' && lead.lead_status !== 'LOST' && (!lostReason || !LOST_REASONS[lostReason])) {
+    return { ok: false, nextStatus: lead.lead_status, error: 'LOST_REASON_REQUIRED' }
+  }
+
   // Resolve routing target (reassignment) up front.
   let routedTo: string | undefined
   if (route === 'closer') {
@@ -944,7 +985,18 @@ export async function applyWorkOutcome(input: ApplyOutcomeInput): Promise<ApplyO
       changed_by: userName,
       changed_by_id: userId,
       source: 'work',
+      reason: nextStatus === 'LOST' ? lostReason : '',
     })
+    if (nextStatus === 'LOST' && lostReason && lead.phone) {
+      const label = LOST_REASONS[lostReason] || lostReason
+      try {
+        await insertNote({
+          phone: lead.phone,
+          note: `[LOST] ${label}${lostReasonNote ? ` — ${lostReasonNote}` : ''}`,
+          created_by: userName,
+        })
+      } catch { /* non-critical */ }
+    }
   }
 
   // 2) Build the field patch (status + follow-up + optional reassignment).

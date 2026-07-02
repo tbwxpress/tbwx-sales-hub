@@ -121,6 +121,8 @@ export default function WorkPage() {
       decision_maker?: string
       buyer_persona?: string
       next_step?: string
+      lost_reason?: string
+      lost_reason_note?: string
     }) => {
       const { outcome } = args
       if (!card || submitting) return false

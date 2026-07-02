@@ -14,6 +14,7 @@ import {
   NEXT_STEP_CHIPS,
   type Chip,
 } from '@/config/sales-signals'
+import { LOST_REASONS } from '@/config/client'
 import type { Card, Outcome } from './types'
 
 /**
@@ -22,8 +23,10 @@ import type { Card, Outcome } from './types'
  * Flow per outcome:
  *  - A sentiment strip (Garam / Thoda / Thanda / Cold) sits above the buttons —
  *    one optional tap on EVERY outcome.
- *  - HONEST-NEGATIVE / non-connect (no_answer, no_response, not_interested, lost)
- *    fire on a SINGLE tap — truth is the lazy path.
+ *  - HONEST-NEGATIVE / non-connect (no_answer, no_response) fire on a SINGLE
+ *    tap — truth is the lazy path. LOST outcomes (lost, not_interested) are the
+ *    exception: they open a REQUIRED lost-reason chip panel (the server rejects
+ *    a LOST transition without a reason).
  *  - OPTIMISTIC / stall outcomes open a tiny chip panel (tap-not-type): qualify
  *    (interested) → Paisa? / Decider? / Persona; soft-no (not_ready, going_cold)
  *    → objection; advance (deck_sent, advanced) → next step. A "Save & next" tap
@@ -34,7 +37,11 @@ import type { Card, Outcome } from './types'
 
 const DATE_OUTCOMES = new Set(['callback', 'booked'])
 
-type SignalKind = 'objection' | 'capital_readiness' | 'decision_maker' | 'buyer_persona' | 'next_step'
+type SignalKind = 'objection' | 'capital_readiness' | 'decision_maker' | 'buyer_persona' | 'next_step' | 'lost_reason'
+
+// Build the lost-reason chip array from the config Record (key → label).
+const LOST_REASON_CHIPS: Chip[] = Object.entries(LOST_REASONS).map(([key, label]) => ({ key, label }))
+const LOST_REASON_KEYS = new Set(Object.keys(LOST_REASONS))
 
 const CHIP_SETS: Record<SignalKind, { label: string; chips: Chip[] }> = {
   capital_readiness: { label: 'Paisa?', chips: CAPITAL_CHIPS },
@@ -42,7 +49,11 @@ const CHIP_SETS: Record<SignalKind, { label: string; chips: Chip[] }> = {
   buyer_persona: { label: 'Kaisa buyer?', chips: PERSONA_CHIPS },
   objection: { label: 'Kya rok raha hai?', chips: OBJECTION_CHIPS },
   next_step: { label: 'Aage kya?', chips: NEXT_STEP_CHIPS },
+  lost_reason: { label: 'Kyu lose hua?', chips: LOST_REASON_CHIPS },
 }
+
+// Outcomes that open the lost-reason panel (REQUIRED — confirm locked until chosen).
+const LOST_OUTCOMES = new Set(['lost', 'not_interested'])
 
 // Which chips to ask per outcome (only the moments that matter).
 const OUTCOME_DETAIL: Record<string, SignalKind[]> = {
@@ -51,6 +62,8 @@ const OUTCOME_DETAIL: Record<string, SignalKind[]> = {
   going_cold: ['objection'],
   deck_sent: ['next_step'],
   advanced: ['next_step'],
+  lost: ['lost_reason'],
+  not_interested: ['lost_reason'],
 }
 
 function toYmd(d: Date): string {
@@ -87,6 +100,8 @@ export default function OutcomeBar({
     decision_maker?: string
     buyer_persona?: string
     next_step?: string
+    lost_reason?: string
+    lost_reason_note?: string
   }) => Promise<boolean | void> | void
 }) {
   const [note, setNote] = useState('')
@@ -98,6 +113,8 @@ export default function OutcomeBar({
   const [sentiment, setSentiment] = useState<string | null>(null)
   const [detailFor, setDetailFor] = useState<string | null>(null)
   const [picked, setPicked] = useState<Partial<Record<SignalKind, string>>>({})
+  // Lost-reason note (optional short note when the panel is a LOST outcome).
+  const [lostNote, setLostNote] = useState('')
 
   function reset() {
     setNote('')
@@ -108,6 +125,7 @@ export default function OutcomeBar({
     setSentiment(null)
     setDetailFor(null)
     setPicked({})
+    setLostNote('')
   }
 
   async function fire(outcome: string, opts: { dateNote?: string; signals?: Partial<Record<SignalKind, string>> } = {}) {
@@ -123,6 +141,8 @@ export default function OutcomeBar({
       decision_maker: sig.decision_maker,
       buyer_persona: sig.buyer_persona,
       next_step: sig.next_step,
+      lost_reason: sig.lost_reason || undefined,
+      lost_reason_note: (sig.lost_reason && lostNote.trim()) ? lostNote.trim() : undefined,
     })
     // Keep the rep's captured chips/note if the submit FAILED (handleOutcome
     // returns false on a non-ok/network error) — only reset on success.
@@ -141,6 +161,7 @@ export default function OutcomeBar({
       setDateFor(null) // close any open date popover
       setDetailFor((cur) => (cur === o.key ? null : o.key))
       setPicked({})
+      setLostNote('')
       return
     }
     // fast / honest-negative — single tap. Close any open panels first.
@@ -283,7 +304,14 @@ export default function OutcomeBar({
         >
           {detailKinds.map((kind) => (
             <div key={kind}>
-              <div className="text-eyebrow mb-1.5 text-dim">{CHIP_SETS[kind].label}</div>
+              <div className="text-eyebrow mb-1.5 flex items-center gap-1.5 text-dim">
+                {CHIP_SETS[kind].label}
+                {kind === 'lost_reason' && (
+                  <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ background: 'color-mix(in srgb, var(--color-danger) 18%, transparent)', color: 'var(--color-danger)' }}>
+                    Required
+                  </span>
+                )}
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {CHIP_SETS[kind].chips.map((c) => (
                   <ChipButton
@@ -294,26 +322,46 @@ export default function OutcomeBar({
                   />
                 ))}
               </div>
+              {kind === 'lost_reason' && (
+                <Input
+                  value={lostNote}
+                  onChange={(e) => setLostNote(e.target.value)}
+                  placeholder="Short note (optional)…"
+                  className="mt-2 text-sm"
+                  style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                  maxLength={140}
+                  aria-label="Optional note for lost reason"
+                />
+              )}
             </div>
           ))}
-          <div className="flex items-center gap-2 pt-0.5">
-            <Button
-              onClick={() => fire(detailFor, { signals: picked })}
-              disabled={submitting}
-              className="h-11 flex-1 font-bold focus-ring"
-              style={{ background: 'var(--color-accent)', color: '#1a1209' }}
-            >
-              Save &amp; next
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-            <button
-              type="button"
-              onClick={() => fire(detailFor)}
-              className="focus-ring rounded-lg px-3 py-2 text-caption font-medium text-dim transition-colors hover:text-muted"
-            >
-              Skip
-            </button>
-          </div>
+          {(() => {
+            const isLostOutcome = LOST_OUTCOMES.has(detailFor)
+            const lostReasonPicked = isLostOutcome ? LOST_REASON_KEYS.has(picked.lost_reason || '') : true
+            return (
+              <div className="flex items-center gap-2 pt-0.5">
+                <Button
+                  onClick={() => fire(detailFor, { signals: picked })}
+                  disabled={submitting || !lostReasonPicked}
+                  className="h-11 flex-1 font-bold focus-ring"
+                  style={{ background: 'var(--color-accent)', color: '#1a1209' }}
+                  title={isLostOutcome && !lostReasonPicked ? 'Select a reason before confirming' : undefined}
+                >
+                  Save &amp; next
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+                {!isLostOutcome && (
+                  <button
+                    type="button"
+                    onClick={() => fire(detailFor)}
+                    className="focus-ring rounded-lg px-3 py-2 text-caption font-medium text-dim transition-colors hover:text-muted"
+                  >
+                    Skip
+                  </button>
+                )}
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>

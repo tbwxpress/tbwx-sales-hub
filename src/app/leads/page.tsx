@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, UserPlus, Download, Eye, MessageSquare, Pencil, ArrowUp, ArrowDown, ChevronsUpDown, Star } from 'lucide-react'
 import Navbar from '@/components/Navbar'
-import { STATUS_LABELS, LEAD_STATUSES } from '@/config/client'
+import { STATUS_LABELS, LEAD_STATUSES, LOST_REASONS } from '@/config/client'
+import { usePipelineStages } from '@/hooks/usePipelineStages'
 import { toast } from 'sonner'
 import Badge, { statusTone, priorityTone } from '@/components/ui/Badge'
 import EmptyState from '@/components/ui/EmptyState'
@@ -300,6 +301,9 @@ export default function LeadsPage() {
     window.history.replaceState(null, '', newUrl)
   }, [search, statusFilter, assignedFilter, telecallerFilter, sortByQuery, dateFrom, dateTo])
 
+  // Pipeline stages — needed to detect isLost for bulk status changes
+  const { stages } = usePipelineStages()
+
   // Bulk action state
   const [assignTo, setAssignTo] = useState('')
   const [assigning, setAssigning] = useState(false)
@@ -307,6 +311,12 @@ export default function LeadsPage() {
   const [tcAssignToId, setTcAssignToId] = useState('')
   const [tcAssigning, setTcAssigning] = useState(false)
   const [agents, setAgents] = useState<{ id: string; name: string; active: boolean; is_telecaller?: boolean }[]>([])
+
+  // Bulk lost-reason dialog state
+  const [showBulkLostDialog, setShowBulkLostDialog] = useState(false)
+  const [bulkLostReason, setBulkLostReason] = useState('')
+  const [bulkLostNote, setBulkLostNote] = useState('')
+  const [pendingBulkRows, setPendingBulkRows] = useState<number[]>([])
 
   // Add Lead modal state
   const [showAddLead, setShowAddLead] = useState(false)
@@ -636,27 +646,80 @@ export default function LeadsPage() {
     }
   }, [])
 
-  async function bulkStatusChange(selectedRows: number[]) {
-    if (!bulkStatus || selectedRows.length === 0) return
+  function isBulkLostStage(key: string): boolean {
+    const stage = stages.find(s => s.key === key)
+    if (stage) return stage.isLost
+    return key === 'LOST'
+  }
+
+  async function executeBulkStatusChange(selectedRows: number[], status: string, lostReason?: string, lostNote?: string) {
     setAssigning(true)
-    try {
-      await Promise.all(selectedRows.map(id =>
+    const body: Record<string, unknown> = { lead_status: status }
+    if (lostReason) {
+      body.lost_reason = lostReason
+      if (lostNote?.trim()) body.lost_reason_note = lostNote.trim()
+    }
+    const results = await Promise.allSettled(
+      selectedRows.map(id =>
         fetch(`/api/leads/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lead_status: bulkStatus }),
-        })
-      ))
+          body: JSON.stringify(body),
+        }).then(res => res.json())
+      )
+    )
+    let updated = 0
+    let blocked = 0
+    let firstError = ''
+    const succeededIds: number[] = []
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled' && r.value?.success) {
+        updated++
+        succeededIds.push(selectedRows[i])
+      } else {
+        blocked++
+        if (!firstError) {
+          firstError = r.status === 'fulfilled'
+            ? (r.value?.error || 'Update failed')
+            : 'Network error'
+        }
+      }
+    })
+    if (succeededIds.length > 0) {
       setLeads(prev => prev.map(l =>
-        selectedRows.includes(l.row_number) ? { ...l, lead_status: bulkStatus } : l
+        succeededIds.includes(l.row_number) ? { ...l, lead_status: status } : l
       ))
-      toast.success(`${selectedRows.length} leads updated to ${bulkStatus.replace('_', ' ')}`)
-      setRowSelection({})
-      setBulkStatus('')
-    } catch {
-      setError('Bulk status update failed')
     }
+    if (blocked === 0) {
+      toast.success(`${updated} lead${updated !== 1 ? 's' : ''} updated to ${STATUS_LABELS[status] || status}`)
+    } else {
+      toast.warning(`${updated} updated, ${blocked} blocked — ${firstError}`)
+    }
+    setRowSelection({})
+    setBulkStatus('')
     setAssigning(false)
+  }
+
+  async function bulkStatusChange(selectedRows: number[]) {
+    if (!bulkStatus || selectedRows.length === 0) return
+    if (isBulkLostStage(bulkStatus)) {
+      // Gate behind the reason picker dialog
+      setPendingBulkRows(selectedRows)
+      setBulkLostReason('')
+      setBulkLostNote('')
+      setShowBulkLostDialog(true)
+      return
+    }
+    await executeBulkStatusChange(selectedRows, bulkStatus)
+  }
+
+  async function handleBulkLostConfirm() {
+    if (!bulkLostReason || pendingBulkRows.length === 0) return
+    setShowBulkLostDialog(false)
+    await executeBulkStatusChange(pendingBulkRows, bulkStatus, bulkLostReason, bulkLostNote)
+    setPendingBulkRows([])
+    setBulkLostReason('')
+    setBulkLostNote('')
   }
 
   async function bulkAssign(selectedRows: number[]) {
@@ -1999,6 +2062,63 @@ export default function LeadsPage() {
         isFavorite={panelLead ? isFavorite('lead', panelLead.row_number) : false}
         onToggleFavorite={panelLead ? () => toggleFavorite('lead', panelLead.row_number) : undefined}
       />
+
+      {/* ─── Bulk Lost-Reason Dialog ──────────────────────────────────── */}
+      <Dialog open={showBulkLostDialog} onOpenChange={(o) => { if (!assigning) setShowBulkLostDialog(o) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              Mark {pendingBulkRows.length} lead{pendingBulkRows.length !== 1 ? 's' : ''} as {STATUS_LABELS[bulkStatus] || bulkStatus}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-xs text-dim">Select a reason (required — applied to all selected leads)</p>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(LOST_REASONS).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setBulkLostReason(key)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+                    bulkLostReason === key
+                      ? 'bg-red-500/20 border-red-500/60 text-red-400 font-semibold'
+                      : 'bg-elevated border-border text-muted hover:border-red-500/40 hover:text-text'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              value={bulkLostNote}
+              onChange={e => setBulkLostNote(e.target.value)}
+              placeholder="Optional note..."
+              maxLength={200}
+              className="w-full bg-elevated border border-border rounded-md px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-accent/50"
+              onKeyDown={e => { if (e.key === 'Enter' && bulkLostReason) handleBulkLostConfirm() }}
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setShowBulkLostDialog(false)}
+              disabled={assigning}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleBulkLostConfirm}
+              disabled={!bulkLostReason || assigning}
+              className="bg-red-500/80 hover:bg-red-500 disabled:bg-red-500/30 text-white"
+            >
+              {assigning ? 'Saving...' : 'Confirm Lost'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   )

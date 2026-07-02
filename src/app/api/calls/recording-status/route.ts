@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { updateCallRecordingByCallSid } from '@/lib/db'
+import { updateCallRecordingByCallSid, getCallRecordingByCallSid, recordFirstResponse } from '@/lib/db'
 import { webhookSecretOk } from '@/lib/telephony'
 import { fetchTwilioRecording } from '@/lib/telephony/twilio'
 import { scoreCallAudio } from '@/lib/call-scoring'
+import { getLeadByRow, getLeads, updateLead } from '@/lib/sheets'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120 // download + Gemini scoring of a longer call
@@ -65,6 +66,43 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('[calls/recording-status] scoring failed:', err)
     // Leave status = recorded_unscored; the audio is still available to review.
+  }
+
+  // SLA first-response + lead call-tracking — non-critical, never 500 the webhook.
+  // Only fires when the recording has actual audio (duration > 0).
+  if (duration > 0) {
+    try {
+      const rec = await getCallRecordingByCallSid(callSid)
+      if (rec) {
+        const recLeadRow = rec.lead_row != null ? Number(rec.lead_row) : null
+        const recPhone = String(rec.lead_phone || '')
+
+        // Resolve the lead — prefer lead_row, fall back to phone match.
+        let lead = recLeadRow ? await getLeadByRow(recLeadRow) : null
+        if (!lead && recPhone) {
+          const normPhone = recPhone.replace(/\D/g, '').slice(-10)
+          const all = await getLeads()
+          lead = all.find(l => String(l.phone).replace(/\D/g, '').slice(-10) === normPhone) ?? null
+        }
+
+        if (lead?.created_time) {
+          await recordFirstResponse(lead.phone, lead.created_time)
+        }
+
+        // Mark attempted_contact + first_call_date if not already set.
+        const rowToUpdate = recLeadRow ?? lead?.row_number ?? null
+        if (rowToUpdate && lead) {
+          const patch: Record<string, string> = {}
+          if (lead.attempted_contact !== 'Yes') patch.attempted_contact = 'Yes'
+          if (!lead.first_call_date) patch.first_call_date = new Date().toISOString().split('T')[0]
+          if (Object.keys(patch).length > 0) {
+            await updateLead(rowToUpdate, patch)
+          }
+        }
+      }
+    } catch (slaErr) {
+      console.error('[calls/recording-status] SLA/lead update failed (non-fatal):', slaErr)
+    }
   }
 
   return NextResponse.json({ ok: true })

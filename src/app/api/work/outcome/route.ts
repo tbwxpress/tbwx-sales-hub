@@ -4,6 +4,9 @@ import { getSession, requireAuth } from '@/lib/auth'
 import { getUserById } from '@/lib/users'
 import { applyWorkOutcome, getWorkQueue, getWorkStats } from '@/lib/work'
 import { SENTIMENT_KEYS, OBJECTION_KEYS, CAPITAL_KEYS, DECISION_MAKER_KEYS, PERSONA_KEYS, NEXT_STEP_KEYS } from '@/config/sales-signals'
+import { LOST_REASONS } from '@/config/client'
+
+const LOST_REASON_KEYS = new Set(Object.keys(LOST_REASONS))
 
 // Accept a chip value only if it's a known key (ignore junk); missing/'' → undefined
 // (= "not captured", so it never overwrites a previously-set signal).
@@ -35,6 +38,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: `Invalid channel "${channel}"` }, { status: 400 })
     }
 
+    const lost_reason = pick(body?.lost_reason, LOST_REASON_KEYS)
+    const lost_reason_note =
+      lost_reason && typeof body?.lost_reason_note === 'string'
+        ? body.lost_reason_note.slice(0, 500)
+        : undefined
+
     const result = await applyWorkOutcome({
       userId: user.id,
       userName: user.name,
@@ -50,9 +59,14 @@ export async function POST(req: NextRequest) {
       buyer_persona: pick(body?.buyer_persona, PERSONA_KEYS),
       next_step: pick(body?.next_step, NEXT_STEP_KEYS),
       connected: typeof body?.connected === 'boolean' ? body.connected : undefined,
+      lost_reason,
+      lost_reason_note,
     })
 
     if (!result.ok) {
+      if (result.error === 'LOST_REASON_REQUIRED') {
+        return NextResponse.json({ success: false, code: 'LOST_REASON_REQUIRED' }, { status: 422 })
+      }
       return NextResponse.json({ success: false, error: result.error || 'Outcome failed' }, { status: 400 })
     }
 

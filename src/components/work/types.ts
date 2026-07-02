@@ -97,6 +97,9 @@ export interface OutcomePayload {
   buyer_persona?: string
   next_step?: string
   connected?: boolean
+  // Required when outcome resolves to LOST (enforced server-side).
+  lost_reason?: string
+  lost_reason_note?: string
 }
 
 /** POST /api/work/outcome response. */

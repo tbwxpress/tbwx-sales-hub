@@ -126,6 +126,7 @@ export default function CsvImportWizard() {
   const [parsed, setParsed] = React.useState<ParsedCsv | null>(null)
   const [mapping, setMapping] = React.useState<Record<FieldKey, string>>({} as Record<FieldKey, string>)
   const [dedupe, setDedupe] = React.useState<'skip' | 'update'>('skip')
+  const [sendWelcome, setSendWelcome] = React.useState(false)
   const [dragActive, setDragActive] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
   const [result, setResult] = React.useState<ImportResult | null>(null)
@@ -196,6 +197,7 @@ export default function CsvImportWizard() {
     setParsed(null)
     setMapping({} as Record<FieldKey, string>)
     setDedupe('skip')
+    setSendWelcome(false)
     setResult(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
@@ -210,7 +212,7 @@ export default function CsvImportWizard() {
       const res = await fetch('/api/leads/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows, dedupe }),
+        body: JSON.stringify({ rows, dedupe, send_welcome: sendWelcome }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Import failed')
@@ -412,6 +414,24 @@ export default function CsvImportWizard() {
               })}
             </div>
           </fieldset>
+
+          {/* Auto-send welcome checkbox */}
+          <label className="flex items-start gap-3 cursor-pointer rounded-lg border border-border bg-elevated/40 px-3 py-2.5 hover:border-border-light transition-colors">
+            <input
+              type="checkbox"
+              checked={sendWelcome}
+              onChange={(e) => setSendWelcome(e.target.checked)}
+              className="mt-0.5 w-4 h-4 shrink-0 accent-[var(--color-accent)] cursor-pointer"
+              id="send-welcome-check"
+            />
+            <div>
+              <span className="text-sm font-medium text-text">Auto-send WhatsApp welcome + deck to imported leads (paced)</span>
+              <p className="text-[11px] text-dim mt-0.5">
+                When checked, leads are marked <span className="font-mono">CSV Import</span> and eligible for the auto-send cron (~5 per 2 min).
+                Leave unchecked to park leads without any automated outreach.
+              </p>
+            </div>
+          </label>
 
           {/* Preview table */}
           <div>

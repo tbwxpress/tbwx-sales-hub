@@ -28,6 +28,15 @@ const PUBLIC_PATHS = [
   '/api/cron/meta-daily-report',
   '/api/cron/franchise-reactivation',
   '/api/cron/expire-delegations',
+  // These four were built but never whitelisted, so the external scheduler's
+  // Bearer CRON_SECRET calls died with 401 at the middleware — the drip engine
+  // and reply alerts never ran in production. Each handler fails closed when
+  // CRON_SECRET is unset.
+  '/api/cron/drip',
+  '/api/cron/reply-alert',
+  '/api/cron/work-autobounce',
+  '/api/cron/morning-briefing',
+  '/api/cron/weekly-report',
   // Reactivation admin endpoint — enforces CRON_SECRET bearer auth itself
   '/api/admin/franchise-reactivation',
   // Public key is safe to expose; the SW fetches it before login on cold start.
