@@ -38,6 +38,7 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import TriageBar, { type TriageFilter, type TriageSort, type TriageCounts } from '@/components/inbox/TriageBar'
+import LostReasonDialog from '@/components/leads/LostReasonDialog'
 import WindowCountdown from '@/components/inbox/WindowCountdown'
 import NegativeReplyBanner from '@/components/inbox/NegativeReplyBanner'
 import { useNow, formatWaiting } from '@/components/inbox/useNow'
@@ -151,6 +152,9 @@ export default function InboxPage() {
   interface LeadInfo { row_number: number; full_name: string; lead_status: string; lead_priority: string; assigned_to: string; email: string; city: string; state: string; model_interest: string; next_followup: string; lead_score?: number; timeline?: string; experience?: string; campaign_name?: string; platform?: string }
   const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null)
   const [updatingLead, setUpdatingLead] = useState(false)
+  // Set when a lost transition bounced with LOST_REASON_REQUIRED; opens the
+  // shared reason dialog which re-submits with the picked reason.
+  const [pendingLostStatus, setPendingLostStatus] = useState<string | null>(null)
   // Call logging
   const [showCallModal, setShowCallModal] = useState(false)
   const [callHistoryKey, setCallHistoryKey] = useState(0)
@@ -447,14 +451,14 @@ export default function InboxPage() {
   // Update lead field from inbox. Returns true when the PATCH succeeded so
   // callers can gate follow-up actions (e.g. dismissing the negative banner) on
   // a confirmed write.
-  async function updateLeadFromInbox(field: string, value: string): Promise<boolean> {
+  async function updateLeadFromInbox(field: string, value: string, extra?: Record<string, unknown>): Promise<boolean> {
     if (!leadInfo) return false
     setUpdatingLead(true)
     try {
       const res = await fetch(`/api/leads/${leadInfo.row_number}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: value }),
+        body: JSON.stringify({ [field]: value, ...(extra || {}) }),
       })
       const data = await res.json()
       if (res.ok && data.success) {
@@ -473,6 +477,10 @@ export default function InboxPage() {
         toast.success(`${labels[field] || field} updated`)
         setUpdatingLead(false)
         return true
+      } else if (res.status === 422 && data.code === 'LOST_REASON_REQUIRED') {
+        // Server demands a lost reason — open the picker dialog instead of
+        // erroring; its confirm re-submits with the reason attached.
+        setPendingLostStatus(value)
       } else {
         toast.error(data.error || 'Update failed')
       }
@@ -481,6 +489,19 @@ export default function InboxPage() {
     }
     setUpdatingLead(false)
     return false
+  }
+
+  async function confirmLostWithReason(reason: string, note: string) {
+    if (!pendingLostStatus) return
+    const ok = await updateLeadFromInbox('lead_status', pendingLostStatus, {
+      lost_reason: reason,
+      lost_reason_note: note || undefined,
+    })
+    if (ok) {
+      setPendingLostStatus(null)
+      // Mirror markActiveLost's banner dismissal when the lost write lands.
+      if (activePhone) setDismissedNegative(prev => new Set(prev).add(activePhone))
+    }
   }
 
   // One-click "Mark as Lost" from the negative-reply prompt. Only dismiss the
@@ -868,6 +889,17 @@ export default function InboxPage() {
           }}
         />
       )}
+
+      {/* Lost-reason dialog — shown when a status change to a lost stage bounces
+          with LOST_REASON_REQUIRED (the inbox status controls don't embed the
+          inline picker the lead page uses). */}
+      <LostReasonDialog
+        open={!!pendingLostStatus}
+        stageLabel={pendingLostStatus ? getStageMeta(stages, pendingLostStatus).label : 'Lost'}
+        saving={updatingLead}
+        onConfirm={confirmLostWithReason}
+        onCancel={() => setPendingLostStatus(null)}
+      />
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar — Contact List */}

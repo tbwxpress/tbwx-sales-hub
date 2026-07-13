@@ -1819,7 +1819,7 @@ export async function countCallAttempts(leadRow: number, phone: string): Promise
       sql: `SELECT
               (SELECT COUNT(*) FROM work_events WHERE lead_row = ? AND channel = 'call')
             + (SELECT COUNT(*) FROM call_logs WHERE phone IN (?, ?))
-            + (SELECT COUNT(*) FROM call_recordings WHERE (lead_row = ? OR phone IN (?, ?))
+            + (SELECT COUNT(*) FROM call_recordings WHERE (lead_row = ? OR lead_phone IN (?, ?))
                  AND status NOT IN ('initiated', 'failed', 'canceled')) AS c`,
       args: [leadRow, norm, phone || '', leadRow, norm, phone || ''],
     })

@@ -12,6 +12,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import { timeAgo } from '@/lib/format'
 import { usePipelineStages } from '@/hooks/usePipelineStages'
 import { getStageMeta, type Stage } from '@/lib/stages'
+import LostReasonDialog from '@/components/leads/LostReasonDialog'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -177,6 +178,9 @@ export default function PipelinePage() {
   const [currentUser, setCurrentUser] = useState<{ name: string; role: string; can_assign: boolean } | null>(null)
   const [agents, setAgents] = useState<{ name: string }[]>([])
   const [agentFilter, setAgentFilter] = useState('')
+  // Pending lost move — set when a status change to a lost stage needs a reason.
+  const [pendingLost, setPendingLost] = useState<{ rowNum: number; status: string } | null>(null)
+  const [savingLost, setSavingLost] = useState(false)
 
   // Active stages, ordered. Memoized so the columns array is stable.
   const activeStages = useMemo(
@@ -233,12 +237,12 @@ export default function PipelinePage() {
 
   // ─── Move Lead ───────────────────────────────────────────────────────────
 
-  async function moveLead(rowNum: number, newStatus: string) {
+  async function moveLead(rowNum: number, newStatus: string, extra?: Record<string, unknown>): Promise<boolean> {
     try {
       const res = await fetch(`/api/leads/${rowNum}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lead_status: newStatus }),
+        body: JSON.stringify({ lead_status: newStatus, ...(extra || {}) }),
       })
       const data = await res.json()
       if (data.success) {
@@ -246,12 +250,30 @@ export default function PipelinePage() {
           prev.map(l => (l.row_number === rowNum ? { ...l, lead_status: newStatus } : l))
         )
         toast.success(`Moved to ${getStageMeta(allStages, newStatus).label || newStatus}`)
+        return true
+      } else if (res.status === 422 && data.code === 'LOST_REASON_REQUIRED') {
+        // A lost stage needs a reason — open the picker; its confirm re-submits.
+        setPendingLost({ rowNum, status: newStatus })
+      } else if (res.status === 422 && data.code === 'MIN_ATTEMPTS_NOT_MET') {
+        toast.error(data.error || 'Log more call attempts before No Response')
       } else {
         setError(data.error || 'Move failed')
       }
     } catch {
       setError('Move failed')
     }
+    return false
+  }
+
+  async function confirmLostMove(reason: string, note: string) {
+    if (!pendingLost) return
+    setSavingLost(true)
+    const ok = await moveLead(pendingLost.rowNum, pendingLost.status, {
+      lost_reason: reason,
+      lost_reason_note: note || undefined,
+    })
+    setSavingLost(false)
+    if (ok) setPendingLost(null)
   }
 
   // ─── Group leads by stage ────────────────────────────────────────────────
@@ -472,6 +494,17 @@ export default function PipelinePage() {
           </div>
         </div>
       </main>
+
+      {/* Lost-reason dialog — board moves (drag + dropdown) can't embed the
+          inline picker, so a lost move bounces with LOST_REASON_REQUIRED and
+          opens this instead. */}
+      <LostReasonDialog
+        open={!!pendingLost}
+        stageLabel={pendingLost ? getStageMeta(allStages, pendingLost.status).label : 'Lost'}
+        saving={savingLost}
+        onConfirm={confirmLostMove}
+        onCancel={() => setPendingLost(null)}
+      />
 
       <PoweredBy />
     </div>
