@@ -157,7 +157,13 @@ export default function StatusEditPopover({
 
   return (
     <Popover open={open || !!pendingLostStatus} onOpenChange={(o) => {
-      if (!o && !saving) {
+      // Radix drives open/close through here. The rewrite that added the
+      // lost-reason step only handled the close branch, so the trigger could
+      // never open the popover (nothing ever set `open` true) — status was
+      // unchangeable on every lead. Handle the open branch too.
+      if (o) {
+        setOpen(true)
+      } else if (!saving) {
         setOpen(false)
         resetLostPicker()
       }
