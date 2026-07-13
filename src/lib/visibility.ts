@@ -20,6 +20,9 @@ export async function getAgentVisiblePhones(user: SessionUser): Promise<string[]
 
   const leads = await getLeads()
 
+  // Telecaller queue rows are ADDITIVE to normal agent visibility — a
+  // telecaller who also owns leads (assigned_to) must still see them.
+  const telecallerRows = new Set<number>()
   if (liveIsTelecaller) {
     const optedOutPhones = await getOptedOutPhones()
     const visibleRows = await getTelecallerVisibleLeadRows({
@@ -27,13 +30,14 @@ export async function getAgentVisiblePhones(user: SessionUser): Promise<string[]
       leads: leads.map(l => ({ row_number: l.row_number, lead_status: l.lead_status, phone: l.phone })),
       optedOutPhones,
     })
-    return leads.filter(l => visibleRows.has(l.row_number)).map(l => l.phone)
+    visibleRows.forEach(r => telecallerRows.add(r))
   }
 
   const activeDelegations = await getActiveDelegationsFor(user.id)
   const delegatedRows = new Set(activeDelegations.map(d => d.lead_row))
   return leads
     .filter(l =>
+      telecallerRows.has(l.row_number) ||
       l.assigned_to === user.name ||
       (user.can_assign && !l.assigned_to) ||
       delegatedRows.has(l.row_number)

@@ -94,7 +94,8 @@ export async function GET() {
           leads: allLeads.map(l => ({ row_number: l.row_number, lead_status: l.lead_status, phone: l.phone })),
           optedOutPhones,
         })
-        leads = allLeads.filter(l => visibleRows.has(l.row_number))
+        // Telecallers also see leads they OWN (assigned_to === their name), same as /api/leads.
+        leads = allLeads.filter(l => visibleRows.has(l.row_number) || l.assigned_to === user.name)
       } else {
         leads = allLeads.filter(l => l.assigned_to === user.name || (user.can_assign && !l.assigned_to))
       }
