@@ -1402,6 +1402,29 @@ export async function getLastDiscussionByPhone(): Promise<Map<string, LastDiscus
 export async function insertNote(data: { phone: string; note: string; created_by?: string }) {
   const db = await ensureInit()
   data.phone = normalizePhone(data.phone)
+  // lead_notes.phone FK-references contacts(phone) and the connection enforces
+  // it. Leads created outside the messaging flow (sheet imports, manual adds)
+  // may have no contact row yet — create one from the lead record so the note
+  // insert never bounces.
+  const existing = await db.execute({ sql: 'SELECT 1 FROM contacts WHERE phone = ?', args: [data.phone] })
+  if (existing.rows.length === 0) {
+    const leadRes = await db.execute({
+      sql: `SELECT row_number, id, full_name, city FROM leads WHERE substr(replace(phone, '+', ''), -10) = substr(?, -10) LIMIT 1`,
+      args: [data.phone],
+    })
+    const l = leadRes.rows[0]
+    await db.execute({
+      sql: 'INSERT OR IGNORE INTO contacts (phone, name, is_lead, lead_row, lead_id, city) VALUES (?, ?, ?, ?, ?, ?)',
+      args: [
+        data.phone,
+        l ? String(l.full_name || '') : '',
+        l ? 1 : 0,
+        l ? Number(l.row_number) : null,
+        l ? String(l.id || '') : null,
+        l ? String(l.city || '') : '',
+      ],
+    })
+  }
   const result = await db.execute({
     sql: 'INSERT INTO lead_notes (phone, note, created_by) VALUES (?, ?, ?)',
     args: [data.phone, data.note, data.created_by || ''],
