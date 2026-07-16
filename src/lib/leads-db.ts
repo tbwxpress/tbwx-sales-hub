@@ -1,6 +1,6 @@
 import type { Row } from '@libsql/client'
 import type { Lead, LeadStatus } from './types'
-import { ensureInit } from './db'
+import { ensureInit, normalizePhone } from './db'
 
 // Column order for the `leads` table. row_number is the primary key and the
 // shared lead identifier used across the rest of the schema (lead_row columns).
@@ -105,6 +105,28 @@ export async function dbInsertLeadsIfAbsent(leads: Lead[]): Promise<number> {
   const placeholders = LEAD_FIELDS.map(() => '?').join(', ')
   const sql = `INSERT OR IGNORE INTO leads (${LEAD_FIELDS.join(', ')}) VALUES (${placeholders})`
   const results = await db.batch(leads.map(l => ({ sql, args: leadToArgs(l) })), 'write')
+
+  // Root-cause fix: every synced lead also gets a contacts row. Without it,
+  // sheet-imported leads had no contact and any note/call/message on them
+  // failed with a FK constraint (contacts is FK-referenced by those tables).
+  // INSERT OR IGNORE so existing contacts are untouched and it's a no-op on
+  // re-sync. Best-effort — a contact failure must never fail the lead seed.
+  try {
+    const contactRows = leads
+      .map(l => {
+        const norm = normalizePhone(String(l.phone || ''))
+        if (norm.length < 12) return null // needs a full 91XXXXXXXXXX key
+        return {
+          sql: 'INSERT OR IGNORE INTO contacts (phone, name, is_lead, lead_row, lead_id, city) VALUES (?, ?, 1, ?, ?, ?)',
+          args: [norm, String(l.full_name || ''), Number(l.row_number), String(l.id || ''), String(l.city || '')],
+        }
+      })
+      .filter((x): x is { sql: string; args: (string | number)[] } => x !== null)
+    if (contactRows.length) await db.batch(contactRows, 'write')
+  } catch (err) {
+    console.error('[dbInsertLeadsIfAbsent] contact backfill failed (non-fatal):', err)
+  }
+
   return results.reduce((sum, r) => sum + Number(r.rowsAffected ?? 0), 0)
 }
 

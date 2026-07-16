@@ -640,6 +640,13 @@ export async function ensureInit(): Promise<Client> {
     // auto-send writes every ~2 min alongside agent activity and the sheet-backup job.
     try { await db.execute('PRAGMA busy_timeout = 5000') } catch { /* non-critical */ }
 
+    // WAL: readers no longer block the writer (and vice-versa). Under concurrent
+    // agent load the default rollback journal ('delete') serialized everything
+    // behind one lock → app-wide slowness + SQLITE_BUSY write failures. WAL is a
+    // persistent property of the file; we set it on every boot so a restore from
+    // a non-WAL backup can't silently drop back to the slow mode.
+    try { await db.execute('PRAGMA journal_mode = WAL') } catch { /* non-critical */ }
+
     // Seed pipeline_stages once from the config/client.ts status constants.
     try { await seedPipelineStages(db) } catch (err) { console.error('[seedPipelineStages] non-critical:', err) }
 
@@ -658,6 +665,34 @@ export function normalizePhone(phone: string): string {
 }
 
 // --- Contact operations ---
+
+// Ensure a contacts row exists for a normalized phone before inserting into any
+// table whose `phone` column FK-references contacts(phone) — lead_notes,
+// call_logs, messages. Leads created outside the messaging flow (Google-Sheet
+// sync, manual/bulk add) may have no contact row yet, so a note/call/message
+// insert on them bounces with SQLITE_CONSTRAINT_FOREIGNKEY. This stubs a
+// contact from the matching lead record (best-effort). No-op if one exists.
+async function ensureContactExists(normPhone: string): Promise<void> {
+  const db = await ensureInit()
+  const existing = await db.execute({ sql: 'SELECT 1 FROM contacts WHERE phone = ?', args: [normPhone] })
+  if (existing.rows.length > 0) return
+  const leadRes = await db.execute({
+    sql: `SELECT row_number, id, full_name, city FROM leads WHERE substr(replace(phone, '+', ''), -10) = substr(?, -10) LIMIT 1`,
+    args: [normPhone],
+  })
+  const l = leadRes.rows[0]
+  await db.execute({
+    sql: 'INSERT OR IGNORE INTO contacts (phone, name, is_lead, lead_row, lead_id, city) VALUES (?, ?, ?, ?, ?, ?)',
+    args: [
+      normPhone,
+      l ? String(l.full_name || '') : '',
+      l ? 1 : 0,
+      l ? Number(l.row_number) : null,
+      l ? String(l.id || '') : null,
+      l ? String(l.city || '') : '',
+    ],
+  })
+}
 
 export async function upsertContact(phone: string, data: {
   name?: string
@@ -1158,6 +1193,7 @@ export async function insertCallLog(data: {
 }) {
   const db = await ensureInit()
   data.phone = normalizePhone(data.phone)
+  await ensureContactExists(data.phone) // call_logs.phone FK → contacts(phone)
   const result = await db.execute({
     sql: `INSERT INTO call_logs (phone, duration, outcome, notes, logged_by) VALUES (?, ?, ?, ?, ?)`,
     args: [data.phone, data.duration || '', data.outcome || '', data.notes || '', data.logged_by || ''],
@@ -1402,29 +1438,7 @@ export async function getLastDiscussionByPhone(): Promise<Map<string, LastDiscus
 export async function insertNote(data: { phone: string; note: string; created_by?: string }) {
   const db = await ensureInit()
   data.phone = normalizePhone(data.phone)
-  // lead_notes.phone FK-references contacts(phone) and the connection enforces
-  // it. Leads created outside the messaging flow (sheet imports, manual adds)
-  // may have no contact row yet — create one from the lead record so the note
-  // insert never bounces.
-  const existing = await db.execute({ sql: 'SELECT 1 FROM contacts WHERE phone = ?', args: [data.phone] })
-  if (existing.rows.length === 0) {
-    const leadRes = await db.execute({
-      sql: `SELECT row_number, id, full_name, city FROM leads WHERE substr(replace(phone, '+', ''), -10) = substr(?, -10) LIMIT 1`,
-      args: [data.phone],
-    })
-    const l = leadRes.rows[0]
-    await db.execute({
-      sql: 'INSERT OR IGNORE INTO contacts (phone, name, is_lead, lead_row, lead_id, city) VALUES (?, ?, ?, ?, ?, ?)',
-      args: [
-        data.phone,
-        l ? String(l.full_name || '') : '',
-        l ? 1 : 0,
-        l ? Number(l.row_number) : null,
-        l ? String(l.id || '') : null,
-        l ? String(l.city || '') : '',
-      ],
-    })
-  }
+  await ensureContactExists(data.phone) // lead_notes.phone FK → contacts(phone)
   const result = await db.execute({
     sql: 'INSERT INTO lead_notes (phone, note, created_by) VALUES (?, ?, ?)',
     args: [data.phone, data.note, data.created_by || ''],
