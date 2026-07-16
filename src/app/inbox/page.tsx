@@ -1275,8 +1275,12 @@ export default function InboxPage() {
               </div>
 
               {/* Lead Details Panel (collapsible) — desktop only; mobile uses slide-in drawer below */}
+              {/* max-h + own scroll + shrink-0: its children (Recent Calls, Voice
+                  Agent, Notes, Activity Log) each load async ~2-3s after a lead
+                  is opened; uncapped, the panel ballooned and squashed the
+                  message list to zero. Cap it so messages always keep their space. */}
               {showLeadDetails && activeContact && (
-                <div className="hidden md:block border-b border-border glass-nav px-4 py-3">
+                <div className="hidden md:block flex-shrink-0 max-h-[40vh] overflow-y-auto border-b border-border glass-nav px-4 py-3">
                   {(() => {
                     const canEdit = leadInfo && (sessionUser?.role === 'admin' || sessionUser?.can_edit_leads === true)
                     const inlineField = (field: string, currentVal: string) => (
