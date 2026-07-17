@@ -61,11 +61,19 @@ export async function POST(req: NextRequest) {
       connected: typeof body?.connected === 'boolean' ? body.connected : undefined,
       lost_reason,
       lost_reason_note,
+      route_to_closer: typeof body?.route_to_closer === 'string' ? body.route_to_closer : undefined,
     })
 
     if (!result.ok) {
       if (result.error === 'LOST_REASON_REQUIRED') {
         return NextResponse.json({ success: false, code: 'LOST_REASON_REQUIRED' }, { status: 422 })
+      }
+      if (result.error === 'CLOSER_CHOICE_REQUIRED') {
+        // Qualified handoff needs an explicit closer pick — return the options.
+        return NextResponse.json(
+          { success: false, code: 'CLOSER_CHOICE_REQUIRED', closers: result.closers || [] },
+          { status: 422 },
+        )
       }
       return NextResponse.json({ success: false, error: result.error || 'Outcome failed' }, { status: 400 })
     }

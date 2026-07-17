@@ -100,6 +100,10 @@ export interface OutcomePayload {
   // Required when outcome resolves to LOST (enforced server-side).
   lost_reason?: string
   lost_reason_note?: string
+  // Telecaller's chosen closer for a qualified handoff on a lead they own.
+  // Server bounces 422 CLOSER_CHOICE_REQUIRED (+ closers list) when needed
+  // and absent; owner-owned leads route back to their owner automatically.
+  route_to_closer?: string
 }
 
 /** POST /api/work/outcome response. */

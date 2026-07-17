@@ -42,6 +42,23 @@ const DEFAULT_STATS: WorkStats = {
 
 type Phase = 'loading' | 'card' | 'caught-up' | 'error'
 
+// Everything an outcome submit can carry (OutcomeBar chips + the closer pick
+// added when re-submitting after CLOSER_CHOICE_REQUIRED).
+interface OutcomeArgs {
+  outcome: string
+  note?: string
+  alsoWhatsapp?: boolean
+  sentiment?: string
+  objection?: string
+  capital_readiness?: string
+  decision_maker?: string
+  buyer_persona?: string
+  next_step?: string
+  lost_reason?: string
+  lost_reason_note?: string
+  route_to_closer?: string
+}
+
 export default function WorkPage() {
   const now = useNow(45000)
 
@@ -109,21 +126,14 @@ export default function WorkPage() {
     }
   }, [])
 
+  // Qualified-handoff closer picker: set when the outcome bounces with
+  // CLOSER_CHOICE_REQUIRED (telecaller owns the lead → they choose the closer).
+  // Holds the original args so the pick re-submits the same outcome + chips.
+  const [closerPick, setCloserPick] = useState<{ closers: string[]; args: OutcomeArgs } | null>(null)
+
   // Submit an outcome → POST → animate out + "+1" → render the returned next.
   const handleOutcome = useCallback(
-    async (args: {
-      outcome: string
-      note?: string
-      alsoWhatsapp?: boolean
-      sentiment?: string
-      objection?: string
-      capital_readiness?: string
-      decision_maker?: string
-      buyer_persona?: string
-      next_step?: string
-      lost_reason?: string
-      lost_reason_note?: string
-    }) => {
+    async (args: OutcomeArgs) => {
       const { outcome } = args
       if (!card || submitting) return false
       if (inflightRef.current) return false
@@ -143,6 +153,14 @@ export default function WorkPage() {
         })
         const data = await res.json()
         if (!res.ok || data.ok === false || data.success === false) {
+          if (res.status === 422 && data.code === 'CLOSER_CHOICE_REQUIRED' && Array.isArray(data.closers) && data.closers.length) {
+            // Telecaller owns this lead — they pick which closer gets it. Keep
+            // the original args so the pick re-submits outcome + chips intact.
+            setCloserPick({ closers: data.closers, args })
+            inflightRef.current = false
+            setSubmitting(false)
+            return false
+          }
           toast.error(data.error || 'Could not log that outcome — try again')
           inflightRef.current = false
           setSubmitting(false)
@@ -217,7 +235,10 @@ export default function WorkPage() {
               onChannelUsed={(ch) => { channelRef.current = ch }}
             />
             <div className="mt-4">
+              {/* Keyed by lead so chips/note state never leaks onto the next card
+                  (the closer-pick re-submit path bypasses OutcomeBar's own reset). */}
               <OutcomeBar
+                key={card.lead_row}
                 card={card}
                 submitting={submitting}
                 onSubmit={handleOutcome}
@@ -243,6 +264,54 @@ export default function WorkPage() {
             commitNext()
           }}
         />
+      )}
+
+      {/* Closer picker — a qualified handoff on a lead the telecaller OWNS needs
+          an explicit "send to which closer?" (owner-owned leads route back to
+          their owner automatically and never open this). */}
+      {closerPick && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => { if (!submitting) setCloserPick(null) }}
+        >
+          <div
+            className="w-full max-w-sm space-y-3 rounded-2xl border border-border bg-card p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-label="Send qualified lead to a closer"
+          >
+            <div>
+              <p className="text-sm font-semibold text-text">Qualified! Send to which closer?</p>
+              <p className="mt-0.5 text-[11px] text-dim">This lead is yours — pick who takes it forward.</p>
+            </div>
+            <div className="grid gap-2">
+              {closerPick.closers.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => {
+                    const args = { ...closerPick.args, route_to_closer: name }
+                    setCloserPick(null)
+                    void handleOutcome(args)
+                  }}
+                  className="focus-ring flex min-h-[48px] w-full items-center justify-between rounded-xl border border-border bg-elevated px-4 py-3 text-sm font-semibold text-body transition-colors hover:border-accent/60 hover:text-text disabled:opacity-50"
+                >
+                  <span>{name}</span>
+                  <ArrowRight className="h-4 w-4 text-dim" />
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => setCloserPick(null)}
+              className="w-full px-2 py-1.5 text-caption font-medium text-dim transition-colors hover:text-text"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

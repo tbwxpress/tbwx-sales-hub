@@ -820,6 +820,11 @@ export interface ApplyOutcomeInput {
   // one of the LOST_REASONS keys, with optional free-text detail.
   lost_reason?: string
   lost_reason_note?: string
+  // Telecaller's chosen closer for a qualified handoff. Only consulted when the
+  // lead is NOT already owned by an active closer (owner-respect wins); when
+  // needed and absent, the outcome bounces with CLOSER_CHOICE_REQUIRED +
+  // `closers` so the UI can offer the choice.
+  route_to_closer?: string
 }
 
 export interface ApplyOutcomeResult {
@@ -827,6 +832,8 @@ export interface ApplyOutcomeResult {
   nextStatus: string
   routedTo?: string
   error?: string
+  /** Active closer names, returned with CLOSER_CHOICE_REQUIRED so the UI can render the picker. */
+  closers?: string[]
   /** Nudge the rep to send a WhatsApp after a no-answer (re-opens the 24h window). */
   suggest_whatsapp?: boolean
 }
@@ -970,7 +977,27 @@ export async function applyWorkOutcome(input: ApplyOutcomeInput): Promise<ApplyO
   // Resolve routing target (reassignment) up front.
   let routedTo: string | undefined
   if (route === 'closer') {
-    routedTo = (await pickLeastLoadedCloser()) || undefined
+    // Owner-respecting qualified handoff:
+    //   1. Lead already owned by an active closer (not the acting user) → it goes
+    //      back to that closer. The telecaller was assisting; the owner keeps it.
+    //   2. Otherwise (telecaller owns it / unassigned / stale owner) the
+    //      telecaller PICKS the closer — `route_to_closer` from the UI. Missing
+    //      pick bounces with CLOSER_CHOICE_REQUIRED + the closer list (mirrors
+    //      the LOST_REASON_REQUIRED pattern). Single-closer teams skip the ask.
+    const closerNames = users
+      .filter(u => u.active && u.role !== 'admin' && effectiveRole(u) === 'closer')
+      .map(u => u.name)
+      .sort((a, b) => a.localeCompare(b))
+    if (lead.assigned_to && lead.assigned_to !== userName && closerNames.includes(lead.assigned_to)) {
+      routedTo = lead.assigned_to
+    } else if (input.route_to_closer && closerNames.includes(input.route_to_closer)) {
+      routedTo = input.route_to_closer
+    } else if (closerNames.length === 1) {
+      routedTo = closerNames[0]
+    } else if (closerNames.length > 1) {
+      return { ok: false, nextStatus: lead.lead_status, error: 'CLOSER_CHOICE_REQUIRED', closers: closerNames }
+    }
+    // (no active non-admin closers → routedTo stays undefined; lead keeps its owner)
   } else if (route === 'telecaller') {
     routedTo = (await pickTelecallerForReWarm(lead.assigned_to)) || undefined
   }
