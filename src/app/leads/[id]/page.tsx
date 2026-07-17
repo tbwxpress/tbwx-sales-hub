@@ -267,7 +267,13 @@ export default function LeadDetailPage() {
   const [togglingDrip, setTogglingDrip] = useState(false)
 
   // Session user
-  const [sessionUser, setSessionUser] = useState<{ id?: string; name: string; role: string; can_edit_leads?: boolean } | null>(null)
+  const [sessionUser, setSessionUser] = useState<{ id?: string; name: string; role: string; can_edit_leads?: boolean; is_telecaller?: boolean; agent_role?: string | null } | null>(null)
+
+  // Telecaller "Qualify → send to closer" (same server flow as the work rail's
+  // 'interested' outcome: owner-respect routing, or a closer picker when the
+  // telecaller owns the lead — 422 CLOSER_CHOICE_REQUIRED carries the options).
+  const [qualifying, setQualifying] = useState(false)
+  const [qualifyClosers, setQualifyClosers] = useState<string[] | null>(null)
 
   // Log Call modal
   const [showLogCallModal, setShowLogCallModal] = useState(false)
@@ -600,6 +606,42 @@ export default function LeadDetailPage() {
       if (json.success) setSessionUser(json.data)
     }).catch(() => {})
   }, [])
+
+  // Qualify this lead → route to a closer. Reuses the work-rail outcome API so
+  // status (CALL_DONE_INTERESTED), routing, audit and notifications stay in one
+  // path. channel 'system' — this button is not itself a call attempt.
+  async function qualifyToCloser(routeToCloser?: string) {
+    if (!lead || qualifying) return
+    setQualifying(true)
+    try {
+      const res = await fetch('/api/work/outcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadRow: lead.row_number,
+          outcome: 'interested',
+          channel: 'system',
+          ...(routeToCloser ? { route_to_closer: routeToCloser } : {}),
+        }),
+      })
+      const data = await res.json()
+      if (res.status === 422 && data.code === 'CLOSER_CHOICE_REQUIRED' && Array.isArray(data.closers) && data.closers.length) {
+        setQualifyClosers(data.closers) // open the picker; confirm re-calls with the pick
+        return
+      }
+      if (!res.ok || data.ok === false || data.success === false) {
+        toast.error(data.error || 'Could not qualify this lead')
+        return
+      }
+      setQualifyClosers(null)
+      toast.success(data.routedTo ? `Qualified — sent to ${data.routedTo}` : 'Marked qualified')
+      fetchLead()
+    } catch {
+      toast.error('Network error — lead not qualified')
+    } finally {
+      setQualifying(false)
+    }
+  }
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -1576,6 +1618,21 @@ export default function LeadDetailPage() {
             {/* Action Buttons */}
             {!isTerminal && (
               <div className="space-y-2">
+                {/* Telecaller: qualify on demand from the lead page (not just when
+                    the guided rail serves the lead). Owner-owned leads route back
+                    to their owner; telecaller-owned open the closer picker. */}
+                {(sessionUser?.agent_role === 'telecaller' || (sessionUser?.is_telecaller && sessionUser?.agent_role !== 'closer')) && (
+                  <button
+                    onClick={() => qualifyToCloser()}
+                    disabled={qualifying}
+                    className="w-full bg-accent/10 hover:bg-accent/20 border border-accent/30 text-accent rounded-md px-4 py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                    </svg>
+                    {qualifying ? 'Qualifying…' : 'Qualified → Send to Closer'}
+                  </button>
+                )}
                 <button
                   onClick={handleMarkConverted}
                   className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-md px-4 py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-2"
@@ -1896,6 +1953,37 @@ export default function LeadDetailPage() {
           onLogged={() => setCallHistoryKey(k => k + 1)}
         />
       )}
+
+      {/* Qualify → closer picker (telecaller owns this lead, so they choose). */}
+      <Dialog open={!!qualifyClosers} onOpenChange={(o) => { if (!qualifying && !o) setQualifyClosers(null) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Qualified! Send to which closer?</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-dim -mt-1">This lead is yours — pick who takes it forward.</p>
+          <div className="grid gap-2">
+            {(qualifyClosers || []).map(name => (
+              <button
+                key={name}
+                type="button"
+                disabled={qualifying}
+                onClick={() => qualifyToCloser(name)}
+                className="w-full bg-elevated hover:bg-border border border-border rounded-md px-4 py-2.5 text-sm font-semibold text-text transition-colors disabled:opacity-50"
+              >
+                {qualifying ? 'Sending…' : name}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={qualifying}
+            onClick={() => setQualifyClosers(null)}
+            className="w-full text-xs text-dim hover:text-text transition-colors py-1.5"
+          >
+            Cancel
+          </button>
+        </DialogContent>
+      </Dialog>
 
       {/* Mark-as-Lost Dialog */}
       <Dialog open={showLostDialog} onOpenChange={(o) => { if (!savingLost) setShowLostDialog(o) }}>

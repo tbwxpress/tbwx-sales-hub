@@ -48,6 +48,7 @@ import {
   type LeadSignal,
 } from './db'
 import { sendTemplate } from './whatsapp'
+import { getAssignmentForLead } from './telecaller'
 
 // ─── Constants ───────────────────────────────────────────────────────
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
@@ -948,10 +949,19 @@ export async function applyWorkOutcome(input: ApplyOutcomeInput): Promise<ApplyO
 
   // Ownership guard (mirrors the leads PATCH route): an agent may only act on a
   // lead assigned to them, unless they're an admin or a can_assign user acting
-  // on an unassigned lead.
+  // on an unassigned lead. Telecallers may additionally act on leads explicitly
+  // queued to them (the assist model) — e.g. qualifying an owner's lead from
+  // the lead page — verified against lead_telecaller_assignments.
   const isMine = lead.assigned_to === userName
   const isUnassigned = !lead.assigned_to
-  if (!isMine && !(me?.role === 'admin' || (me?.can_assign && isUnassigned))) {
+  let allowed = isMine || me?.role === 'admin' || Boolean(me?.can_assign && isUnassigned)
+  if (!allowed && me && effectiveRole(me) === 'telecaller') {
+    try {
+      const a = await getAssignmentForLead(leadRow)
+      allowed = !!a && a.telecaller_user_id === me.id
+    } catch { /* stay disallowed on lookup failure */ }
+  }
+  if (!allowed) {
     return { ok: false, nextStatus: lead.lead_status, error: 'Lead not assigned to you' }
   }
 
