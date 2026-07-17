@@ -40,6 +40,7 @@ const MAX_PER_RUN = 5
 
 interface RawLead {
   row_number: number
+  created_time: string
   full_name: string
   phone: string
   phone_formatted: string
@@ -79,6 +80,7 @@ async function readTab(tabName: string, sourceTab: 'new' | 'old'): Promise<RawLe
       const phone = (row[16] || '').replace('p:', '')
       return {
         row_number: i + 2,
+        created_time: row[1] || '',
         full_name: row[15] || 'there',
         phone,
         phone_formatted: phone.replace(/\D/g, '').replace(/^0+/, ''),
@@ -106,6 +108,7 @@ async function readTab(tabName: string, sourceTab: 'new' | 'old'): Promise<RawLe
 
       return {
         row_number: i + 2,
+        created_time: row[1] || '',
         full_name: row[15] || 'there',
         phone,
         phone_formatted: phone.replace(/\D/g, '').replace(/^0+/, ''),
@@ -265,6 +268,7 @@ export async function POST(request: NextRequest) {
       const phone = l.phone || ''
       return {
         row_number: l.row_number,
+        created_time: l.created_time || '',
         full_name: l.full_name || 'there',
         phone,
         phone_formatted: phone.replace(/\D/g, '').replace(/^0+/, ''),
@@ -310,12 +314,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const toProcess = unique
+    // 5. Newest leads first — fresh inbound gets its deck fast and the backlog
+    //    drains from the top. created_time is ISO-ish, so a string compare DESC
+    //    orders newest→oldest; blank/unknown sorts last (treated as oldest).
+    const toProcess = [...unique].sort((a, b) => (b.created_time || '').localeCompare(a.created_time || ''))
 
-    // 5. Cap at MAX_PER_RUN to stay within Vercel timeout
-    const batch = toProcess.slice(0, MAX_PER_RUN)
-
-    if (batch.length === 0) {
+    if (toProcess.length === 0) {
       return NextResponse.json({
         success: true,
         message: 'No new leads to process',
@@ -350,11 +354,18 @@ export async function POST(request: NextRequest) {
       assignCounter = Number.isFinite(parsed) ? parsed : 0
     } catch { /* if read fails, start from 0 */ }
 
-    // Process each lead
-    for (const lead of batch) {
+    // Process leads until we've SENT MAX_PER_RUN of them. Leads that get skipped
+    // (agent already engaged, or opt-in already sent) do NOT consume a send slot —
+    // we keep scanning past them. The old code took a fixed first-N slice, so a
+    // few skipped leads at the top starved the whole queue (nothing sent for
+    // days). SCAN_CAP bounds per-run work so a huge backlog can't time us out.
+    const SCAN_CAP = 80
+    let sentCount = 0
+    let scanned = 0
+    for (const lead of toProcess) {
+      if (sentCount >= MAX_PER_RUN || scanned >= SCAN_CAP) break
+      scanned++
       lead.lead_priority = calcPriority(lead.experience, lead.timeline)
-      const assignedTo = pickAgentByCounter(agentData.activeAgents, assignCounter)
-      if (assignedTo) assignCounter++
 
       try {
         // Double-check: skip if we already sent to this phone (prevents duplicates
@@ -363,7 +374,7 @@ export async function POST(request: NextRequest) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sentMsgs = (existingMsgs || []).filter((m: any) => m.direction === 'sent')
         // Anti-double-text: if a HUMAN agent already reached out, leave the lead to
-        // them — do NOT auto-message, mark, or rotate it.
+        // them — do NOT auto-message, mark, or rotate it. (No send slot consumed.)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const manuallyEngaged = sentMsgs.some((m: any) =>
           m.sent_by && !['auto-send', 'System (Auto)', ''].includes(String(m.sent_by))
@@ -377,6 +388,11 @@ export async function POST(request: NextRequest) {
           })
           continue
         }
+        // We're going to act on this lead (assign + send/mark), so take the next
+        // rotation slot now. Skipped-above leads never reach here, so they no
+        // longer waste assignment slots.
+        const assignedTo = pickAgentByCounter(agentData.activeAgents, assignCounter)
+        if (assignedTo) assignCounter++
         // If our own opt-in already went out, mark/assign but don't re-send.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const alreadySent = sentMsgs.some((m: any) => m.template_used === TEMPLATE_NAME)
@@ -511,6 +527,7 @@ export async function POST(request: NextRequest) {
           } catch { /* Voice call is non-critical — don't block lead processing */ }
         }
 
+        sentCount++
         results.push({
           phone: lead.phone_formatted,
           name: lead.full_name,
@@ -541,9 +558,11 @@ export async function POST(request: NextRequest) {
         new_tab: newLeads.length,
         old_tab: oldLeads.length,
         uncontacted: unique.length,
-        processed: batch.length,
+        scanned,
+        processed: results.length,
         sent: results.filter(r => r.status === 'sent').length,
-        failed: results.filter(r => r.status !== 'sent').length,
+        skipped: results.filter(r => r.status === 'skipped').length,
+        failed: results.filter(r => !['sent', 'skipped'].includes(r.status)).length,
         next_assign_counter: assignCounter,
       },
       results,
