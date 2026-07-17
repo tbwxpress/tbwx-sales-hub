@@ -964,9 +964,14 @@ export async function insertMessage(data: {
 export async function getMessages(phone: string, limit = 100, offset = 0) {
   const db = await ensureInit()
   const norm = normalizePhone(phone)
-  // Query both normalized and original to catch old data
+  // Query both normalized and original to catch old data. Take the NEWEST
+  // `limit` rows, then re-sort ascending for display — a plain ASC LIMIT kept
+  // the oldest N, so long threads silently hid their most recent messages.
   const result = await db.execute({
-    sql: `SELECT * FROM messages WHERE phone = ? OR phone = ? ORDER BY timestamp ASC LIMIT ? OFFSET ?`,
+    sql: `SELECT * FROM (
+            SELECT * FROM messages WHERE phone = ? OR phone = ?
+            ORDER BY timestamp DESC LIMIT ? OFFSET ?
+          ) ORDER BY timestamp ASC`,
     args: [norm, phone, limit, offset],
   })
   return serializeRows(result.rows)
