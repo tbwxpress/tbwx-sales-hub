@@ -206,6 +206,120 @@ interface SelfActivityViewProps {
   rank: { position: number; of: number } | null
 }
 
+// ── Coach panel — "what's stopping me from closing more?" ──────────────
+// Book-health gap tiles (live) + a Gemini coaching read (cached per day
+// server-side). Self view for agents; admin passes the agent name.
+interface CoachData {
+  metrics: {
+    activity_7d: { calls: number; notes: number; hub_messages: number; status_moves: number; rail_events: number; conversions: number; qualified: number; lost: number; lost_reasons: Record<string, number> }
+    gaps: { replies_waiting: number; overdue_followups: number; due_today: number; hot_untouched_3d: number; open_book: number; book_by_status: Record<string, number> }
+  }
+  coach: { headline: string; working_well: string[]; gaps: string[]; actions: string[] } | null
+  coach_error?: string
+}
+
+function CoachPanel({ agentName }: { agentName?: string }) {
+  const [data, setData] = useState<CoachData | null>(null)
+  const [loadingCoach, setLoadingCoach] = useState(false)
+  const [error, setError] = useState('')
+
+  const base = `/api/performance/coach${agentName ? `?agent=${encodeURIComponent(agentName)}` : ''}`
+
+  useEffect(() => {
+    let alive = true
+    setData(null)
+    setError('')
+    fetch(base)
+      .then(r => r.json())
+      .then(json => { if (alive) { if (json.success) setData(json.data); else setError(json.error || 'Failed') } })
+      .catch(() => { if (alive) setError('Failed to load') })
+    return () => { alive = false }
+  }, [base])
+
+  async function fetchRead() {
+    setLoadingCoach(true)
+    try {
+      const res = await fetch(`${base}${base.includes('?') ? '&' : '?'}read=1`)
+      const json = await res.json()
+      if (json.success) setData(json.data)
+      else setError(json.error || 'Failed')
+    } catch {
+      setError('Failed to get the coaching read')
+    }
+    setLoadingCoach(false)
+  }
+
+  if (error) return <p className="text-caption text-danger mb-4">{error}</p>
+  if (!data) return null
+  const g = data.metrics.gaps
+  const a = data.metrics.activity_7d
+
+  const gapTiles = [
+    { label: 'Replies waiting on you', value: g.replies_waiting, danger: g.replies_waiting > 0 },
+    { label: 'Overdue follow-ups', value: g.overdue_followups, danger: g.overdue_followups > 10 },
+    { label: 'Due today', value: g.due_today, danger: false },
+    { label: 'HOT untouched 3d+', value: g.hot_untouched_3d, danger: g.hot_untouched_3d > 0 },
+  ]
+
+  return (
+    <div className="rounded-lg p-4 mb-4" style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-eyebrow text-dim">Close-more check{agentName ? ` — ${agentName}` : ''}</p>
+          <p className="text-caption text-dim mt-0.5">Your book right now + last 7 days. These four numbers are where deals die.</p>
+        </div>
+        <button
+          onClick={fetchRead}
+          disabled={loadingCoach}
+          className="text-xs font-semibold rounded-md px-3 py-1.5 transition-colors disabled:opacity-50"
+          style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)' }}
+        >
+          {loadingCoach ? 'Thinking…' : data.coach ? 'Refresh read' : "Coach's read ✨"}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {gapTiles.map(t => (
+          <div key={t.label} className="rounded-md px-3 py-2 text-center" style={{ background: 'var(--color-elevated)', border: `1px solid ${t.danger && t.value > 0 ? 'color-mix(in srgb, var(--color-danger) 45%, transparent)' : 'var(--color-border)'}` }}>
+            <p className="text-lg font-bold leading-tight" style={{ color: t.danger && t.value > 0 ? 'var(--color-danger)' : 'var(--color-text)' }}>{t.value}</p>
+            <p className="text-[10px] text-dim leading-tight mt-0.5">{t.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[11px] text-dim mt-2">
+        7 days: {a.calls} calls · {a.notes} notes · {a.hub_messages} WhatsApps from hub · {a.qualified} qualified · {a.conversions} converted · {a.lost} lost · book {g.open_book} open leads
+      </p>
+
+      {data.coach_error && <p className="text-caption text-danger mt-2">{data.coach_error}</p>}
+
+      {data.coach && (
+        <div className="mt-3 pt-3 border-t border-border space-y-2">
+          <p className="text-sm font-semibold text-text">💡 {data.coach.headline}</p>
+          {data.coach.working_well.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--color-success)' }}>Working well</p>
+              {data.coach.working_well.map((s, i) => <p key={i} className="text-caption text-muted">• {s}</p>)}
+            </div>
+          )}
+          {data.coach.gaps.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--color-danger)' }}>Gaps</p>
+              {data.coach.gaps.map((s, i) => <p key={i} className="text-caption text-muted">• {s}</p>)}
+            </div>
+          )}
+          {data.coach.actions.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--color-accent)' }}>Do tomorrow</p>
+              {data.coach.actions.map((s, i) => <p key={i} className="text-caption text-text font-medium">{i + 1}. {s}</p>)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SelfActivityView({ you, teamAvg, rank }: SelfActivityViewProps) {
   const totalActions = you.actions.manual_messages + you.actions.calls_logged + you.actions.notes_added + you.actions.status_changes + you.actions.reassignments_performed
   const compare = (mine: number, avg: number) => {
@@ -606,11 +720,14 @@ export default function AgentStatsPage() {
 
           {/* Self view (non-admin): your card + team avg + anonymous rank */}
           {activity?.scope === 'self' && activity.you && (
+            <>
+            <CoachPanel />
             <SelfActivityView
               you={activity.you}
               teamAvg={activity.team_avg}
               rank={activity.your_rank}
             />
+            </>
           )}
 
           {/* Per-agent cards (admin view) */}

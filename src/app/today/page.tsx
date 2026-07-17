@@ -61,6 +61,99 @@ function timeAgoShort(iso: string | null): string {
   return `${Math.round(hrs / 24)}d ago`
 }
 
+// ── Owner-approved auto follow-ups ─────────────────────────────────────
+// Daily per-lead ask: "want the system to send this DELAYED / interested lead
+// a WhatsApp follow-up template?" Send fires immediately; Skip snoozes the ask
+// 3 days. The list refreshes daily server-side (answered leads drop out).
+interface NudgeItem {
+  lead_row: number
+  name: string
+  phone: string
+  status: string
+  next_followup: string
+  city: string
+}
+
+function FollowupApprovals() {
+  const [items, setItems] = useState<NudgeItem[]>([])
+  const [total, setTotal] = useState(0)
+  const [busy, setBusy] = useState<number | null>(null)
+  const [open, setOpen] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/followup-nudges')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success) {
+          setItems(json.data.items || [])
+          setTotal(json.data.total_eligible || 0)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  async function decide(leadRow: number, action: 'send' | 'skip') {
+    setBusy(leadRow)
+    try {
+      const res = await fetch('/api/followup-nudges', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_row: leadRow, action }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setItems(prev => prev.filter(i => i.lead_row !== leadRow))
+        setTotal(t => Math.max(0, t - 1))
+      }
+    } catch { /* leave the row; agent can retry */ }
+    setBusy(null)
+  }
+
+  if (items.length === 0) return null
+
+  return (
+    <div className="mb-4 rounded-lg border" style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 35%, transparent)', background: 'color-mix(in srgb, var(--color-accent) 5%, transparent)' }}>
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-3 py-2.5 text-left">
+        <span className="text-xs font-semibold text-text">
+          📨 Auto follow-up — your call · {items.length}{total > items.length ? ` of ${total}` : ''}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-dim transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-3 pb-3 space-y-2">
+          <p className="text-[11px] text-dim -mt-1">Approve a WhatsApp follow-up template per lead, or skip (asks again in 3 days).</p>
+          {items.map(it => (
+            <div key={it.lead_row} className="flex items-center gap-2 rounded-md px-3 py-2" style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}>
+              <Link href={`/leads/${it.lead_row}`} className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-text truncate">{it.name}</p>
+                <p className="text-[11px] text-dim truncate">
+                  {it.status.replace(/_/g, ' ')}{it.city ? ` · ${it.city}` : ''}{it.next_followup ? ` · due ${it.next_followup}` : ''}
+                </p>
+              </Link>
+              <button
+                onClick={() => decide(it.lead_row, 'send')}
+                disabled={busy === it.lead_row}
+                className="flex-shrink-0 text-[11px] font-semibold rounded-md px-2.5 py-1.5 transition-colors disabled:opacity-50"
+                style={{ background: 'color-mix(in srgb, var(--color-success) 18%, transparent)', color: 'var(--color-success)', border: '1px solid color-mix(in srgb, var(--color-success) 40%, transparent)' }}
+              >
+                {busy === it.lead_row ? '…' : 'Send'}
+              </button>
+              <button
+                onClick={() => decide(it.lead_row, 'skip')}
+                disabled={busy === it.lead_row}
+                className="flex-shrink-0 text-[11px] rounded-md px-2.5 py-1.5 text-dim hover:text-text transition-colors disabled:opacity-50"
+                style={{ border: '1px solid var(--color-border)' }}
+              >
+                Skip
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function TodayPage() {
   const [items, setItems] = useState<FeedItem[]>([])
   const [automation, setAutomation] = useState<Automation | null>(null)
@@ -146,6 +239,9 @@ export default function TodayPage() {
             </p>
           </div>
         )}
+
+        {/* Owner-approved auto follow-ups (agents only — hidden when empty). */}
+        <FollowupApprovals />
 
         {/* Forced followup loop — collapsed by default here; its expanded form
             duplicates the sections below. */}

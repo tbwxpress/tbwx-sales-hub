@@ -636,6 +636,22 @@ export async function ensureInit(): Promise<Client> {
     // management can answer "why are we losing" without mining free text.
     try { await db.execute('ALTER TABLE lead_status_changes ADD COLUMN reason TEXT DEFAULT \'\'') } catch { /* column may already exist */ }
 
+    // Owner-approved automated follow-ups (DELAYED / CALL_DONE_INTERESTED):
+    // each row = one daily ask answered (sent or skipped). Drives dedupe so a
+    // lead is never asked twice the same day / re-sent within the cooldown.
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS followup_nudges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lead_row INTEGER NOT NULL,
+        phone TEXT DEFAULT '',
+        decision TEXT NOT NULL CHECK(decision IN ('sent','skipped','failed')),
+        decided_by TEXT DEFAULT '',
+        template_used TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `)
+    try { await db.execute('CREATE INDEX IF NOT EXISTS idx_followup_nudges_lead ON followup_nudges(lead_row, created_at)') } catch { /* non-critical */ }
+
     // Wait up to 5s for a lock instead of failing with SQLITE_BUSY — matters now that
     // auto-send writes every ~2 min alongside agent activity and the sheet-backup job.
     try { await db.execute('PRAGMA busy_timeout = 5000') } catch { /* non-critical */ }
@@ -960,6 +976,36 @@ export async function getUnreadCount() {
   const db = await ensureInit()
   const result = await db.execute("SELECT COUNT(*) as count FROM messages WHERE read = 0 AND direction = 'received'")
   return Number(result.rows[0]?.count ?? 0)
+}
+
+// --- Owner-approved follow-up nudges ---
+
+// Latest nudge decision per lead_row (for eligibility filtering). Returns a
+// map lead_row → { decision, created_at } of the MOST RECENT row per lead.
+export async function getLatestNudgeByLead(): Promise<Map<number, { decision: string; created_at: string }>> {
+  const db = await ensureInit()
+  const r = await db.execute(`
+    SELECT n.lead_row, n.decision, n.created_at FROM followup_nudges n
+    JOIN (SELECT lead_row, MAX(id) mid FROM followup_nudges GROUP BY lead_row) last
+      ON last.lead_row = n.lead_row AND last.mid = n.id
+  `)
+  const out = new Map<number, { decision: string; created_at: string }>()
+  for (const row of r.rows) out.set(Number(row.lead_row), { decision: String(row.decision), created_at: String(row.created_at) })
+  return out
+}
+
+export async function recordFollowupNudge(data: {
+  lead_row: number
+  phone: string
+  decision: 'sent' | 'skipped' | 'failed'
+  decided_by: string
+  template_used?: string
+}): Promise<void> {
+  const db = await ensureInit()
+  await db.execute({
+    sql: 'INSERT INTO followup_nudges (lead_row, phone, decision, decided_by, template_used) VALUES (?, ?, ?, ?, ?)',
+    args: [data.lead_row, normalizePhone(data.phone || ''), data.decision, data.decided_by, data.template_used || ''],
+  })
 }
 
 // Deck-automation heartbeat for the admin Today page. The July starvation
