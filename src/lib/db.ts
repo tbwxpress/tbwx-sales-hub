@@ -962,6 +962,26 @@ export async function getUnreadCount() {
   return Number(result.rows[0]?.count ?? 0)
 }
 
+// Deck-automation heartbeat for the admin Today page. The July starvation
+// outage ran 16 days unnoticed because nothing surfaced "cron fires but sends
+// nothing". stale = there IS a NEW backlog but auto-send hasn't moved a lead
+// in over 2 hours — the exact starvation signature (an empty backlog with no
+// recent sends is fine and NOT stale).
+export async function getAutoSendHeartbeat(): Promise<{ last_at: string | null; new_count: number; stale: boolean }> {
+  const db = await ensureInit()
+  const [lastRes, newRes] = await Promise.all([
+    db.execute("SELECT MAX(created_at) AS m FROM lead_status_changes WHERE source = 'auto-send'"),
+    db.execute("SELECT COUNT(*) AS n FROM leads WHERE lead_status = 'NEW' AND merged_into IS NULL"),
+  ])
+  const last_at = lastRes.rows[0]?.m ? String(lastRes.rows[0].m) : null
+  const new_count = Number(newRes.rows[0]?.n ?? 0)
+  const TWO_HOURS_MS = 2 * 60 * 60 * 1000
+  // created_at is sqlite datetime('now') = UTC "YYYY-MM-DD HH:MM:SS".
+  const lastMs = last_at ? new Date(last_at.replace(' ', 'T') + 'Z').getTime() : 0
+  const stale = new_count > 20 && (!lastMs || Date.now() - lastMs > TWO_HOURS_MS)
+  return { last_at, new_count, stale }
+}
+
 export async function searchMessages(query: string) {
   const db = await ensureInit()
   const result = await db.execute({

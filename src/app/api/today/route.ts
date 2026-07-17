@@ -16,6 +16,8 @@ interface FeedItem {
   ref_lead_row: number
   status: string
   age_hours?: number
+  /** Lead owner — lets the admin view filter the feed per agent. */
+  assigned_to?: string
 }
 
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000
@@ -87,6 +89,7 @@ export async function GET() {
             ref_phone: lead.phone,
             ref_lead_row: lead.row_number,
             status: lead.lead_status,
+            assigned_to: lead.assigned_to,
           })
         }
       }
@@ -108,6 +111,7 @@ export async function GET() {
             ref_phone: lead.phone,
             ref_lead_row: lead.row_number,
             status: lead.lead_status,
+            assigned_to: lead.assigned_to,
           })
         }
       }
@@ -130,6 +134,7 @@ export async function GET() {
             ref_lead_row: lead.row_number,
             status: lead.lead_status,
             age_hours: ageHours,
+            assigned_to: lead.assigned_to,
           })
         }
       }
@@ -147,6 +152,7 @@ export async function GET() {
             ref_phone: lead.phone,
             ref_lead_row: lead.row_number,
             status: lead.lead_status,
+            assigned_to: lead.assigned_to,
           })
         }
       }
@@ -175,6 +181,7 @@ export async function GET() {
           ref_phone: lead.phone,
           ref_lead_row: lr,
           status: lead.lead_status,
+          assigned_to: lead.assigned_to,
         })
       }
     }
@@ -182,7 +189,21 @@ export async function GET() {
     // Sort by priority (low = top), then age desc
     items.sort((a, b) => a.priority - b.priority || (b.age_hours || 0) - (a.age_hours || 0))
 
-    return NextResponse.json({ success: true, data: { items, count: items.length } })
+    // Per-kind counts so the UI can render an at-a-glance summary strip.
+    const summary: Record<string, number> = {}
+    for (const it of items) summary[it.kind] = (summary[it.kind] || 0) + 1
+
+    // Admin-only: deck-automation heartbeat (the July starvation outage ran 16
+    // days unnoticed — this surfaces "backlog exists but nothing is sending").
+    let automation: { last_at: string | null; new_count: number; stale: boolean } | undefined
+    if (user.role === 'admin') {
+      try {
+        const { getAutoSendHeartbeat } = await import('@/lib/db')
+        automation = await getAutoSendHeartbeat()
+      } catch { /* heartbeat is best-effort */ }
+    }
+
+    return NextResponse.json({ success: true, data: { items, count: items.length, summary, automation } })
   } catch (err) {
     return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }
