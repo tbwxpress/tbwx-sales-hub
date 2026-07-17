@@ -113,6 +113,84 @@ export async function getCoachMetrics(agentName: string): Promise<CoachMetrics> 
   }
 }
 
+// ── Fresh-era scoreboard ────────────────────────────────────────────────
+// Admin view: per-agent performance measured ONLY from an admin-set start
+// date ("epoch") forward — new-lead cohort + activity since that date. Lets
+// management push the team on current performance without years of legacy
+// leads drowning the numbers.
+
+export interface ScoreboardRow {
+  agent: string
+  received: number        // leads created since epoch, currently assigned to them
+  touched: number         // of those, leads with any human note/call/status move
+  calls: number           // activity since epoch (all leads, not just cohort)
+  notes: number
+  hub_messages: number
+  qualified: number       // status moves to CALL_DONE_INTERESTED by them since epoch
+  converted: number       // status moves to CONVERTED by them since epoch
+  replies_waiting: number // cohort leads whose last message is inbound (waiting on them)
+}
+
+export async function getFreshScoreboard(epoch: string, agentNames: string[]): Promise<ScoreboardRow[]> {
+  const db = await ensureInit()
+
+  const [cohort, calls, notes, msgs, qual, conv, waiting] = await Promise.all([
+    db.execute({
+      sql: `SELECT l.assigned_to a, COUNT(*) received,
+              SUM(CASE WHEN EXISTS(SELECT 1 FROM lead_notes n WHERE n.phone='91'||substr(REPLACE(l.phone,'+',''),-10))
+                        OR EXISTS(SELECT 1 FROM call_logs c WHERE c.phone='91'||substr(REPLACE(l.phone,'+',''),-10))
+                        OR EXISTS(SELECT 1 FROM lead_status_changes s WHERE s.lead_row=l.row_number AND s.source IN ('manual','work'))
+                   THEN 1 ELSE 0 END) touched
+            FROM leads l WHERE l.created_time >= ? AND l.merged_into IS NULL AND l.assigned_to != ''
+            GROUP BY l.assigned_to`,
+      args: [epoch],
+    }),
+    db.execute({ sql: 'SELECT logged_by a, COUNT(*) n FROM call_logs WHERE created_at >= ? GROUP BY logged_by', args: [epoch] }),
+    db.execute({ sql: 'SELECT created_by a, COUNT(*) n FROM lead_notes WHERE created_at >= ? GROUP BY created_by', args: [epoch] }),
+    db.execute({ sql: "SELECT sent_by a, COUNT(*) n FROM messages WHERE direction='sent' AND timestamp >= ? GROUP BY sent_by", args: [epoch] }),
+    db.execute({ sql: "SELECT changed_by a, COUNT(*) n FROM lead_status_changes WHERE new_status='CALL_DONE_INTERESTED' AND created_at >= ? GROUP BY changed_by", args: [epoch] }),
+    db.execute({ sql: "SELECT changed_by a, COUNT(*) n FROM lead_status_changes WHERE new_status='CONVERTED' AND created_at >= ? GROUP BY changed_by", args: [epoch] }),
+    db.execute({
+      sql: `SELECT l.assigned_to a, COUNT(*) n FROM leads l JOIN (
+              SELECT phone, MAX(CASE WHEN direction='received' THEN timestamp END) rx, MAX(CASE WHEN direction='sent' THEN timestamp END) tx
+              FROM messages GROUP BY phone
+            ) m ON m.phone = '91'||substr(REPLACE(l.phone,'+',''),-10)
+            WHERE l.created_time >= ? AND m.rx IS NOT NULL AND (m.tx IS NULL OR m.rx > m.tx)
+              AND l.lead_status NOT IN ('CONVERTED','LOST','ARCHIVED') AND l.merged_into IS NULL
+            GROUP BY l.assigned_to`,
+      args: [epoch],
+    }),
+  ])
+
+  const pick = (r: { rows: Array<Record<string, unknown>> }, key: string) => {
+    const m = new Map<string, number>()
+    for (const row of r.rows) m.set(String(row.a), Number(row[key] ?? row.n ?? 0))
+    return m
+  }
+  const receivedMap = pick(cohort, 'received')
+  const touchedMap = new Map<string, number>()
+  for (const row of cohort.rows) touchedMap.set(String(row.a), Number(row.touched ?? 0))
+
+  const callsMap = pick(calls, 'n')
+  const notesMap = pick(notes, 'n')
+  const msgsMap = pick(msgs, 'n')
+  const qualMap = pick(qual, 'n')
+  const convMap = pick(conv, 'n')
+  const waitMap = pick(waiting, 'n')
+
+  return agentNames.map(agent => ({
+    agent,
+    received: receivedMap.get(agent) || 0,
+    touched: touchedMap.get(agent) || 0,
+    calls: callsMap.get(agent) || 0,
+    notes: notesMap.get(agent) || 0,
+    hub_messages: msgsMap.get(agent) || 0,
+    qualified: qualMap.get(agent) || 0,
+    converted: convMap.get(agent) || 0,
+    replies_waiting: waitMap.get(agent) || 0,
+  }))
+}
+
 // Gemini coaching read — strict JSON, cached per agent per day (settings table).
 export async function getCoachRead(agentName: string, roleType: string, metrics: CoachMetrics): Promise<CoachRead> {
   const cacheKey = `perf_coach.${agentName.replace(/[^a-zA-Z0-9]/g, '_')}.${new Date().toISOString().slice(0, 10)}`

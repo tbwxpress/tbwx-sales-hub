@@ -206,6 +206,117 @@ interface SelfActivityViewProps {
   rank: { position: number; of: number } | null
 }
 
+// ── Fresh-era scoreboard (admin) ───────────────────────────────────────
+// Performance measured only from an admin-set start date forward, so years of
+// legacy leads stop drowning the numbers. Push the team on THIS era.
+interface ScoreboardRow {
+  agent: string
+  received: number
+  touched: number
+  calls: number
+  notes: number
+  hub_messages: number
+  qualified: number
+  converted: number
+  replies_waiting: number
+}
+
+function FreshScoreboard() {
+  const [epoch, setEpoch] = useState('')
+  const [rows, setRows] = useState<ScoreboardRow[]>([])
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [err, setErr] = useState('')
+
+  const load = useCallback(() => {
+    fetch('/api/performance/scoreboard')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success) { setEpoch(json.data.epoch); setRows(json.data.rows || []); setErr('') }
+        else setErr(json.error || 'Failed')
+      })
+      .catch(() => setErr('Failed to load scoreboard'))
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function saveEpoch() {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(draft)) return
+    const res = await fetch('/api/performance/scoreboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ epoch: draft }),
+    })
+    const json = await res.json()
+    if (json.success) { setEditing(false); load() }
+  }
+
+  if (err) return null
+  if (!epoch) return null
+
+  const pct = (a: number, b: number) => (b > 0 ? `${Math.round((a / b) * 100)}%` : '—')
+
+  return (
+    <div className="rounded-lg p-4 mb-4" style={{ background: 'var(--color-card)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)' }}>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <p className="text-eyebrow" style={{ color: 'var(--color-accent)' }}>Fresh scoreboard</p>
+          <p className="text-caption text-dim mt-0.5">Only counts leads received and work done since <span className="text-text font-medium">{epoch}</span> — legacy leads excluded.</p>
+        </div>
+        {editing ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              className="bg-elevated border border-border rounded-md px-2 py-1 text-xs text-text focus:outline-none focus:border-accent/50"
+            />
+            <button onClick={saveEpoch} className="text-xs font-semibold text-accent hover:underline">Set</button>
+            <button onClick={() => setEditing(false)} className="text-xs text-dim hover:text-text">Cancel</button>
+          </div>
+        ) : (
+          <button onClick={() => { setDraft(epoch); setEditing(true) }} className="text-xs text-accent hover:underline">Change start date</button>
+        )}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-dim">
+              <th className="py-1.5 pr-3 font-medium">Agent</th>
+              <th className="py-1.5 pr-3 font-medium text-right">Received</th>
+              <th className="py-1.5 pr-3 font-medium text-right">Touched</th>
+              <th className="py-1.5 pr-3 font-medium text-right">Calls</th>
+              <th className="py-1.5 pr-3 font-medium text-right">Notes</th>
+              <th className="py-1.5 pr-3 font-medium text-right">WA sent</th>
+              <th className="py-1.5 pr-3 font-medium text-right">Qualified</th>
+              <th className="py-1.5 pr-3 font-medium text-right">Won</th>
+              <th className="py-1.5 font-medium text-right">Replies waiting</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.agent} className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+                <td className="py-1.5 pr-3 font-semibold text-text">{r.agent}</td>
+                <td className="py-1.5 pr-3 text-right text-muted">{r.received}</td>
+                <td className="py-1.5 pr-3 text-right" style={{ color: r.received > 0 && r.touched < r.received ? 'var(--color-warning)' : 'var(--color-muted)' }}>
+                  {r.touched} <span className="text-dim">({pct(r.touched, r.received)})</span>
+                </td>
+                <td className="py-1.5 pr-3 text-right text-muted">{r.calls}</td>
+                <td className="py-1.5 pr-3 text-right text-muted">{r.notes}</td>
+                <td className="py-1.5 pr-3 text-right text-muted">{r.hub_messages}</td>
+                <td className="py-1.5 pr-3 text-right" style={{ color: r.qualified > 0 ? 'var(--color-accent)' : 'var(--color-dim)' }}>{r.qualified}</td>
+                <td className="py-1.5 pr-3 text-right" style={{ color: r.converted > 0 ? 'var(--color-success)' : 'var(--color-dim)' }}>{r.converted}</td>
+                <td className="py-1.5 text-right" style={{ color: r.replies_waiting > 0 ? 'var(--color-danger)' : 'var(--color-dim)' }}>{r.replies_waiting}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // ── Coach panel — "what's stopping me from closing more?" ──────────────
 // Book-health gap tiles (live) + a Gemini coaching read (cached per day
 // server-side). Self view for agents; admin passes the agent name.
@@ -729,6 +840,9 @@ export default function AgentStatsPage() {
             />
             </>
           )}
+
+          {/* Fresh-era scoreboard (admin): current-era numbers, legacy excluded */}
+          {activity?.scope === 'admin' && <FreshScoreboard />}
 
           {/* Per-agent cards (admin view) */}
           {activity?.scope === 'admin' && activity.agents.length > 0 ? (
