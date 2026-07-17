@@ -147,7 +147,11 @@ export default function InboxPage() {
   const [newChatPhone, setNewChatPhone] = useState('')
   const [newChatName, setNewChatName] = useState('')
   // Lead details panel
-  const [showLeadDetails, setShowLeadDetails] = useState(false)
+  // Retired: the desktop inline details panel (the block gated on this below)
+  // is superseded by the right-side drawer, which no longer squashes the chat.
+  // Kept permanently false so that dead block never renders; safe to delete the
+  // block in a follow-up cleanup.
+  const [showLeadDetails] = useState(false)
   // Full lead info from API
   interface LeadInfo { row_number: number; full_name: string; lead_status: string; lead_priority: string; assigned_to: string; email: string; city: string; state: string; model_interest: string; next_followup: string; lead_score?: number; timeline?: string; experience?: string; campaign_name?: string; platform?: string }
   const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null)
@@ -1237,18 +1241,16 @@ export default function InboxPage() {
                     <span className="hidden sm:inline">Remind</span>
                   </button>
 
-                  {/* Lead details toggle — desktop toggles inline panel; mobile opens right drawer */}
+                  {/* Lead details toggle — opens the right-side slide-over drawer on
+                      every size. Previously desktop used an inline panel wedged above
+                      the messages; its async children (calls, voice agent, notes,
+                      activity) ballooned it and squashed the chat a few seconds after
+                      opening a lead. The drawer is fixed-position, so it overlays the
+                      right edge and never disturbs the chat layout. */}
                   <button
-                    onClick={() => {
-                      // On mobile, open the slide-in drawer; on desktop, toggle the inline panel
-                      if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
-                        setContextDrawerOpen(true)
-                      } else {
-                        setShowLeadDetails(!showLeadDetails)
-                      }
-                    }}
+                    onClick={() => setContextDrawerOpen(!contextDrawerOpen)}
                     className={`text-[10px] px-2 py-1 rounded transition-colors font-medium flex items-center gap-1 ${
-                      showLeadDetails ? 'bg-accent/20 text-accent' : 'bg-elevated hover:bg-border text-muted'
+                      contextDrawerOpen ? 'bg-accent/20 text-accent' : 'bg-elevated hover:bg-border text-muted'
                     }`}
                     title="Toggle lead details"
                   >
@@ -1822,20 +1824,21 @@ export default function InboxPage() {
         </div>
       </div>
 
-      {/* ─── Mobile Lead Context Drawer (slide-in from right, <md only) ── */}
+      {/* ─── Lead Context Drawer (slide-in from right, all sizes) ── */}
       {activeContact && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop — click outside to close. Lighter scrim on desktop so the
+              chat stays readable behind the drawer. */}
           <div
             onClick={() => setContextDrawerOpen(false)}
-            className={`md:hidden fixed inset-0 z-40 bg-black/50 transition-opacity duration-200 ${
+            className={`fixed inset-0 z-40 bg-black/50 md:bg-black/25 transition-opacity duration-200 ${
               contextDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
             }`}
             aria-hidden="true"
           />
           {/* Drawer */}
           <aside
-            className={`md:hidden fixed top-0 right-0 z-50 h-full w-[88vw] max-w-[360px] bg-card border-l border-border shadow-2xl transition-transform duration-200 ease-out flex flex-col ${
+            className={`fixed top-0 right-0 z-50 h-full w-[88vw] max-w-[360px] md:w-[420px] md:max-w-[420px] bg-card border-l border-border shadow-2xl transition-transform duration-200 ease-out flex flex-col ${
               contextDrawerOpen ? 'translate-x-0' : 'translate-x-full'
             }`}
             role="dialog"
