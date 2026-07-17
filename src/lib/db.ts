@@ -790,8 +790,11 @@ export async function getContacts() {
       SELECT MAX(timestamp) FROM messages WHERE phone = c.phone
     )
     LEFT JOIN leads l ON l.row_number = c.lead_row
-    ORDER BY m.timestamp DESC NULLS LAST
+    ORDER BY (unread_count > 0) DESC, m.timestamp DESC NULLS LAST
   `)
+  // Unread (a human is being waited on) pins above everything else — otherwise
+  // the auto-send drain (~60 templates/hr) re-tops its own threads and buries
+  // every customer reply within minutes.
   return serializeRows(result.rows).map(withTriageHints)
 }
 
@@ -853,6 +856,12 @@ export async function getContactsForAgent(
   }
 
   merged.sort((a, b) => {
+    // Unread-first: a thread where the customer is waiting on a human always
+    // outranks auto-send churn (which otherwise re-tops its own threads and
+    // buries replies). Within each bucket, newest last message first.
+    const ua = Number(a.unread_count) > 0 ? 0 : 1
+    const ub = Number(b.unread_count) > 0 ? 0 : 1
+    if (ua !== ub) return ua - ub
     if (!a.last_message_at && !b.last_message_at) return 0
     if (!a.last_message_at) return 1
     if (!b.last_message_at) return -1
