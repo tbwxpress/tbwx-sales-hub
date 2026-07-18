@@ -377,7 +377,7 @@ export async function POST(request: NextRequest) {
         // them — do NOT auto-message, mark, or rotate it. (No send slot consumed.)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const manuallyEngaged = sentMsgs.some((m: any) =>
-          m.sent_by && !['auto-send', 'System (Auto)', ''].includes(String(m.sent_by))
+          m.sent_by && !['auto-send', 'System (Auto)', 'bot', ''].includes(String(m.sent_by))
         )
         if (manuallyEngaged) {
           results.push({

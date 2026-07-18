@@ -438,6 +438,22 @@ export async function POST(req: NextRequest) {
             console.error('[Webhook] Auto-response error (non-critical):', autoErr)
             // Non-critical — don't break webhook
           }
+
+          // Advisor bot: deterministic ack + qualifying questions on the
+          // "I want a human" buttons (Talk to advisor / Call me back / Message
+          // me here) — off-hours aware. Known buttons only; free text is never
+          // bot-answered. Rails (kill-switch, 6h cooldown) live in the lib.
+          try {
+            const tapText =
+              msg.type === 'button' ? (msg.button?.text || '') :
+              msg.type === 'interactive' ? (msg.interactive?.button_reply?.title || '') : ''
+            if (tapText) {
+              const { maybeBotReply } = await import('@/lib/advisor-bot')
+              await maybeBotReply(phone, tapText)
+            }
+          } catch (botErr) {
+            console.error('[Webhook] Advisor-bot error (non-critical):', botErr)
+          }
         }
 
         // Handle message status updates (delivered, read, etc.)
