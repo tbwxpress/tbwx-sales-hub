@@ -3,7 +3,7 @@ import { apiError } from '@/lib/api-error'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getUsers } from '@/lib/users'
 import { getSetting, setSetting } from '@/lib/db'
-import { getFreshScoreboard } from '@/lib/performance'
+import { getFreshScoreboard, getConversionForecast } from '@/lib/performance'
 
 // Fresh-era scoreboard (admin only): per-agent performance measured from an
 // admin-set start date forward, so legacy leads stop drowning the numbers.
@@ -33,9 +33,12 @@ export async function GET() {
 
     const users = await getUsers()
     const agents = users.filter(u => u.active && u.role !== 'admin').map(u => u.name)
-    const rows = await getFreshScoreboard(epoch, agents)
+    const [rows, forecast] = await Promise.all([
+      getFreshScoreboard(epoch, agents),
+      getConversionForecast(),
+    ])
 
-    return NextResponse.json({ success: true, data: { epoch, rows } })
+    return NextResponse.json({ success: true, data: { epoch, rows, forecast } })
   } catch (err) {
     return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }

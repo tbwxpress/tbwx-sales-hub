@@ -221,9 +221,18 @@ interface ScoreboardRow {
   replies_waiting: number
 }
 
+interface ForecastData {
+  stages: Array<{ stage: string; open: number; rate: number; expected: number }>
+  expected: number
+  best: number
+  worst: number
+  monthly: Array<{ month: string; conversions: number }>
+}
+
 function FreshScoreboard() {
   const [epoch, setEpoch] = useState('')
   const [rows, setRows] = useState<ScoreboardRow[]>([])
+  const [forecast, setForecast] = useState<ForecastData | null>(null)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [err, setErr] = useState('')
@@ -232,7 +241,7 @@ function FreshScoreboard() {
     fetch('/api/performance/scoreboard')
       .then(r => r.json())
       .then(json => {
-        if (json.success) { setEpoch(json.data.epoch); setRows(json.data.rows || []); setErr('') }
+        if (json.success) { setEpoch(json.data.epoch); setRows(json.data.rows || []); setForecast(json.data.forecast || null); setErr('') }
         else setErr(json.error || 'Failed')
       })
       .catch(() => setErr('Failed to load scoreboard'))
@@ -313,6 +322,39 @@ function FreshScoreboard() {
           </tbody>
         </table>
       </div>
+
+      {/* Conversion forecast — expected closes from TODAY's pipeline at live
+          historical stage→won rates. Counts only, no revenue (by design). */}
+      {forecast && (
+        <div className="mt-4 pt-3 border-t border-border">
+          <div className="flex items-baseline justify-between flex-wrap gap-2">
+            <p className="text-eyebrow text-dim">Conversion forecast</p>
+            <p className="text-[10px] text-dim">
+              Recent closes: {forecast.monthly.map(m => `${m.month.slice(5)}: ${m.conversions}`).join(' · ')}
+            </p>
+          </div>
+          <div className="flex items-center gap-4 mt-1.5 flex-wrap">
+            <div>
+              <span className="text-display leading-none" style={{ color: 'var(--color-accent)' }}>{forecast.expected}</span>
+              <span className="text-caption text-dim ml-2">expected closes from today&apos;s pipeline</span>
+            </div>
+            <span className="text-caption text-muted">
+              best <span className="font-semibold" style={{ color: 'var(--color-success)' }}>{forecast.best}</span>
+              {' · '}worst <span className="font-semibold" style={{ color: 'var(--color-warning)' }}>{forecast.worst}</span>
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {forecast.stages.filter(s => s.open > 0).map(s => (
+              <span key={s.stage} className="text-[10px] px-2 py-1 rounded-full border" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
+                {s.stage.replace(/_/g, ' ')}: {s.open} × {(s.rate * 100).toFixed(1)}% ≈ {s.expected < 0.05 ? '0' : s.expected.toFixed(1)}
+              </span>
+            ))}
+          </div>
+          <p className="text-[10px] text-dim mt-1.5">
+            Rates are live from your own history — as follow-up discipline improves, these climb (and so does the forecast).
+          </p>
+        </div>
+      )}
     </div>
   )
 }

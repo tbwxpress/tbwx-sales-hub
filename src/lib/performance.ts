@@ -191,6 +191,97 @@ export async function getFreshScoreboard(epoch: string, agentNames: string[]): P
   }))
 }
 
+// ── Conversion forecast ────────────────────────────────────────────────
+// Expected conversions from TODAY's open pipeline, using LIVE historical
+// stage→converted rates (each open lead counted once, at its current stage).
+// No revenue, no dates promised — just "how many closes is this pipeline
+// worth, if we work it like we historically have". Rates recompute on every
+// load, so better follow-up discipline raises the forecast automatically.
+// Range = expected ± 1σ (binomial), floored at 0 — honest about small samples.
+
+export interface ForecastStage {
+  stage: string
+  open: number
+  rate: number      // 0..1
+  expected: number  // open × rate
+}
+
+export interface ConversionForecast {
+  stages: ForecastStage[]
+  expected: number
+  best: number
+  worst: number
+  monthly: Array<{ month: string; conversions: number }>
+}
+
+const FORECAST_STAGES = ['DECK_SENT', 'REPLIED', 'CALL_DONE_INTERESTED', 'HOT', 'FINAL_NEGOTIATION']
+
+export async function getConversionForecast(): Promise<ConversionForecast> {
+  const db = await ensureInit()
+
+  const [rates, counts, monthly] = await Promise.all([
+    db.execute(`
+      SELECT sc.new_status stage, COUNT(DISTINCT sc.lead_row) reached,
+        COUNT(DISTINCT CASE WHEN EXISTS(
+          SELECT 1 FROM lead_status_changes c2 WHERE c2.lead_row = sc.lead_row AND c2.new_status = 'CONVERTED'
+        ) THEN sc.lead_row END) conv
+      FROM lead_status_changes sc
+      WHERE sc.new_status IN ('DECK_SENT','REPLIED','CALL_DONE_INTERESTED','HOT','FINAL_NEGOTIATION')
+      GROUP BY sc.new_status
+    `),
+    db.execute(`
+      SELECT lead_status stage, COUNT(*) n FROM leads
+      WHERE lead_status IN ('DECK_SENT','REPLIED','CALL_DONE_INTERESTED','HOT','FINAL_NEGOTIATION')
+        AND merged_into IS NULL
+      GROUP BY lead_status
+    `),
+    db.execute(`
+      SELECT substr(created_at, 1, 7) month, COUNT(DISTINCT lead_row) n
+      FROM lead_status_changes WHERE new_status = 'CONVERTED'
+      GROUP BY month ORDER BY month DESC LIMIT 4
+    `),
+  ])
+
+  const rateMap = new Map<string, number>()
+  let globalReached = 0
+  let globalConv = 0
+  for (const r of rates.rows) {
+    const reached = Number(r.reached) || 0
+    const conv = Number(r.conv) || 0
+    globalReached += reached
+    globalConv += conv
+    if (reached > 0) rateMap.set(String(r.stage), conv / reached)
+  }
+  const globalRate = globalReached > 0 ? globalConv / globalReached : 0.005
+
+  const countMap = new Map<string, number>()
+  for (const r of counts.rows) countMap.set(String(r.stage), Number(r.n) || 0)
+
+  let expected = 0
+  let variance = 0
+  const stages: ForecastStage[] = FORECAST_STAGES.map(stage => {
+    const open = countMap.get(stage) || 0
+    // Tiny-sample guard: never below the pipeline-wide average, never above 50%.
+    const raw = rateMap.get(stage) ?? globalRate
+    const rate = Math.min(0.5, Math.max(raw, globalRate))
+    const exp = open * rate
+    expected += exp
+    variance += open * rate * (1 - rate)
+    return { stage, open, rate, expected: exp }
+  })
+
+  const sigma = Math.sqrt(variance)
+  return {
+    stages,
+    expected: Math.round(expected),
+    best: Math.round(expected + sigma),
+    worst: Math.max(0, Math.round(expected - sigma)),
+    monthly: monthly.rows
+      .map(r => ({ month: String(r.month), conversions: Number(r.n) || 0 }))
+      .reverse(),
+  }
+}
+
 // Gemini coaching read — strict JSON, cached per agent per day (settings table).
 export async function getCoachRead(agentName: string, roleType: string, metrics: CoachMetrics): Promise<CoachRead> {
   const cacheKey = `perf_coach.${agentName.replace(/[^a-zA-Z0-9]/g, '_')}.${new Date().toISOString().slice(0, 10)}`
