@@ -652,6 +652,30 @@ export async function ensureInit(): Promise<Client> {
     `)
     try { await db.execute('CREATE INDEX IF NOT EXISTS idx_followup_nudges_lead ON followup_nudges(lead_row, created_at)') } catch { /* non-critical */ }
 
+    // Coexistence (multi-number WhatsApp): every phone number attached to the
+    // WABA — the main Cloud-API line plus agents' WhatsApp-Business-app numbers
+    // onboarded via Embedded Signup. agent_name attributes app echoes + history
+    // imports to a Hub user for the scoreboard; is_main marks the only line the
+    // customer-facing automations (auto-deck, advisor bot, qualifier) run on.
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS wa_numbers (
+        phone_number_id TEXT PRIMARY KEY,
+        display_number TEXT DEFAULT '',
+        verified_name TEXT DEFAULT '',
+        agent_name TEXT DEFAULT '',
+        is_main INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1,
+        contacts_synced_at TEXT DEFAULT '',
+        history_synced_at TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `)
+    // Which line a message travelled on + how it entered the Hub
+    // ('' = live Cloud API, 'app_echo' = agent sent from the WhatsApp Business
+    // app, 'history' = coexistence 180-day backfill).
+    try { await db.execute("ALTER TABLE messages ADD COLUMN via_number_id TEXT DEFAULT ''") } catch { /* column may already exist */ }
+    try { await db.execute("ALTER TABLE messages ADD COLUMN channel TEXT DEFAULT ''") } catch { /* column may already exist */ }
+
     // Wait up to 5s for a lock instead of failing with SQLITE_BUSY — matters now that
     // auto-send writes every ~2 min alongside agent activity and the sheet-backup job.
     try { await db.execute('PRAGMA busy_timeout = 5000') } catch { /* non-critical */ }
@@ -922,6 +946,8 @@ export async function insertMessage(data: {
   media_mime?: string
   media_filename?: string
   media_path?: string
+  via_number_id?: string
+  channel?: string
 }) {
   const db = await ensureInit()
   data.phone = normalizePhone(data.phone)
@@ -935,8 +961,8 @@ export async function insertMessage(data: {
   const result = await db.execute({
     sql: `INSERT INTO messages
             (phone, direction, text, timestamp, sent_by, wa_message_id, status, template_used, read,
-             media_type, media_id, media_mime, media_filename, media_path)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             media_type, media_id, media_mime, media_filename, media_path, via_number_id, channel)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       data.phone,
       data.direction,
@@ -952,6 +978,8 @@ export async function insertMessage(data: {
       data.media_mime || '',
       data.media_filename || '',
       data.media_path || '',
+      data.via_number_id || '',
+      data.channel || '',
     ],
   })
 
@@ -990,6 +1018,60 @@ export async function getUnreadCount() {
   const db = await ensureInit()
   const result = await db.execute("SELECT COUNT(*) as count FROM messages WHERE read = 0 AND direction = 'received'")
   return Number(result.rows[0]?.count ?? 0)
+}
+
+// --- Coexistence wa_numbers operations ---
+
+export async function listWaNumbers() {
+  const db = await ensureInit()
+  const result = await db.execute('SELECT * FROM wa_numbers ORDER BY is_main DESC, created_at ASC')
+  return serializeRows(result.rows)
+}
+
+export async function getWaNumber(phoneNumberId: string) {
+  const db = await ensureInit()
+  const result = await db.execute({ sql: 'SELECT * FROM wa_numbers WHERE phone_number_id = ?', args: [phoneNumberId] })
+  return result.rows[0] ? serializeRow(result.rows[0]) : null
+}
+
+// Insert-or-update from a Graph refresh. Never clobbers an existing
+// agent_name assignment — that's owner-set via setWaNumberAgent.
+export async function upsertWaNumber(data: {
+  phone_number_id: string
+  display_number?: string
+  verified_name?: string
+  is_main?: boolean
+}) {
+  const db = await ensureInit()
+  const existing = await db.execute({ sql: 'SELECT phone_number_id FROM wa_numbers WHERE phone_number_id = ?', args: [data.phone_number_id] })
+  if (existing.rows.length > 0) {
+    await db.execute({
+      sql: 'UPDATE wa_numbers SET display_number = ?, verified_name = ?, is_main = ? WHERE phone_number_id = ?',
+      args: [data.display_number || '', data.verified_name || '', data.is_main ? 1 : 0, data.phone_number_id],
+    })
+  } else {
+    await db.execute({
+      sql: 'INSERT INTO wa_numbers (phone_number_id, display_number, verified_name, is_main) VALUES (?, ?, ?, ?)',
+      args: [data.phone_number_id, data.display_number || '', data.verified_name || '', data.is_main ? 1 : 0],
+    })
+  }
+}
+
+export async function setWaNumberAgent(phoneNumberId: string, agentName: string) {
+  const db = await ensureInit()
+  await db.execute({
+    sql: 'UPDATE wa_numbers SET agent_name = ? WHERE phone_number_id = ?',
+    args: [agentName, phoneNumberId],
+  })
+}
+
+export async function markWaNumberSynced(phoneNumberId: string, kind: 'contacts' | 'history') {
+  const db = await ensureInit()
+  const col = kind === 'contacts' ? 'contacts_synced_at' : 'history_synced_at'
+  await db.execute({
+    sql: `UPDATE wa_numbers SET ${col} = datetime('now') WHERE phone_number_id = ?`,
+    args: [phoneNumberId],
+  })
 }
 
 // --- Owner-approved follow-up nudges ---

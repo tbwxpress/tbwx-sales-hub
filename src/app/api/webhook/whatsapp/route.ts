@@ -1,12 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
-import { upsertContact, insertMessage, updateMessageStatus, getMessages, getContact, getDripState, upsertDripState } from '@/lib/db'
+import { upsertContact, insertMessage, updateMessageStatus, getMessages, getContact, getDripState, upsertDripState, getWaNumber, markMessagesRead, setSetting } from '@/lib/db'
 import { sendTemplate } from '@/lib/whatsapp'
 import { logSentMessage, getLeadByRow } from '@/lib/sheets'
 import { getMarketingFirstTemplateName } from '@/lib/template-settings'
 import { notifyQuiet } from '@/lib/notifications'
 import { getUsers } from '@/lib/users'
 import { isNegativeReply } from '@/lib/negative-replies'
+import { extractMessageText, isMainLineId, waTsToIso, historyDirection } from '@/lib/coexistence'
+
+// Who a coexistence line belongs to, for message attribution. Cached briefly —
+// the webhook fires per message and the mapping changes ~never.
+const waNumberAgentCache = new Map<string, { agent: string; at: number }>()
+async function agentForLine(phoneNumberId: string): Promise<string> {
+  if (!phoneNumberId) return ''
+  const hit = waNumberAgentCache.get(phoneNumberId)
+  if (hit && Date.now() - hit.at < 60_000) return hit.agent
+  let agent = ''
+  try {
+    const row = await getWaNumber(phoneNumberId)
+    agent = String(row?.agent_name || row?.verified_name || '') || ''
+  } catch { /* unmapped line — attribution falls back below */ }
+  const resolved = agent || 'WA App'
+  waNumberAgentCache.set(phoneNumberId, { agent: resolved, at: Date.now() })
+  return resolved
+}
 
 // Button response classification for follow-up templates
 const POSITIVE_BUTTONS = [
@@ -66,8 +84,28 @@ export async function POST(req: NextRequest) {
       const changes = entry.changes || []
 
       for (const change of changes) {
-        if (change.field !== 'messages') continue
         const value = change.value || {}
+        // Which of our numbers this event happened on. Coexistence lines
+        // (agents' WhatsApp-Business-app numbers) share this webhook with the
+        // main Cloud-API line; the metadata block tells them apart.
+        const linePhoneNumberId = String(value?.metadata?.phone_number_id || '')
+        const isMainLine = isMainLineId(linePhoneNumberId, process.env.WHATSAPP_PHONE_NUMBER_ID)
+
+        // Coexistence mirror events — agent app sends, 180-day history import,
+        // app contact names. Each handler is self-contained + non-throwing.
+        if (change.field === 'smb_message_echoes') {
+          await handleMessageEchoes(value, linePhoneNumberId)
+          continue
+        }
+        if (change.field === 'history') {
+          await handleHistorySync(value, linePhoneNumberId)
+          continue
+        }
+        if (change.field === 'smb_app_state_sync') {
+          await handleStateSync(value)
+          continue
+        }
+        if (change.field !== 'messages') continue
         const messages = value.messages || []
         const contacts = value.contacts || []
 
@@ -76,44 +114,8 @@ export async function POST(req: NextRequest) {
           const contactInfo = contacts.find((c: { wa_id: string }) => c.wa_id === phone)
           const contactName = contactInfo?.profile?.name || ''
 
-          // Get message text based on type
-          let text = ''
-          switch (msg.type) {
-            case 'text':
-              text = msg.text?.body || ''
-              break
-            case 'image':
-              text = '[Image] ' + (msg.image?.caption || '')
-              break
-            case 'video':
-              text = '[Video] ' + (msg.video?.caption || '')
-              break
-            case 'audio':
-              text = '[Audio message]'
-              break
-            case 'document':
-              text = '[Document] ' + (msg.document?.filename || '')
-              break
-            case 'location':
-              text = `[Location: ${msg.location?.latitude}, ${msg.location?.longitude}]`
-              break
-            case 'sticker':
-              text = '[Sticker]'
-              break
-            case 'reaction':
-              text = `[Reaction: ${msg.reaction?.emoji || ''}]`
-              break
-            case 'button':
-              text = msg.button?.text || '[Button reply]'
-              break
-            case 'interactive':
-              text = msg.interactive?.button_reply?.title ||
-                     msg.interactive?.list_reply?.title ||
-                     '[Interactive reply]'
-              break
-            default:
-              text = `[${msg.type || 'Unknown'} message]`
-          }
+          // Get message text based on type (shared with echo/history ingestion)
+          const text = extractMessageText(msg)
 
           // Ensure contact exists
           await upsertContact(phone, { name: contactName })
@@ -164,7 +166,29 @@ export async function POST(req: NextRequest) {
             media_mime: mediaInfo?.mime || '',
             media_filename: mediaInfo?.filename || '',
             media_path: mediaInfo?.path || '',
+            via_number_id: linePhoneNumberId,
           })
+
+          // Inbound on a coexistence line: tell the line's owner (they may not
+          // have their phone in hand; the Hub thread is live either way).
+          if (!isMainLine) {
+            try {
+              const agentName = await agentForLine(linePhoneNumberId)
+              if (agentName && agentName !== 'WA App') {
+                const allUsers = await getUsers()
+                const lineOwner = allUsers.find(u => u.name === agentName && u.active)
+                if (lineOwner) {
+                  await notifyQuiet({
+                    user_id: lineOwner.id,
+                    type: 'lead_replied',
+                    title: `${contactName || phone} messaged your WhatsApp line`,
+                    body: (text || '').slice(0, 80),
+                    ref_phone: phone,
+                  })
+                }
+              }
+            } catch { /* best effort */ }
+          }
 
           // Auto-pause drip sequence when lead replies
           try {
@@ -188,7 +212,9 @@ export async function POST(req: NextRequest) {
               msg.type === 'button' ? (msg.button?.text || '') : ''
             ).toLowerCase().trim()
 
-            if (buttonText && (POSITIVE_BUTTONS.includes(buttonText) || DELAY_BUTTONS.includes(buttonText) || OPTOUT_BUTTONS.includes(buttonText))) {
+            // Template buttons only exist on main-line sends; never fire the
+            // classifier off a coexistence-line chat.
+            if (isMainLine && buttonText && (POSITIVE_BUTTONS.includes(buttonText) || DELAY_BUTTONS.includes(buttonText) || OPTOUT_BUTTONS.includes(buttonText))) {
               const { updateLead } = await import('@/lib/sheets')
               const contact = await getContact(phone)
 
@@ -379,14 +405,17 @@ export async function POST(req: NextRequest) {
             )
             const isFirstReply = priorReceived.length === 0
 
-            if (isOptInButton || isInteractiveOptIn || isTextOptIn || isFirstReply) {
+            // Auto-deck is a MAIN-line automation. A lead chatting with an
+            // agent's coexistence number must never get a robot template from
+            // the main number mid-conversation.
+            if (isMainLine && (isOptInButton || isInteractiveOptIn || isTextOptIn || isFirstReply)) {
               // Resolve marketing template from DB settings (admin-configurable)
               const MARKETING_FIRST_TEMPLATE = await getMarketingFirstTemplateName()
 
               // Check we haven't already sent the deck to this number
               const allMsgs = await getMessages(phone, 200, 0)
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const alreadySentDeck = (allMsgs || []).some(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (m: any) => m.direction === 'sent' && m.template_used === MARKETING_FIRST_TEMPLATE
               )
 
@@ -447,7 +476,7 @@ export async function POST(req: NextRequest) {
             const tapText =
               msg.type === 'button' ? (msg.button?.text || '') :
               msg.type === 'interactive' ? (msg.interactive?.button_reply?.title || '') : ''
-            if (tapText) {
+            if (tapText && isMainLine) {
               const { maybeBotReply } = await import('@/lib/advisor-bot')
               await maybeBotReply(phone, tapText)
             }
@@ -459,7 +488,9 @@ export async function POST(req: NextRequest) {
           // questions get AI-extracted into lead fields / signals / priority.
           // Extraction only — never sends anything to the customer.
           try {
-            if (msg.type === 'text') {
+            // Qualifier interprets free text as answers to the MAIN-line bot's
+            // questions — a human chat on an agent's line is not that context.
+            if (msg.type === 'text' && isMainLine) {
               const { maybeQualifyReply } = await import('@/lib/qualifier')
               await maybeQualifyReply(phone)
             }
@@ -490,5 +521,135 @@ export async function POST(req: NextRequest) {
     console.error('Webhook error:', err)
     // Still return 200 to avoid Meta retrying
     return NextResponse.json({ success: true })
+  }
+}
+
+// ---------- Coexistence mirror handlers ----------
+
+// Agent sent a message from the WhatsApp Business app on a coexistence line.
+// Mirror it into the thread as that agent's outbound and mark the thread read —
+// they handled it on their phone, so don't leave a stale unread in the Hub.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleMessageEchoes(value: any, linePhoneNumberId: string) {
+  try {
+    const echoes = value.message_echoes || []
+    if (!echoes.length) return
+    const agentName = await agentForLine(linePhoneNumberId)
+    for (const echo of echoes) {
+      try {
+        const customerPhone = String(echo.to || '')
+        if (!customerPhone.replace(/\D/g, '')) continue
+        await upsertContact(customerPhone, {})
+        await insertMessage({
+          phone: customerPhone,
+          direction: 'sent',
+          text: extractMessageText(echo),
+          timestamp: waTsToIso(echo.timestamp),
+          sent_by: agentName,
+          wa_message_id: echo.id || '',
+          status: 'sent',
+          read: true,
+          via_number_id: linePhoneNumberId,
+          channel: 'app_echo',
+        })
+        await markMessagesRead(customerPhone)
+      } catch (echoErr) {
+        console.error('[Webhook] echo ingest error (non-critical):', echoErr)
+      }
+    }
+  } catch (err) {
+    console.error('[Webhook] smb_message_echoes error (non-critical):', err)
+  }
+}
+
+// 180-day history import for a freshly onboarded coexistence line. Chunks
+// arrive out of order across 3 phases; every message dedupes on wa_message_id
+// so overlaps with live webhooks are safe. History media stays as placeholder
+// text — months of attachments aren't worth mirroring into the media store.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleHistorySync(value: any, linePhoneNumberId: string) {
+  try {
+    const chunks = value.history || []
+    if (!chunks.length) return
+    const agentName = await agentForLine(linePhoneNumberId)
+    let inserted = 0
+    let seen = 0
+    let skippedThreads = 0
+    let meta: { phase?: unknown; chunk_order?: unknown; progress?: unknown } = {}
+    for (const chunk of chunks) {
+      meta = chunk.metadata || meta
+      const threads = chunk.threads || []
+      for (const thread of threads) {
+        const customerWaId = String(thread.id || '')
+        // 1:1 customer threads only — group/system JIDs never map to a lead.
+        const digits = customerWaId.replace(/\D/g, '')
+        if (digits.length < 10 || customerWaId.includes('@') || customerWaId.includes('-')) {
+          skippedThreads++
+          continue
+        }
+        try { await upsertContact(customerWaId, {}) } catch { /* non-critical */ }
+        for (const m of thread.messages || []) {
+          seen++
+          try {
+            const direction = historyDirection(m.from, customerWaId)
+            const res = await insertMessage({
+              phone: customerWaId,
+              direction,
+              text: extractMessageText(m),
+              timestamp: waTsToIso(m.timestamp),
+              sent_by: direction === 'sent' ? agentName : '',
+              wa_message_id: m.id || '',
+              status: direction === 'sent' ? 'sent' : 'received',
+              read: true, // historical — never floods the inbox unread queue
+              via_number_id: linePhoneNumberId,
+              channel: 'history',
+            })
+            if (res !== null) inserted++
+          } catch (msgErr) {
+            console.error('[Webhook] history msg ingest error (non-critical):', msgErr)
+          }
+        }
+      }
+    }
+    // Progress breadcrumb the admin page polls (best effort).
+    try {
+      await setSetting(`coex.history.${linePhoneNumberId}`, JSON.stringify({
+        phase: meta.phase ?? null,
+        chunk_order: meta.chunk_order ?? null,
+        progress: meta.progress ?? null,
+        last_chunk_at: new Date().toISOString(),
+        last_chunk_inserted: inserted,
+        last_chunk_seen: seen,
+      }))
+    } catch { /* non-critical */ }
+    console.log(`[Webhook] history chunk line=${linePhoneNumberId} phase=${String(meta.phase)} order=${String(meta.chunk_order)} progress=${String(meta.progress)}: +${inserted}/${seen} msgs, ${skippedThreads} non-1:1 threads skipped`)
+  } catch (err) {
+    console.error('[Webhook] history sync error (non-critical):', err)
+  }
+}
+
+// The app's saved contact names. Fill blanks only — never overwrite a name the
+// lead sync or an agent already set in the Hub.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleStateSync(value: any) {
+  try {
+    const entries = value.state_sync || []
+    for (const entry of entries) {
+      try {
+        if (entry.type !== 'contact') continue
+        const action = String(entry.action || 'add').toLowerCase()
+        if (action === 'remove' || action === 'delete') continue
+        const phone = String(entry.contact?.phone_number || '')
+        const name = String(entry.contact?.full_name || entry.contact?.first_name || '').trim()
+        if (!phone.replace(/\D/g, '') || !name) continue
+        const existing = await getContact(phone)
+        if (existing?.name) continue
+        await upsertContact(phone, { name })
+      } catch (entryErr) {
+        console.error('[Webhook] state_sync entry error (non-critical):', entryErr)
+      }
+    }
+  } catch (err) {
+    console.error('[Webhook] smb_app_state_sync error (non-critical):', err)
   }
 }
