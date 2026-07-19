@@ -18,6 +18,9 @@ const EDITABLE_FIELDS = new Set<string>([
   'lead_status', 'attempted_contact', 'first_call_date', 'wa_message_id',
   'lead_priority', 'assigned_to', 'next_followup', 'notes',
   'full_name', 'email', 'city', 'state', 'model_interest', 'phone',
+  // Fill-if-blank by the bot qualifier (webhook answers); uses the same value
+  // tokens the intake forms write ('within_30_days', '1-3_months', …).
+  'timeline',
 ])
 
 function s(v: unknown): string {

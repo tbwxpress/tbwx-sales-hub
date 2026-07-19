@@ -454,6 +454,18 @@ export async function POST(req: NextRequest) {
           } catch (botErr) {
             console.error('[Webhook] Advisor-bot error (non-critical):', botErr)
           }
+
+          // Level-2 qualifier: free-text ANSWERS to the bot's qualifying
+          // questions get AI-extracted into lead fields / signals / priority.
+          // Extraction only — never sends anything to the customer.
+          try {
+            if (msg.type === 'text') {
+              const { maybeQualifyReply } = await import('@/lib/qualifier')
+              await maybeQualifyReply(phone)
+            }
+          } catch (qualErr) {
+            console.error('[Webhook] Qualifier error (non-critical):', qualErr)
+          }
         }
 
         // Handle message status updates (delivered, read, etc.)
