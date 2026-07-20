@@ -16,6 +16,7 @@ import { GitBranch, FileSpreadsheet, ArrowRight, CopyX, MessageCircle } from 'lu
 interface User {
   id: string; name: string; email: string; role: string;
   can_assign: boolean; can_edit_leads: boolean; active: boolean; in_lead_pool: boolean; is_closer: boolean; is_telecaller: boolean; lead_pool_paused: boolean
+  receives_new_leads: boolean
 }
 
 type AgentType = 'closer' | 'telecaller' | 'none'
@@ -263,6 +264,18 @@ export default function AdminPage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, [field]: !currentValue }),
+    })
+    fetchUsers()
+  }
+
+  // Telecaller "Receiving" switch lives on a different field (receives_new_leads,
+  // the routing-pool gate in work.ts) and a different endpoint than the closer
+  // pause toggle above.
+  async function toggleReceivesNewLeads(userId: string, currentValue: boolean) {
+    await fetch(`/api/admin/agents/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ receives_new_leads: !currentValue }),
     })
     fetchUsers()
   }
@@ -587,6 +600,17 @@ export default function AdminPage() {
                         className={`w-10 h-5 rounded-full transition-colors relative ${!u.lead_pool_paused ? 'bg-success' : 'bg-border'}`}
                       >
                         <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${!u.lead_pool_paused ? 'left-5' : 'left-0.5'}`} />
+                      </button>
+                    </label>
+                  )}
+                  {u.is_telecaller && !u.in_lead_pool && (
+                    <label className="flex items-center gap-2 text-xs text-dim cursor-pointer" title="When ON, this Telecaller receives auto-routed leads (re-warm bounces and routed handoffs). OFF = keeps current leads, nothing new is auto-assigned.">
+                      <span>Receiving</span>
+                      <button
+                        onClick={() => toggleReceivesNewLeads(u.id, u.receives_new_leads)}
+                        className={`w-10 h-5 rounded-full transition-colors relative ${u.receives_new_leads ? 'bg-success' : 'bg-border'}`}
+                      >
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${u.receives_new_leads ? 'left-5' : 'left-0.5'}`} />
                       </button>
                     </label>
                   )}
