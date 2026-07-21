@@ -184,14 +184,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Whether the event actually goes to Meta is gated by meta_capi.enabled
     // setting in the admin panel.
     const isWonStatus = Boolean(targetStage?.isWon)
-    if (body.lead_status === 'HOT' || isWonStatus) {
+    if (body.lead_status === 'HOT' || body.lead_status === 'CALL_DONE_INTERESTED' || isWonStatus) {
       try {
         const leads = await getLeads()
         const lead = leads.find(l => l.row_number === rowNum)
         if (lead?.phone && lead.lead_status !== body.lead_status) {
           const [firstName, ...rest] = String(lead.full_name || '').trim().split(/\s+/)
           const lastName = rest.join(' ')
-          if (body.lead_status === 'HOT') {
+          if (body.lead_status === 'HOT' || body.lead_status === 'CALL_DONE_INTERESTED') {
             const { fireLeadHotEvent } = await import('@/lib/meta-capi')
             await fireLeadHotEvent({
               lead_row: rowNum,
