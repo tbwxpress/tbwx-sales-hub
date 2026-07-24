@@ -4,31 +4,13 @@ import { getDripLeads, getDripSequences, upsertDripState, insertMessage, upsertC
 import { getLeads } from '@/lib/sheets'
 import { DRIP_PAUSE_STATUSES, DRIP_DELAY_STATUSES, WHATSAPP } from '@/config/client'
 
-// Default sequences (used if no DB sequences configured)
-// Uses interactive button templates for auto-classification
-const DEFAULT_SEQUENCES: Record<string, { steps: { day: number; template: string; description: string }[] }> = {
-  HOT: {
-    steps: [
-      { day: 1, template: 'followup_value_hook', description: 'ROI & earnings hook with Yes/Not now buttons' },
-      { day: 3, template: 'followup_social_proof', description: 'Partner success story with Yes/Later/Not interested buttons' },
-      { day: 7, template: 'followup_last_chance', description: 'Final check-in with Interested/Stop buttons' },
-    ],
-  },
-  WARM: {
-    steps: [
-      { day: 3, template: 'followup_value_hook', description: 'ROI & earnings hook with Yes/Not now buttons' },
-      { day: 7, template: 'followup_social_proof', description: 'Partner success story with Yes/Later/Not interested buttons' },
-      { day: 14, template: 'followup_last_chance', description: 'Final check-in with Interested/Stop buttons' },
-    ],
-  },
-  COLD: {
-    steps: [
-      { day: 7, template: 'followup_value_hook', description: 'ROI & earnings hook with Yes/Not now buttons' },
-      { day: 14, template: 'followup_social_proof', description: 'Partner success story with Yes/Later/Not interested buttons' },
-      { day: 21, template: 'followup_last_chance', description: 'Final check-in with Interested/Stop buttons' },
-    ],
-  },
-}
+// No hardcoded default sequences: the old defaults referenced templates that
+// were never created on the WABA (followup_value_hook / followup_social_proof /
+// followup_last_chance), so enabling drip would have silently failed every
+// send. Drip only runs sequences the admin has explicitly configured in
+// Settings → Drip (stored in the DB) — no sequence for a band means that
+// band is skipped.
+const DEFAULT_SEQUENCES: Record<string, { steps: { day: number; template: string; description: string }[] }> = {}
 
 // Statuses eligible for drip (lead has been contacted but not yet engaged deeply)
 const DRIP_ELIGIBLE_STATUSES = ['DECK_SENT', 'CALL_DONE_INTERESTED']

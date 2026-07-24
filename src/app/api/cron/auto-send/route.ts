@@ -6,7 +6,7 @@ import { sendFranchiseEmail } from '@/lib/email'
 import { logSentMessage, updateLead, getLeads } from '@/lib/sheets'
 import { upsertContact, insertMessage, getMessages, getSetting, setSetting, logAssignment } from '@/lib/db'
 import { getUsers } from '@/lib/users'
-import { getOptInTemplateName } from '@/lib/template-settings'
+import { getOptInTemplateName, getMarketingFirstTemplateName } from '@/lib/template-settings'
 
 const VOICE_AGENT_URL = process.env.VOICE_AGENT_URL || 'https://voice.tbwxpress.com'
 
@@ -30,8 +30,6 @@ const VOICE_AGENT_URL = process.env.VOICE_AGENT_URL || 'https://voice.tbwxpress.
 // --- Auth ---
 const CRON_SECRET = process.env.CRON_SECRET
 if (!CRON_SECRET) console.warn('[auto-send] CRON_SECRET is not set — cron endpoint is unprotected!')
-const SALES_PHONE = '917973933630'
-const SALES_ALERT_TEMPLATE = 'sales_lead_alert_v2'
 // TEMPLATE_NAME (the opt-in template) is resolved from DB-backed settings inside POST/GET
 // so admin can change it from the Admin panel without redeploying.
 
@@ -247,8 +245,9 @@ export async function POST(request: NextRequest) {
       error?: string
     }> = []
 
-    // Resolve opt-in template name from DB settings (admin-configurable, no redeploy needed)
+    // Resolve template names from DB settings (admin-configurable, no redeploy needed)
     const TEMPLATE_NAME = await getOptInTemplateName()
+    const DECK_TEMPLATE = await getMarketingFirstTemplateName()
 
     // 1. Read leads. New-tab leads now come from the DB (source of truth), so a
     //    lead is guaranteed present before markContacted updates it. Old-tab
@@ -393,6 +392,23 @@ export async function POST(request: NextRequest) {
         // longer waste assignment slots.
         const assignedTo = pickAgentByCounter(agentData.activeAgents, assignCounter)
         if (assignedTo) assignCounter++
+        // Inbound-first leads (they texted the WABA line, webhook auto-replied
+        // with the deck) must NOT get the opt-in afterwards — it reads backwards.
+        // Failed deck sends don't count: those leads take the normal opt-in path.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const deckAlreadyOut = sentMsgs.some((m: any) =>
+          m.template_used === DECK_TEMPLATE && m.status !== 'failed'
+        )
+        if (deckAlreadyOut) {
+          try { await markContacted(lead, 'deck-already-sent', assignedTo) } catch {}
+          results.push({
+            phone: lead.phone_formatted,
+            name: lead.full_name,
+            status: 'skipped',
+            error: 'Deck already sent via inbound auto-reply',
+          })
+          continue
+        }
         // If our own opt-in already went out, mark/assign but don't re-send.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const alreadySent = sentMsgs.some((m: any) => m.template_used === TEMPLATE_NAME)
@@ -426,21 +442,6 @@ export async function POST(request: NextRequest) {
         }
 
         const waMessageId = waResult.message_id || ''
-
-        // Notify sales manager (continue on fail — don't block lead processing)
-        try {
-          await sendTemplate(
-            SALES_PHONE,
-            SALES_ALERT_TEMPLATE,
-            [
-              { type: 'text', text: lead.full_name },
-              { type: 'text', text: lead.phone_formatted },
-              { type: 'text', text: `${lead.city}${lead.state ? ', ' + lead.state : ''}` },
-            ]
-          )
-        } catch {
-          // Sales notification failure shouldn't stop lead processing
-        }
 
         // Update Google Sheet — mark as contacted + assigned in the correct tab
         await markContacted(lead, waMessageId, assignedTo)
@@ -582,7 +583,6 @@ export async function GET() {
     name: 'auto-send',
     description: 'Automatically sends WhatsApp to new leads from Google Sheets',
     template: await getOptInTemplateName(),
-    sales_phone: SALES_PHONE,
     max_per_run: MAX_PER_RUN,
     schedule: 'Every 2 minutes (Vercel Cron)',
   })

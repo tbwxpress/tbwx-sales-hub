@@ -161,7 +161,10 @@ export const TERMINAL_STATUSES = ['CONVERTED', 'LOST', 'ARCHIVED'] as const
 // Human-readable labels for each status
 export const STATUS_LABELS: Record<string, string> = {
   NEW: 'New',
-  DECK_SENT: 'Deck Sent',
+  // "Auto-Messaged", not "Deck Sent": auto-send only fires the opt-in; the
+  // actual deck goes out when the lead replies (or texts in first). Calling
+  // this stage "Deck Sent" overstated progress on the board.
+  DECK_SENT: 'Auto-Messaged',
   REPLIED: 'Replied',
   NO_RESPONSE: 'No Response',
   CALL_DONE_INTERESTED: 'Call Done - Interested',

@@ -412,11 +412,13 @@ export async function POST(req: NextRequest) {
               // Resolve marketing template from DB settings (admin-configurable)
               const MARKETING_FIRST_TEMPLATE = await getMarketingFirstTemplateName()
 
-              // Check we haven't already sent the deck to this number
+              // Check we haven't already sent the deck to this number.
+              // Failed sends don't count — if the first deck attempt failed,
+              // the lead's next message triggers a retry so they still get it.
               const allMsgs = await getMessages(phone, 200, 0)
               const alreadySentDeck = (allMsgs || []).some(
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (m: any) => m.direction === 'sent' && m.template_used === MARKETING_FIRST_TEMPLATE
+                (m: any) => m.direction === 'sent' && m.template_used === MARKETING_FIRST_TEMPLATE && m.status !== 'failed'
               )
 
               if (!alreadySentDeck) {
@@ -460,6 +462,31 @@ export async function POST(req: NextRequest) {
                   })
 
                   console.log(`[Webhook] Auto-sent franchise deck to ${phone}`)
+
+                  // Stamp the pipeline truthfully: DECK_SENT now means the deck
+                  // actually went out. Only bump a fresh lead — never regress a
+                  // stage a human (or auto-send) already moved forward.
+                  try {
+                    const stampContact = await getContact(phone)
+                    if (stampContact?.lead_row) {
+                      const prevLead = await getLeadByRow(Number(stampContact.lead_row))
+                      const cur = String(prevLead?.lead_status || '').toUpperCase()
+                      if (!cur || cur === 'NEW') {
+                        const { updateLead } = await import('@/lib/sheets')
+                        await updateLead(Number(stampContact.lead_row), { lead_status: 'DECK_SENT' })
+                        const { insertStatusChange } = await import('@/lib/db')
+                        await insertStatusChange({
+                          lead_row: Number(stampContact.lead_row),
+                          phone,
+                          old_status: prevLead?.lead_status || 'NEW',
+                          new_status: 'DECK_SENT',
+                          changed_by: 'auto-deck',
+                          changed_by_id: '',
+                          source: 'webhook',
+                        })
+                      }
+                    }
+                  } catch { /* status stamp non-critical */ }
                 }
               }
             }
