@@ -60,6 +60,8 @@ export interface PanelLead {
   next_followup: string
   notes?: string
   model_interest?: string
+  form_name?: string
+  form_answers?: string
   telecaller_name?: string
   lead_score?: number
   last_discussion?: {
@@ -379,6 +381,34 @@ export default function LeadSidePanel({
                     {lead.model_interest || <span className="text-dim">—</span>}
                   </span>
                 </FieldRow>
+
+                {/* Verbatim answers from THIS lead's form — each form version
+                    shows its own questions, labeled (multi-form support). */}
+                {(() => {
+                  let answers: Record<string, string> | null = null
+                  try {
+                    answers = lead.form_answers ? JSON.parse(lead.form_answers) : null
+                  } catch { /* malformed JSON — hide the block */ }
+                  if (!answers || Object.keys(answers).length === 0) return null
+                  return (
+                    <div className="py-3">
+                      <div className="flex items-center gap-2 text-dim mb-2">
+                        <Tag className="w-3.5 h-3.5" />
+                        <span className="text-eyebrow uppercase tracking-wider">
+                          Form answers{lead.form_name ? ` · ${lead.form_name}` : ''}
+                        </span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {Object.entries(answers).map(([question, answer]) => (
+                          <div key={question} className="text-sm">
+                            <span className="text-dim">{question}: </span>
+                            <span className="text-body">{answer}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 <FieldRow icon={<Clock className="w-3.5 h-3.5" />} label="Created">
                   <span className="text-body">{timeAgo(lead.created_time)}</span>

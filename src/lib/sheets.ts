@@ -3,8 +3,12 @@ import type { Lead, LeadStatus, QuickReply, Message, KnowledgeBaseEntry } from '
 import { LEAD_COLUMN_MAP, LEAD_WRITE_COLUMNS, SHEETS } from '@/config/client'
 import {
   dbGetLeads, dbGetLeadByRow, dbInsertLead, dbInsertLeadsIfAbsent,
-  dbUpdateLeadFields, dbDeleteLead, dbCountLeads, dbGetMaxRow,
+  dbUpdateLeadFields, dbDeleteLead, dbGetMaxRowInBand,
 } from './leads-db'
+import {
+  type FormSource, BAND_SIZE, getActiveFormSources, resolveSourceForRow,
+  sheetRowFor, pkFor, colMapFor, writeColsFor, buildFormAnswers, defaultFormSource,
+} from './form-sources'
 
 // --- Auth setup ---
 function getAuth() {
@@ -51,9 +55,11 @@ const T = SHEETS.tabs
 // the sheet. The raw sheet readers/writers below are used by the sync + mirror;
 // the public getLeads/getLeadByRow/updateLead/createLead read & write the DB.
 
-// Shared row → Lead mapper for raw sheet reads.
-function mapSheetRowToLead(row: string[], rowNumber: number): Lead {
-  const C = LEAD_COLUMN_MAP
+// Shared row → Lead mapper for raw sheet reads. `rowNumber` is the LEAD KEY
+// (source band offset + sheet row); pass the source so per-tab column maps
+// and question capture apply. Omitting the source = built-in map (manual rows).
+function mapSheetRowToLead(row: string[], rowNumber: number, source?: FormSource): Lead {
+  const C = source ? colMapFor(source) : LEAD_COLUMN_MAP
   return {
     row_number: rowNumber,
     id: row[C.id] || '',
@@ -76,49 +82,60 @@ function mapSheetRowToLead(row: string[], rowNumber: number): Lead {
     assigned_to: row[C.assigned_to] || '',
     next_followup: row[C.next_followup] || '',
     notes: row[C.notes] || '',
+    // Multi-form fields. Meta's payload carries form id/name at fixed
+    // positions (cols 8/9) unless the source's map overrides them.
+    form_id: (row[C.form_id ?? 8] || '').replace('f:', ''),
+    form_name: row[C.form_name ?? 9] || '',
+    form_answers: source ? buildFormAnswers(row, source) : '',
   }
 }
 
-// Raw: read EVERY lead row from the sheet (the slow full-range read). Used for
-// the one-time seed and the safety fallback.
-async function readAllLeadsFromSheet(): Promise<Lead[]> {
+// Raw: read EVERY lead row from one source's tab (the slow full-range read).
+// Used for the per-source seed and the safety fallback.
+async function readAllLeadsFromSheet(source: FormSource): Promise<Lead[]> {
   const sheets = getSheets()
-  const tab = process.env.LEADS_TAB_NAME || T.leads
   const res = await withRetry(() => sheets.spreadsheets.values.get({
     spreadsheetId: process.env.LEADS_SHEET_ID,
-    range: `${tab}!A2:${SHEETS.ranges.leadsEnd}`,
+    range: `${source.tab_name}!A2:${source.range_end}`,
   }))
   const rows = res.data.values || []
-  return rows.map((row, i) => mapSheetRowToLead(row, i + 2))
+  return rows.map((row, i) => mapSheetRowToLead(row, pkFor(source, i + 2), source))
 }
 
-// Raw: read only the sheet rows from `startRow` downward (cheap — used by the
-// incremental sync to pull newly-appended leads). Skips fully-blank rows.
-async function readLeadsFromSheetStartingAt(startRow: number): Promise<Lead[]> {
-  if (startRow < 2) startRow = 2
+// Raw: read only a source's sheet rows from `startSheetRow` downward (cheap —
+// used by the incremental sync to pull newly-appended leads). Skips blanks.
+async function readLeadsFromSheetStartingAt(source: FormSource, startSheetRow: number): Promise<Lead[]> {
+  if (startSheetRow < 2) startSheetRow = 2
   const sheets = getSheets()
-  const tab = process.env.LEADS_TAB_NAME || T.leads
   const res = await withRetry(() => sheets.spreadsheets.values.get({
     spreadsheetId: process.env.LEADS_SHEET_ID,
-    range: `${tab}!A${startRow}:${SHEETS.ranges.leadsEnd}`,
+    range: `${source.tab_name}!A${startSheetRow}:${source.range_end}`,
   }))
   const rows = res.data.values || []
   return rows
-    .map((row, i) => mapSheetRowToLead(row, startRow + i))
+    .map((row, i) => mapSheetRowToLead(row, pkFor(source, startSheetRow + i), source))
     .filter(l => l.id || l.phone || l.full_name)
 }
 
-// Raw: read a single lead row from the sheet (fallback for getLeadByRow).
-async function readLeadRowFromSheet(rowNumber: number): Promise<Lead | null> {
+// Raw: read a single lead row from a source's tab. `sheetRow` is the ACTUAL
+// row in that tab (not the lead key).
+async function readLeadRowFromSheet(source: FormSource, sheetRow: number): Promise<Lead | null> {
   const sheets = getSheets()
-  const tab = process.env.LEADS_TAB_NAME || T.leads
   const res = await withRetry(() => sheets.spreadsheets.values.get({
     spreadsheetId: process.env.LEADS_SHEET_ID,
-    range: `${tab}!A${rowNumber}:${SHEETS.ranges.leadsEnd}${rowNumber}`,
+    range: `${source.tab_name}!A${sheetRow}:${source.range_end}${sheetRow}`,
   }))
   const rows = res.data.values || []
   if (rows.length === 0) return null
-  return mapSheetRowToLead(rows[0], rowNumber)
+  return mapSheetRowToLead(rows[0], pkFor(source, sheetRow), source)
+}
+
+// Fallback single-row read by LEAD KEY: resolves which source's tab owns the
+// key band, then reads the actual sheet row.
+async function readLeadRowByPk(rowNumber: number): Promise<Lead | null> {
+  const sources = await getActiveFormSources()
+  const source = resolveSourceForRow(sources, rowNumber) ?? defaultFormSource()
+  return readLeadRowFromSheet(source, sheetRowFor(source, rowNumber))
 }
 
 // --- Module-level in-memory caches for Sheets reads ---
@@ -209,10 +226,16 @@ let _lastLeadsSyncTs = 0
 let _seedPromise: Promise<void> | null = null
 
 async function doSeedLeads(): Promise<void> {
-  const count = await dbCountLeads()
-  if (count === 0) {
-    const all = await readAllLeadsFromSheet()
-    if (all.length) await dbInsertLeadsIfAbsent(all)
+  // Per-source: any active source whose key band is empty gets a full-tab
+  // seed. Fresh installs seed the primary tab; a newly registered form tab
+  // seeds itself on the next read (also covered by syncNewLeads below).
+  const sources = await getActiveFormSources()
+  for (const source of sources) {
+    const bandMax = await dbGetMaxRowInBand(source.row_offset, BAND_SIZE)
+    if (bandMax === 0) {
+      const all = await readAllLeadsFromSheet(source)
+      if (all.length) await dbInsertLeadsIfAbsent(all)
+    }
   }
   _lastLeadsSyncTs = Date.now()
 }
@@ -228,11 +251,22 @@ function ensureLeadsSeeded(): Promise<void> {
   return _seedPromise
 }
 
-// Pull only newly-appended sheet rows into the DB.
+// Pull newly-appended sheet rows into the DB, per active source. A broken
+// tab (renamed, permissions) can never block the other sources' sync.
 async function syncNewLeads(): Promise<number> {
-  const maxRow = await dbGetMaxRow()
-  const newRows = await readLeadsFromSheetStartingAt(maxRow + 1)
-  const inserted = newRows.length ? await dbInsertLeadsIfAbsent(newRows) : 0
+  const sources = await getActiveFormSources()
+  let inserted = 0
+  for (const source of sources) {
+    try {
+      const bandMax = await dbGetMaxRowInBand(source.row_offset, BAND_SIZE)
+      const newRows = bandMax === 0
+        ? await readAllLeadsFromSheet(source) // fresh source — first full pull
+        : await readLeadsFromSheetStartingAt(source, sheetRowFor(source, bandMax) + 1)
+      if (newRows.length) inserted += await dbInsertLeadsIfAbsent(newRows)
+    } catch (err) {
+      console.error(`[leads-sync] source "${source.tab_name}" sync failed:`, err)
+    }
+  }
   _lastLeadsSyncTs = Date.now()
   return inserted
 }
@@ -250,19 +284,24 @@ function maybeSyncNewLeads(): void {
 // Mirror lead-field changes back to the sheet (backup). Async + retried; the DB
 // stays the source of truth, so a mirror failure never fails the agent's edit.
 function mirrorLeadFieldsToSheet(rowNumber: number, fields: Array<[string, string]>): void {
-  const tab = process.env.LEADS_TAB_NAME || T.leads
-  const data = fields
-    .filter(([field]) => LEAD_WRITE_COLUMNS[field])
-    .map(([field, value]) => ({
-      range: `${tab}!${LEAD_WRITE_COLUMNS[field]}${rowNumber}`,
-      values: [[value]],
+  ;(async () => {
+    const sources = await getActiveFormSources()
+    const source = resolveSourceForRow(sources, rowNumber) ?? defaultFormSource()
+    const writeCols = writeColsFor(source)
+    const sheetRow = sheetRowFor(source, rowNumber)
+    const data = fields
+      .filter(([field]) => writeCols[field])
+      .map(([field, value]) => ({
+        range: `${source.tab_name}!${writeCols[field]}${sheetRow}`,
+        values: [[value]],
+      }))
+    if (data.length === 0) return
+    const sheets = getSheets()
+    await withRetry(() => sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: process.env.LEADS_SHEET_ID!,
+      requestBody: { valueInputOption: 'RAW', data },
     }))
-  if (data.length === 0) return
-  const sheets = getSheets()
-  withRetry(() => sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId: process.env.LEADS_SHEET_ID!,
-    requestBody: { valueInputOption: 'RAW', data },
-  })).catch(err => console.error(`[leads-mirror] row ${rowNumber} mirror failed:`, err))
+  })().catch(err => console.error(`[leads-mirror] row ${rowNumber} mirror failed:`, err))
 }
 
 export function invalidateSentMessagesCache() {
@@ -289,11 +328,26 @@ export async function getLeads(): Promise<Lead[]> {
     if (leads.length > 0) return leads
     // DB empty even after a seed attempt → fall back to a direct sheet read so
     // the app can never show an empty leads list.
-    return await readAllLeadsFromSheet()
+    return await readAllLeadsFromAllSources()
   } catch (err) {
     console.error('[getLeads] DB path failed; falling back to sheet read:', err)
-    return await readAllLeadsFromSheet()
+    return await readAllLeadsFromAllSources()
   }
+}
+
+// Emergency fallback: concat every active source's tab. One broken tab never
+// hides the others' leads.
+async function readAllLeadsFromAllSources(): Promise<Lead[]> {
+  const sources = await getActiveFormSources()
+  const all: Lead[] = []
+  for (const source of sources) {
+    try {
+      all.push(...await readAllLeadsFromSheet(source))
+    } catch (err) {
+      console.error(`[getLeads] fallback read failed for "${source.tab_name}":`, err)
+    }
+  }
+  return all
 }
 
 export async function getLeadByRow(rowNumber: number): Promise<Lead | null> {
@@ -303,8 +357,8 @@ export async function getLeadByRow(rowNumber: number): Promise<Lead | null> {
   } catch (err) {
     console.error(`[getLeadByRow] DB read failed for row ${rowNumber}; falling back to sheet:`, err)
   }
-  // Not in the DB (yet) or DB error → read the single row from the sheet.
-  return await readLeadRowFromSheet(rowNumber)
+  // Not in the DB (yet) or DB error → read the single row from its tab.
+  return await readLeadRowByPk(rowNumber)
 }
 
 // Reverse of LEAD_WRITE_COLUMNS: column letter → Lead field name. Lets the
@@ -319,7 +373,7 @@ const WRITE_COLUMN_TO_FIELD: Record<string, string> = Object.fromEntries(
 async function writeLeadFieldsToDb(rowNumber: number, fields: Partial<Record<string, string>>): Promise<void> {
   const affected = await dbUpdateLeadFields(rowNumber, fields)
   if (affected > 0) return
-  const base = await readLeadRowFromSheet(rowNumber)
+  const base = await readLeadRowByPk(rowNumber)
   if (base) {
     await dbInsertLead({ ...base, ...(fields as Partial<Lead>) })
   } else {
@@ -359,13 +413,20 @@ export async function bulkUpdateField(rowNumbers: number[], field: string, value
   for (const rowNum of rowNumbers) {
     await writeLeadFieldsToDb(rowNum, { [field]: value })
   }
-  // Mirror to the sheet in a single batchUpdate (one call for all rows).
-  const tab = process.env.LEADS_TAB_NAME || T.leads
-  const col = LEAD_WRITE_COLUMNS[field]
-  const data = rowNumbers.map(rowNum => ({
-    range: `${tab}!${col}${rowNum}`,
-    values: [[value]],
-  }))
+  // Mirror to the sheet in a single batchUpdate (one call for all rows),
+  // routing each lead key to its owning source tab.
+  const sources = await getActiveFormSources()
+  const fallback = defaultFormSource()
+  const data = rowNumbers.flatMap(rowNum => {
+    const source = resolveSourceForRow(sources, rowNum) ?? fallback
+    const col = writeColsFor(source)[field]
+    if (!col) return []
+    return [{
+      range: `${source.tab_name}!${col}${sheetRowFor(source, rowNum)}`,
+      values: [[value]],
+    }]
+  })
+  if (data.length === 0) return
   const sheets = getSheets()
   withRetry(() => sheets.spreadsheets.values.batchUpdate({
     spreadsheetId: process.env.LEADS_SHEET_ID!,
@@ -379,13 +440,14 @@ export async function bulkUpdateField(rowNumbers: number[], field: string, value
 export async function clearLeadRow(rowNumber: number): Promise<void> {
   // Remove from the DB (source of truth) first.
   await dbDeleteLead(rowNumber)
-  // Then clear the sheet row (backup).
+  // Then clear the sheet row (backup) in the owning source's tab.
+  const sources = await getActiveFormSources()
+  const source = resolveSourceForRow(sources, rowNumber) ?? defaultFormSource()
+  const sheetRow = sheetRowFor(source, rowNumber)
   const sheets = getSheets()
-  const tab = process.env.LEADS_TAB_NAME || T.leads
-  // Clear columns A through Z for the row
   await sheets.spreadsheets.values.clear({
     spreadsheetId: process.env.LEADS_SHEET_ID!,
-    range: `${tab}!A${rowNumber}:Z${rowNumber}`,
+    range: `${source.tab_name}!A${sheetRow}:Z${sheetRow}`,
   })
 }
 
@@ -404,7 +466,11 @@ export async function createLead(data: {
   source?: string
 }): Promise<number> {
   const sheets = getSheets()
-  const tab = process.env.LEADS_TAB_NAME || T.leads
+  // Manual leads always land on the PRIMARY source (offset-0 band) so their
+  // sheet row number IS their lead key — exactly the pre-registry behavior.
+  const allSources = await getActiveFormSources()
+  const primary = allSources.find(s => s.row_offset === 0) ?? defaultFormSource()
+  const tab = primary.tab_name
   const C = LEAD_COLUMN_MAP
 
   // Build a row array matching the sheet column layout
@@ -431,7 +497,7 @@ export async function createLead(data: {
   // reuse as the DB primary key (keeps DB rows aligned with sheet rows).
   const appendRes = await sheets.spreadsheets.values.append({
     spreadsheetId: process.env.LEADS_SHEET_ID,
-    range: `${tab}!A:${SHEETS.ranges.leadsEnd}`,
+    range: `${tab}!A:${primary.range_end}`,
     valueInputOption: 'RAW',
     requestBody: { values: [row] },
   })
@@ -443,7 +509,7 @@ export async function createLead(data: {
 
   // Insert into the DB (source of truth) so it shows up immediately.
   if (newRow) {
-    await dbInsertLead(mapSheetRowToLead(row, newRow))
+    await dbInsertLead(mapSheetRowToLead(row, newRow, primary))
   } else {
     // Couldn't resolve the appended row number — the lead is in the sheet and
     // the background sync will pull it into the DB shortly.

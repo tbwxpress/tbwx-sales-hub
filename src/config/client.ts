@@ -99,6 +99,8 @@ export const LEAD_COLUMN_MAP: Record<string, number> = {
   id: 0,
   created_time: 1,
   campaign_name: 7,
+  form_id: 8,       // Meta payload: 'f:' prefix auto-stripped
+  form_name: 9,
   platform: 11,
   model_interest: 12,
   experience: 13,

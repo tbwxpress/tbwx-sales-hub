@@ -9,6 +9,7 @@ const LEAD_FIELDS = [
   'email', 'city', 'state', 'model_interest', 'experience', 'timeline',
   'platform', 'lead_status', 'attempted_contact', 'first_call_date',
   'wa_message_id', 'lead_priority', 'assigned_to', 'next_followup', 'notes',
+  'form_id', 'form_name', 'form_answers',
 ] as const
 
 // Fields an agent action is allowed to change in the DB. Excludes row_number
@@ -50,6 +51,9 @@ function rowToLead(r: Record<string, unknown>): Lead {
     assigned_to: s(r.assigned_to),
     next_followup: s(r.next_followup),
     notes: s(r.notes),
+    form_id: s(r.form_id),
+    form_name: s(r.form_name),
+    form_answers: s(r.form_answers),
   }
 }
 
@@ -69,6 +73,17 @@ export async function dbCountLeads(): Promise<number> {
 export async function dbGetMaxRow(): Promise<number> {
   const db = await ensureInit()
   const res = await db.execute('SELECT MAX(row_number) AS m FROM leads')
+  return Number(res.rows[0]?.m ?? 0)
+}
+
+// Highest lead key inside one form-source band (see lib/form-sources.ts).
+// 0 = the band has no leads yet (fresh source → needs a full-tab seed).
+export async function dbGetMaxRowInBand(offset: number, bandSize: number): Promise<number> {
+  const db = await ensureInit()
+  const res = await db.execute({
+    sql: 'SELECT MAX(row_number) AS m FROM leads WHERE row_number >= ? AND row_number < ?',
+    args: [offset, offset + bandSize],
+  })
   return Number(res.rows[0]?.m ?? 0)
 }
 

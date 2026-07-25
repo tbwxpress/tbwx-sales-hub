@@ -63,6 +63,11 @@ export interface Lead {
   next_followup: string
   notes: string
   lead_score?: number
+  /** Meta form that produced this lead ('' for manual/website leads). */
+  form_id?: string
+  form_name?: string
+  /** Verbatim question→answer JSON captured from the lead's form. */
+  form_answers?: string
 }
 
 export interface Message {

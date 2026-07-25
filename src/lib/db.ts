@@ -620,6 +620,32 @@ export async function ensureInit(): Promise<Client> {
     // Duplicate-merge: target row_number a source lead was merged into (NULL = not merged).
     try { await db.execute('ALTER TABLE leads ADD COLUMN merged_into INTEGER') } catch { /* column may already exist */ }
 
+    // Multi-form support: which form produced this lead + the verbatim
+    // question/answer set that form collected (JSON, rendered per-lead in UI).
+    try { await db.execute("ALTER TABLE leads ADD COLUMN form_id TEXT DEFAULT ''") } catch { /* column may already exist */ }
+    try { await db.execute("ALTER TABLE leads ADD COLUMN form_name TEXT DEFAULT ''") } catch { /* column may already exist */ }
+    try { await db.execute("ALTER TABLE leads ADD COLUMN form_answers TEXT DEFAULT ''") } catch { /* column may already exist */ }
+
+    // Form-source registry: one row per form tab in the leads spreadsheet.
+    // row_offset gives each tab a disjoint 100k lead-key band (see
+    // lib/form-sources.ts). Empty registry = pre-registry behavior.
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS form_sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tab_name TEXT NOT NULL,
+        sheet_gid INTEGER DEFAULT 0,
+        form_id TEXT DEFAULT '',
+        form_name TEXT DEFAULT '',
+        row_offset INTEGER NOT NULL UNIQUE,
+        range_end TEXT DEFAULT 'AC',
+        col_map TEXT DEFAULT '',
+        write_cols TEXT DEFAULT '',
+        questions TEXT DEFAULT '',
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `)
+
     // Guided Work Mode (additive). work_mode DEFAULT 'free' is critical — nobody
     // is on the rail until the owner opts them in, so Free mode is unchanged.
     try { await db.execute("ALTER TABLE users ADD COLUMN work_mode TEXT DEFAULT 'free'") } catch { /* column may already exist */ }
