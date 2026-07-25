@@ -553,8 +553,16 @@ export async function POST(request: NextRequest) {
     // Best-effort — if this write fails, next run will re-read the prior value (no double-skip).
     try { await setSetting(COUNTER_KEY, String(assignCounter)) } catch { /* non-critical */ }
 
+    // Opportunistic CAPI retry — re-send recent failed Meta events (non-critical).
+    let capiRetry: { retried: number; sent: number } | null = null
+    try {
+      const { retryFailedCapiEvents } = await import('@/lib/meta-capi')
+      capiRetry = await retryFailedCapiEvents()
+    } catch { /* non-critical */ }
+
     return NextResponse.json({
       success: true,
+      capi_retry: capiRetry,
       stats: {
         new_tab: newLeads.length,
         old_tab: oldLeads.length,

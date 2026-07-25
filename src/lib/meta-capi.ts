@@ -667,3 +667,58 @@ export async function getCapiStats(): Promise<{ sent_24h: number; failed_24h: nu
     total: Number(tot.rows[0]?.n || 0),
   }
 }
+
+/**
+ * Retry sweep for failed CAPI events (transient network errors, deploy
+ * restarts). Called opportunistically from the auto-send cron. Rules:
+ *   - only failed rows from the last 3 days, at least 30 min old
+ *   - skip if a sent/test row already exists for the same lead+event
+ *   - give up once 4 total rows exist for the same lead+event
+ * Rebuilds the payload from the live lead record and re-fires the proper
+ * helper, which logs its own new row — every retry stays auditable.
+ */
+export async function retryFailedCapiEvents(limit = 5): Promise<{ retried: number; sent: number }> {
+  const db = getClient()
+  const r = await db.execute({
+    sql: `SELECT f.lead_row, f.event_name, MAX(f.value) AS value
+          FROM meta_capi_events f
+          WHERE f.status = 'failed'
+            AND f.lead_row IS NOT NULL
+            AND f.created_at >= datetime('now', '-3 days')
+            AND f.created_at <= datetime('now', '-30 minutes')
+            AND NOT EXISTS (SELECT 1 FROM meta_capi_events s
+                            WHERE s.lead_row = f.lead_row AND s.event_name = f.event_name
+                              AND s.status IN ('sent', 'test'))
+          GROUP BY f.lead_row, f.event_name
+          HAVING COUNT(*) < 4
+          LIMIT ?`,
+    args: [limit],
+  })
+  let sent = 0
+  for (const row of r.rows) {
+    const eventName = String(row.event_name)
+    if (eventName !== 'Lead' && eventName !== 'Purchase') continue
+    try {
+      const { getLeadByRow } = await import('./sheets')
+      const lead = await getLeadByRow(Number(row.lead_row))
+      if (!lead?.phone) continue
+      const [firstName, ...rest] = String(lead.full_name || '').trim().split(/\s+/)
+      const opts = {
+        lead_row: Number(row.lead_row),
+        phone: lead.phone,
+        email: lead.email,
+        first_name: firstName,
+        last_name: rest.join(' '),
+        city: lead.city,
+        lead_id: lead.id,
+      }
+      const res = eventName === 'Purchase'
+        ? await fireConvertedEvent(Number(row.value) > 0 ? { ...opts, override_value: Number(row.value) } : opts)
+        : await fireLeadHotEvent(opts)
+      if (res.success) sent++
+    } catch (err) {
+      console.error('[CAPI] retry failed for lead', row.lead_row, err)
+    }
+  }
+  return { retried: r.rows.length, sent }
+}

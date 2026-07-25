@@ -28,10 +28,14 @@ async function agentForLine(phoneNumberId: string): Promise<string> {
 
 // Button response classification for follow-up templates
 const POSITIVE_BUTTONS = [
-  'yes, tell me more', "yes, let's talk", "i'm interested",
+  "yes, let's talk", "i'm interested",
   // franchise_reactivation_d0/d5/d7
   'yes, lock my price', 'call me back',
 ]
+// Curiosity/consent taps — engagement, NOT buying intent. Audit 2026-07-25:
+// of 406 button-HOTs only 1.7% ever progressed and agents manually
+// downgraded 36%, so "yes, tell me more" marks REPLIED instead of HOT.
+const ENGAGED_BUTTONS = ['yes, tell me more', 'yes, keep me updated']
 const DELAY_BUTTONS = ['not right now', 'maybe later']
 const OPTOUT_BUTTONS = [
   'not interested', 'stop messages',
@@ -214,7 +218,7 @@ export async function POST(req: NextRequest) {
 
             // Template buttons only exist on main-line sends; never fire the
             // classifier off a coexistence-line chat.
-            if (isMainLine && buttonText && (POSITIVE_BUTTONS.includes(buttonText) || DELAY_BUTTONS.includes(buttonText) || OPTOUT_BUTTONS.includes(buttonText))) {
+            if (isMainLine && buttonText && (POSITIVE_BUTTONS.includes(buttonText) || ENGAGED_BUTTONS.includes(buttonText) || DELAY_BUTTONS.includes(buttonText) || OPTOUT_BUTTONS.includes(buttonText))) {
               const { updateLead } = await import('@/lib/sheets')
               const contact = await getContact(phone)
 
@@ -237,6 +241,23 @@ export async function POST(req: NextRequest) {
                       old_status: prev.lead_status || '', new_status: 'HOT',
                       changed_by: 'System (Webhook)', source: 'webhook',
                     })
+                    // Feed Meta's conversion-leads optimization: an explicit
+                    // intent tap is a genuine qualified-lead signal.
+                    try {
+                      const [firstName, ...rest] = String(prev.full_name || '').trim().split(/\s+/)
+                      const { fireLeadHotEvent } = await import('@/lib/meta-capi')
+                      await fireLeadHotEvent({
+                        lead_row: Number(contact.lead_row),
+                        phone,
+                        email: prev.email,
+                        first_name: firstName,
+                        last_name: rest.join(' '),
+                        city: prev.city,
+                        lead_id: prev.id,
+                      })
+                    } catch (capiErr) {
+                      console.error('[Webhook] CAPI Lead event failed (non-critical):', capiErr)
+                    }
                   }
                 }
                 await upsertDripState(phone, {
@@ -250,6 +271,29 @@ export async function POST(req: NextRequest) {
                   { type: 'text', text: `HOT LEAD ALERT: ${leadName} (${phone}) tapped "${buttonText}" — follow up NOW` },
                 ])
                 console.log(`[Webhook] Auto-classified ${phone} as HOT — button: "${buttonText}"`)
+
+              } else if (ENGAGED_BUTTONS.includes(buttonText)) {
+                // Engagement tap — surface as REPLIED so a human follows up.
+                // Upgrade-only: never pull an active pipeline stage backwards;
+                // LOST/DELAYED leads re-opting in resurface as REPLIED.
+                const RESURFACE_FROM = ['', 'NEW', 'DECK_SENT', 'NO_RESPONSE', 'LOST', 'DELAYED']
+                if (contact?.lead_row) {
+                  const prev = await getLeadByRow(Number(contact.lead_row))
+                  const cur = String(prev?.lead_status || '').toUpperCase()
+                  if (RESURFACE_FROM.includes(cur)) {
+                    await updateLead(Number(contact.lead_row), {
+                      lead_status: 'REPLIED',
+                      next_followup: new Date().toISOString().split('T')[0],
+                      notes: `[Auto] Lead tapped "${buttonText}" — engaged, awaiting human follow-up`,
+                    })
+                    await insertStatusChange({
+                      lead_row: Number(contact.lead_row), phone,
+                      old_status: prev?.lead_status || '', new_status: 'REPLIED',
+                      changed_by: 'System (Webhook)', source: 'webhook',
+                    })
+                  }
+                }
+                console.log(`[Webhook] Button "${buttonText}" — marked REPLIED (engaged) for ${phone}`)
 
               } else if (DELAY_BUTTONS.includes(buttonText)) {
                 // Lead wants to wait — mark DELAYED, follow up in 30 days
