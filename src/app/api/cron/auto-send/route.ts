@@ -318,10 +318,19 @@ export async function POST(request: NextRequest) {
     //    orders newest→oldest; blank/unknown sorts last (treated as oldest).
     const toProcess = [...unique].sort((a, b) => (b.created_time || '').localeCompare(a.created_time || ''))
 
+    // Opportunistic CAPI retry — re-send recent failed Meta events. Runs
+    // before the empty-queue exit so failures never wait on a new lead.
+    let capiRetry: { retried: number; sent: number } | null = null
+    try {
+      const { retryFailedCapiEvents } = await import('@/lib/meta-capi')
+      capiRetry = await retryFailedCapiEvents()
+    } catch { /* non-critical */ }
+
     if (toProcess.length === 0) {
       return NextResponse.json({
         success: true,
         message: 'No new leads to process',
+        capi_retry: capiRetry,
         stats: {
           new_tab: newLeads.length,
           old_tab: oldLeads.length,
@@ -552,13 +561,6 @@ export async function POST(request: NextRequest) {
     // Persist the alternation counter so the next cron run picks up where we left off.
     // Best-effort — if this write fails, next run will re-read the prior value (no double-skip).
     try { await setSetting(COUNTER_KEY, String(assignCounter)) } catch { /* non-critical */ }
-
-    // Opportunistic CAPI retry — re-send recent failed Meta events (non-critical).
-    let capiRetry: { retried: number; sent: number } | null = null
-    try {
-      const { retryFailedCapiEvents } = await import('@/lib/meta-capi')
-      capiRetry = await retryFailedCapiEvents()
-    } catch { /* non-critical */ }
 
     return NextResponse.json({
       success: true,
