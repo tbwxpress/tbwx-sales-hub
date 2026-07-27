@@ -433,6 +433,24 @@ export async function POST(req: NextRequest) {
             // Non-critical — don't break webhook if sheet update fails
           }
 
+          // Website WhatsApp-click visitors: a first franchise-intent text
+          // from a number with no pipeline lead becomes a real lead (not just
+          // a contact). Placed AFTER the replied-block (a brand-new lead must
+          // not be born REPLIED) and BEFORE the auto-deck block (which
+          // re-reads the contact, so the fresh lead gets its NEW→DECK_SENT
+          // stamp from this same message).
+          try {
+            if (isMainLine && msg.type === 'text') {
+              const existingContact = await getContact(phone)
+              if (!existingContact?.lead_row) {
+                const { maybeCreateWebsiteWaLead } = await import('@/lib/website-wa-lead')
+                await maybeCreateWebsiteWaLead({ phone, contactName, text })
+              }
+            }
+          } catch (waLeadErr) {
+            console.error('[Webhook] website-wa-lead error (non-critical):', waLeadErr)
+          }
+
           // Auto-send franchise deck on opt-in button tap or first reply
           try {
             const isOptInButton = msg.type === 'button' && (msg.button?.text || '').toLowerCase().includes('yes')

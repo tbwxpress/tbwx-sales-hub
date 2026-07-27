@@ -464,6 +464,10 @@ export async function createLead(data: {
   assigned_to?: string
   notes?: string
   source?: string
+  /** Stable external id (e.g. `wac:<p10>` for website WhatsApp-click leads). */
+  id?: string
+  /** Intake platform label; defaults to 'Manual'. */
+  platform?: string
 }): Promise<number> {
   const sheets = getSheets()
   // Manual leads always land on the PRIMARY source (offset-0 band) so their
@@ -477,11 +481,11 @@ export async function createLead(data: {
   const maxCol = Math.max(...Object.values(C)) + 1
   const row: string[] = new Array(maxCol).fill('')
 
-  const id = `manual_${Date.now()}`
+  const id = data.id || `manual_${Date.now()}`
   row[C.id] = id
   row[C.created_time] = new Date().toISOString()
   row[C.campaign_name] = data.source || 'Manual Entry'
-  row[C.platform] = 'Manual'
+  row[C.platform] = data.platform || 'Manual'
   row[C.full_name] = data.full_name
   row[C.phone] = data.phone
   row[C.email] = data.email || ''
