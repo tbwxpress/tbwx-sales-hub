@@ -128,6 +128,7 @@ function rowToUser(row: Record<string, unknown>): User {
     daily_target: row.daily_target == null ? 40 : Number(row.daily_target),
     // Default true (column DEFAULT 1) so a pre-migration NULL = "receives leads".
     receives_new_leads: row.receives_new_leads == null ? true : Number(row.receives_new_leads) === 1,
+    phone: row.phone == null ? '' : String(row.phone),
   }
 }
 
@@ -238,6 +239,7 @@ export async function updateUser(userId: string, fields: Partial<User>): Promise
   if (fields.agent_role !== undefined) { updates.push('agent_role = ?'); values.push(fields.agent_role) }
   if (fields.daily_target !== undefined) { updates.push('daily_target = ?'); values.push(fields.daily_target) }
   if (fields.receives_new_leads !== undefined) { updates.push('receives_new_leads = ?'); values.push(fields.receives_new_leads ? 1 : 0) }
+  if (fields.phone !== undefined) { updates.push('phone = ?'); values.push(fields.phone) }
 
   if (updates.length === 0) return
 

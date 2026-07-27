@@ -428,6 +428,14 @@ export async function POST(req: NextRequest) {
                   }
                 } catch { /* best effort */ }
               }
+
+              // Agent-intro auto-message (admin-gated, default OFF): the
+              // engaged lead meets their assigned human — name + direct
+              // calling number — while their 24h window is open.
+              try {
+                const { maybeSendAgentIntro } = await import('@/lib/agent-intro')
+                await maybeSendAgentIntro({ phone, leadRow: Number(contact.lead_row) })
+              } catch { /* non-critical */ }
             }
           } catch {
             // Non-critical — don't break webhook if sheet update fails

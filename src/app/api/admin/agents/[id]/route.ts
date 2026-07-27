@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const body = await req.json()
-    const updates: { work_mode?: WorkMode; guided_surface?: GuidedSurface; agent_role?: AgentRole; daily_target?: number; receives_new_leads?: boolean } = {}
+    const updates: { work_mode?: WorkMode; guided_surface?: GuidedSurface; agent_role?: AgentRole; daily_target?: number; receives_new_leads?: boolean; phone?: string } = {}
 
     if (body?.work_mode !== undefined) {
       if (body.work_mode !== 'guided' && body.work_mode !== 'free') {
@@ -58,6 +58,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return NextResponse.json({ success: false, error: 'receives_new_leads must be a boolean' }, { status: 400 })
       }
       updates.receives_new_leads = body.receives_new_leads
+    }
+    if (body?.phone !== undefined) {
+      const raw = String(body.phone).replace(/[^\d+]/g, '')
+      if (raw !== '' && !/^\+?\d{10,15}$/.test(raw)) {
+        return NextResponse.json({ success: false, error: 'phone must be 10-15 digits (or empty to clear)' }, { status: 400 })
+      }
+      updates.phone = raw
     }
 
     if (Object.keys(updates).length === 0) {

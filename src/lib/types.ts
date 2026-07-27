@@ -11,6 +11,8 @@ export interface User {
   email: string
   password_hash: string
   role: UserRole
+  /** Agent's direct calling number — shared with leads by the agent-intro auto-message. */
+  phone?: string
   can_assign: boolean
   can_edit_leads: boolean
   active: boolean

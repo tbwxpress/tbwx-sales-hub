@@ -649,6 +649,8 @@ export async function ensureInit(): Promise<Client> {
     // Guided Work Mode (additive). work_mode DEFAULT 'free' is critical — nobody
     // is on the rail until the owner opts them in, so Free mode is unchanged.
     try { await db.execute("ALTER TABLE users ADD COLUMN work_mode TEXT DEFAULT 'free'") } catch { /* column may already exist */ }
+    // Agent's direct calling number — shared with leads by the agent-intro auto-message.
+    try { await db.execute("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''") } catch { /* column may already exist */ }
     try { await db.execute('ALTER TABLE users ADD COLUMN agent_role TEXT') } catch { /* column may already exist */ }
     try { await db.execute('ALTER TABLE users ADD COLUMN daily_target INTEGER DEFAULT 40') } catch { /* column may already exist */ }
 
