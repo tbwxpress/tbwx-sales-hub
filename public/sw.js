@@ -13,13 +13,22 @@
  *   The push handler below is ready to receive them.
  */
 
-const CACHE_NAME = 'tbwx-saleshub-v1';
+// Bump SW_VERSION on every deploy that changes this file. The activate
+// handler purges every older cache, and the registration in layout.tsx
+// checks for a new worker on every tab focus with the HTTP cache bypassed —
+// together they make a stale worker impossible to keep for more than one
+// focus. (The old fixed 'v1' name pinned install-day HTML of /inbox forever;
+// on flaky networks agents were served months-old app code and "couldn't
+// see" received messages.)
+const SW_VERSION = '2026-07-28-1';
+const CACHE_NAME = 'tbwx-saleshub-' + SW_VERSION;
 
+// Only the entry shell + manifest are pre-cached, strictly as an OFFLINE
+// fallback. Deep pages (/inbox, /leads, /today) are never pre-cached and
+// never runtime-cached: a stale copy of a live workspace is worse than a
+// clean offline screen that recovers on reconnect.
 const APP_SHELL = [
   '/',
-  '/today',
-  '/inbox',
-  '/leads',
   '/manifest.webmanifest',
 ];
 
@@ -85,18 +94,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // HTML navigation — network-first, fallback to cache.
+  // HTML navigation — ALWAYS network. Never cache page HTML at runtime:
+  // cached HTML pins deploy-old chunk URLs and resurrects retired app code.
+  // The only fallback, and only when truly offline, is the shell page —
+  // which reloads itself into the live app the moment the network returns.
   if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
+      fetch(request).catch(() => caches.match('/'))
     );
     return;
   }

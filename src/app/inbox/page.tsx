@@ -42,7 +42,7 @@ import LostReasonDialog from '@/components/leads/LostReasonDialog'
 import WindowCountdown from '@/components/inbox/WindowCountdown'
 import NegativeReplyBanner from '@/components/inbox/NegativeReplyBanner'
 import { useNow, formatWaiting } from '@/components/inbox/useNow'
-import { Send, Paperclip, MessageSquare, ArrowLeft, Flame, ChevronDown, Clock } from 'lucide-react'
+import { Send, Paperclip, MessageSquare, ArrowLeft, Flame, ChevronDown, Clock, WifiOff } from 'lucide-react'
 // Note: no Mic/audio button exists in the current composer, so lucide Mic was not adopted.
 
 interface Contact {
@@ -131,6 +131,11 @@ export default function InboxPage() {
   const [forwarding, setForwarding] = useState(false)
   const [loading, setLoading] = useState(true)
   const [msgLoading, setMsgLoading] = useState(false)
+  // Connection health — agents must be able to TELL a quiet inbox from a
+  // dead one. Two consecutive poll failures (or a browser offline event)
+  // raise the banner; any completed round-trip clears it.
+  const [connLost, setConnLost] = useState(false)
+  const connFailsRef = useRef(0)
   const [searchQuery, setSearchQuery] = useState('')
   // Triage filter/sort state (replaces the lone "Unread only" toggle).
   const [triageFilter, setTriageFilter] = useState<TriageFilter>('all')
@@ -298,7 +303,16 @@ export default function InboxPage() {
         setContacts(data.data)
         setHasMoreContacts(Boolean(data.meta?.hasMore))
       }
-    } catch { /* ignore */ }
+      // Any completed round-trip = healthy again.
+      if (connFailsRef.current >= 2) toast.success('Back online — inbox is live')
+      connFailsRef.current = 0
+      setConnLost(false)
+    } catch {
+      // Surface the outage only after two consecutive misses — a single blip
+      // shouldn't flash a banner at an agent mid-conversation.
+      connFailsRef.current += 1
+      if (connFailsRef.current >= 2) setConnLost(true)
+    }
     setLoading(false)
   }, [loadedCount])
 
@@ -381,13 +395,33 @@ export default function InboxPage() {
       .catch(() => {})
   }, [])
 
-  // Load contacts on mount, then poll while the tab is VISIBLE (pauses when
-  // hidden, refreshes on return). 8s was constant background churn; 20s is plenty
-  // for a CRM inbox and cuts background network + re-renders by ~60%.
+  // Two cadences, both visibility-aware. The contact LIST is fine at 20s,
+  // but the OPEN conversation is a live chat — 8s keeps replies feeling
+  // instant while only one thread ever polls fast.
   useVisiblePolling(() => {
     fetchContacts()
-    if (activePhone) fetchMessages(activePhone)
   }, 20000)
+  useVisiblePolling(() => {
+    if (activePhone) fetchMessages(activePhone)
+  }, 8000)
+
+  // Browser-level connectivity — instant banner on real offline, instant
+  // recovery fetch on reconnect.
+  useEffect(() => {
+    const onOffline = () => setConnLost(true)
+    const onOnline = () => {
+      setConnLost(false)
+      fetchContacts()
+      if (activePhone) fetchMessages(activePhone)
+    }
+    window.addEventListener('offline', onOffline)
+    window.addEventListener('online', onOnline)
+    return () => {
+      window.removeEventListener('offline', onOffline)
+      window.removeEventListener('online', onOnline)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePhone])
 
   // Auto-sync from Google Sheets every 2 minutes
   useEffect(() => {
@@ -405,9 +439,27 @@ export default function InboxPage() {
     return () => clearInterval(syncInterval)
   }, [fetchContacts])
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom only when something NEW arrived and the agent is either
+  // already reading the latest or just sent one themselves. Polling refreshes
+  // used to yank the view to the bottom every cycle while agents read history.
+  const prevLenRef = useRef(0)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const prevLen = prevLenRef.current
+    prevLenRef.current = messages.length
+    if (messages.length <= prevLen) return
+    const end = messagesEndRef.current
+    const container = end?.parentElement
+    if (!end || !container) return
+    if (prevLen === 0) {
+      // Conversation just opened — jump straight to the latest, no animation.
+      end.scrollIntoView()
+      return
+    }
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    const newestIsMine = messages[messages.length - 1]?.direction === 'sent'
+    if (newestIsMine || distanceFromBottom < 240) {
+      end.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
 
   // Open conversation
@@ -548,36 +600,60 @@ export default function InboxPage() {
     if (ok && activePhone) setDismissedNegative(prev => new Set(prev).add(activePhone))
   }
 
-  // Send message
+  // Send message — optimistic: the bubble appears the instant the agent hits
+  // send (the next fetchMessages replaces the list wholesale, reconciling it
+  // with the server copy). On any failure the bubble is removed and the draft
+  // restored to the input, so a flaky network can never eat a typed message.
   async function handleSend(e?: React.FormEvent) {
     e?.preventDefault()
     if (!inputText.trim() || !activePhone || sending) return
 
+    const text = inputText
+    const optimistic: Message = {
+      id: -Date.now(),
+      phone: activePhone,
+      direction: 'sent',
+      text,
+      timestamp: new Date().toISOString(),
+      sent_by: sessionUser?.name || 'You',
+      wa_message_id: '',
+      status: 'pending',
+      template_used: '',
+      read: 1,
+    }
+    setMessages(prev => [...prev, optimistic])
+    setInputText('')
     setSending(true)
+    const undoOptimistic = () => {
+      setMessages(prev => prev.filter(m => m.id !== optimistic.id))
+      setInputText(text)
+    }
     try {
       const res = await fetch('/api/inbox/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone: activePhone,
-          message: inputText,
+          message: text,
           contact_name: activeContact?.name || '',
         }),
       })
       const data = await res.json()
 
       if (data.success) {
-        setInputText('')
         fetchMessages(activePhone)
         fetchContacts()
       } else if (data.needs_template) {
+        undoOptimistic()
         toast.info('Outside 24hr window — use a template')
         setShowTemplates(true)
       } else {
-        toast.error(data.error || 'Send failed')
+        undoOptimistic()
+        toast.error(data.error || 'Send failed — your draft is back in the box')
       }
     } catch {
-      toast.error('Network error')
+      undoOptimistic()
+      toast.error('Network error — your draft is back in the box')
     }
     setSending(false)
   }
@@ -851,6 +927,15 @@ export default function InboxPage() {
 
   return (
     <div className="h-screen bg-bg flex flex-col overflow-hidden">
+      {connLost && (
+        <div
+          role="status"
+          className="flex items-center justify-center gap-2 bg-amber-500/15 text-amber-400 border-b border-amber-500/30 px-3 py-1.5 text-xs font-medium flex-shrink-0"
+        >
+          <WifiOff className="w-3.5 h-3.5" aria-hidden />
+          Connection lost — retrying automatically. New replies will appear as soon as it&apos;s back.
+        </div>
+      )}
       <Navbar />
 
       {/* Notification permission banner */}

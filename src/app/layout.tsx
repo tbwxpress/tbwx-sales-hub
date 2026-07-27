@@ -54,7 +54,28 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script id="sw-register" strategy="afterInteractive">{`
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-              navigator.serviceWorker.register('/sw.js').catch(() => {});
+              // updateViaCache:'none' bypasses the HTTP cache when checking
+              // for a new worker — without it a CDN-cached sw.js can pin
+              // agents to retired app code for up to a day.
+              navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+                .then((reg) => {
+                  // Re-check for a new worker every time the agent returns to
+                  // the tab, and every 30 minutes while it stays open.
+                  document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'visible') reg.update().catch(() => {});
+                  });
+                  setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+                })
+                .catch(() => {});
+              // When a new worker takes over (it calls skipWaiting on install),
+              // reload once so the agent is on current code within seconds of
+              // a deploy — never mid-typing twice thanks to the guard flag.
+              let reloaded = false;
+              navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (reloaded) return;
+                reloaded = true;
+                window.location.reload();
+              });
             });
           }
         `}</Script>
