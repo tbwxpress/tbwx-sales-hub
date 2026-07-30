@@ -55,10 +55,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // (mark LOST with reason, warm up, hand back).
     let isMyTelecallerLead = false
     let isAssignedToMe = false
+    let leadOwner = ''
     if (user.role === 'agent') {
       const allLeads = await getLeads()
       const lead = allLeads.find(l => l.row_number === rowNum)
       isAssignedToMe = lead?.assigned_to === user.name
+      leadOwner = lead?.assigned_to || ''
       const isUnassigned = !lead?.assigned_to
       if (!isAssignedToMe && !(user.can_assign && isUnassigned)) {
         try {
@@ -87,7 +89,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           const requesterIsTelecaller = !!requester && effectiveRole(requester) === 'telecaller'
           telecallerHandback =
             !!target && effectiveRole(target) === 'closer' &&
-            (isMyTelecallerLead || (requesterIsTelecaller && isAssignedToMe))
+            (
+              // Queue lead: may ONLY return to the closer it belongs to
+              // (ownership never moved — hand-back restores their worklist).
+              (isMyTelecallerLead && (!leadOwner || body.assigned_to === leadOwner)) ||
+              // The telecaller's own (manually added) lead: any active Closer.
+              (requesterIsTelecaller && isAssignedToMe)
+            )
         } catch { /* fall through to denial */ }
       }
       if (!telecallerHandback) {
