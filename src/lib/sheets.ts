@@ -271,6 +271,17 @@ async function syncNewLeads(): Promise<number> {
   return inserted
 }
 
+// Awaitable on-demand sync — for flows that must see leads appended to the
+// sheet SECONDS ago (e.g. website form submit → immediate WhatsApp click).
+// Bypasses the throttle; callers accept one sheet round-trip of latency.
+export async function forceLeadsSync(): Promise<void> {
+  try {
+    await syncNewLeads()
+  } catch (err) {
+    console.error('[leads-sync] forced sync failed:', err)
+  }
+}
+
 // Fire-and-forget background sync, throttled to LEADS_SYNC_INTERVAL_MS.
 function maybeSyncNewLeads(): void {
   if (_leadsSyncing) return

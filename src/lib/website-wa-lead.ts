@@ -61,8 +61,14 @@ export async function maybeCreateWebsiteWaLead(params: {
   if (inFlight.has(p10)) return null
   inFlight.add(p10)
   try {
-    const { getLeads, createLead } = await import('./sheets')
+    const { getLeads, createLead, forceLeadsSync } = await import('./sheets')
     const { upsertContact } = await import('./db')
+
+    // Close the form→WhatsApp race: the visitor may have submitted the
+    // website form SECONDS ago — its lead is in the sheet but not yet synced
+    // to the DB. Force one sync so the dedupe below sees it. (Only runs for
+    // unknown numbers with franchise intent, so the extra read is rare.)
+    await forceLeadsSync()
 
     // Dedupe against EVERY lead: fresh form leads may not be linked to the
     // contact yet (contact.lead_row lags behind the sheet sync), so a
