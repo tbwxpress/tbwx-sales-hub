@@ -54,6 +54,7 @@ function rowToLead(r: Record<string, unknown>): Lead {
     form_id: s(r.form_id),
     form_name: s(r.form_name),
     form_answers: s(r.form_answers),
+    merged_into: r.merged_into == null ? null : Number(r.merged_into),
   }
 }
 

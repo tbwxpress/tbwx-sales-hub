@@ -37,10 +37,15 @@ export async function getAgentVisiblePhones(user: SessionUser): Promise<string[]
   const delegatedRows = new Set(activeDelegations.map(d => d.lead_row))
   return leads
     .filter(l =>
-      telecallerRows.has(l.row_number) ||
-      l.assigned_to === user.name ||
-      (user.can_assign && !l.assigned_to) ||
-      delegatedRows.has(l.row_number)
+      // Merged duplicates are ghosts — they must never grant visibility
+      // (the surviving copy carries the conversation for its owner).
+      !l.merged_into &&
+      (
+        telecallerRows.has(l.row_number) ||
+        l.assigned_to === user.name ||
+        (user.can_assign && !l.assigned_to) ||
+        delegatedRows.has(l.row_number)
+      )
     )
     .map(l => l.phone)
 }

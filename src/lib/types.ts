@@ -70,6 +70,8 @@ export interface Lead {
   form_name?: string
   /** Verbatim question→answer JSON captured from the lead's form. */
   form_answers?: string
+  /** Set when this lead was folded into another (duplicate) — treat as invisible. */
+  merged_into?: number | null
 }
 
 export interface Message {
