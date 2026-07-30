@@ -21,6 +21,9 @@ const VoiceAgentCard = dynamic(() => import('@/components/VoiceAgentCard'), {
   loading: () => null,
   ssr: false,
 })
+// Voice agent archived 2026-07-30 (backend container stopped; 7 calls ever,
+// last Mar 31). Flip to true + restart /docker/voice-agent to revive.
+const VOICE_AGENT_ENABLED = false
 import CallHistory from '@/components/CallHistory'
 import ActivityLog from '@/components/ActivityLog'
 import EmptyState from '@/components/ui/EmptyState'
@@ -1507,7 +1510,7 @@ export default function InboxPage() {
                   {activePhone && <CallHistory phone={activePhone} refreshKey={callHistoryKey} />}
 
                   {/* AI Voice Agent — only for leads */}
-                  {activeContact?.is_lead && activePhone && (
+                  {VOICE_AGENT_ENABLED && activeContact?.is_lead && activePhone && (
                     <div className="mt-3 pt-3 border-t border-border/50">
                       <VoiceAgentCard
                         phone={activePhone}
@@ -2085,7 +2088,7 @@ export default function InboxPage() {
               {activePhone && <CallHistory phone={activePhone} refreshKey={callHistoryKey} />}
 
               {/* AI Voice Agent — only for leads */}
-              {activeContact?.is_lead && activePhone && (
+              {VOICE_AGENT_ENABLED && activeContact?.is_lead && activePhone && (
                 <div className="mt-4 pt-3 border-t border-border/50">
                   <VoiceAgentCard
                     phone={activePhone}
