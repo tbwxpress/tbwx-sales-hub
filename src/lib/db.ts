@@ -47,6 +47,10 @@ function getClient(): Client {
 export async function ensureInit(): Promise<Client> {
   const db = getClient()
   if (!_initialized) {
+    // Wait for locks instead of failing: maintenance scripts (nightly dedupe
+    // sweep, backfills) briefly hold the write lock — a 5s grace means the
+    // app never surfaces SQLITE_BUSY to a request during those windows.
+    try { await db.execute('PRAGMA busy_timeout = 5000') } catch { /* non-critical */ }
     await db.executeMultiple(`
       CREATE TABLE IF NOT EXISTS contacts (
         phone TEXT PRIMARY KEY,
