@@ -49,20 +49,50 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const rowNum = parseInt(id)
     const body = await req.json()
 
-    // Agents can only modify leads assigned to them (or unassigned if can_assign)
+    // Agents can only modify leads assigned to them (or unassigned if
+    // can_assign) — PLUS leads sitting in their telecaller queue, so the
+    // qualify-and-return leg of the closer↔telecaller loop actually works
+    // (mark LOST with reason, warm up, hand back).
+    let isMyTelecallerLead = false
+    let isAssignedToMe = false
     if (user.role === 'agent') {
       const allLeads = await getLeads()
       const lead = allLeads.find(l => l.row_number === rowNum)
-      const isAssignedToMe = lead?.assigned_to === user.name
+      isAssignedToMe = lead?.assigned_to === user.name
       const isUnassigned = !lead?.assigned_to
       if (!isAssignedToMe && !(user.can_assign && isUnassigned)) {
-        return NextResponse.json({ success: false, error: 'Not authorized to modify this lead' }, { status: 403 })
+        try {
+          const { getAssignmentForLead } = await import('@/lib/telecaller')
+          const tl = await getAssignmentForLead(rowNum)
+          isMyTelecallerLead = tl?.telecaller_user_id === user.id
+        } catch { /* treat as not in queue */ }
+        if (!isMyTelecallerLead) {
+          return NextResponse.json({ success: false, error: 'Not authorized to modify this lead' }, { status: 403 })
+        }
       }
     }
 
-    // Only admin or users with can_assign can change assigned_to
+    // Only admin or users with can_assign can change assigned_to — with one
+    // loop-closing exception: a TELECALLER may hand a lead from their queue
+    // (or their own book) back to an active Closer.
+    let telecallerHandback = false
     if (body.assigned_to !== undefined && user.role !== 'admin' && !user.can_assign) {
-      return NextResponse.json({ success: false, error: 'Not authorized to assign leads' }, { status: 403 })
+      if (typeof body.assigned_to === 'string' && body.assigned_to) {
+        try {
+          const { getUsers } = await import('@/lib/users')
+          const { effectiveRole } = await import('@/lib/work')
+          const users = await getUsers()
+          const requester = users.find(u => u.id === user.id)
+          const target = users.find(u => u.name === body.assigned_to && u.active)
+          const requesterIsTelecaller = !!requester && effectiveRole(requester) === 'telecaller'
+          telecallerHandback =
+            !!target && effectiveRole(target) === 'closer' &&
+            (isMyTelecallerLead || (requesterIsTelecaller && isAssignedToMe))
+        } catch { /* fall through to denial */ }
+      }
+      if (!telecallerHandback) {
+        return NextResponse.json({ success: false, error: 'Not authorized to assign leads' }, { status: 403 })
+      }
     }
 
     // Profile field edits require admin or can_edit_leads (checked against fresh DB record)
@@ -216,6 +246,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           }
         }
       } catch { /* CAPI is non-critical to lead update */ }
+    }
+
+    // A completed handback clears the telecaller-queue entry — the lead is
+    // back with its Closer; it should leave the telecaller's worklist.
+    if (telecallerHandback) {
+      try {
+        const { unassignTelecaller } = await import('@/lib/telecaller')
+        await unassignTelecaller(rowNum)
+      } catch { /* non-critical */ }
     }
 
     // Log assignment changes + notify the new owner
