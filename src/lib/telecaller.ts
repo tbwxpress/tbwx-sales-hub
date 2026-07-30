@@ -121,6 +121,27 @@ export async function getAssignmentsByTelecaller(telecallerUserId: string): Prom
   }))
 }
 
+/**
+ * Latest hand-back per lead: assignment_log rows written when a TELECALLER
+ * returned a lead to its closer. Keyed by lead_row → { by, at }. Drives the
+ * "Returned to you" tray in needs-attention.
+ */
+export async function getTelecallerHandbacks(): Promise<Map<number, { by: string; at: string }>> {
+  const db = getClient()
+  const r = await db.execute(`
+    SELECT a.lead_row, a.assigned_by, MAX(a.created_at) AS at
+    FROM assignment_log a
+    JOIN users u ON u.name = a.assigned_by
+    WHERE u.is_telecaller = 1 OR u.agent_role = 'telecaller'
+    GROUP BY a.lead_row
+  `)
+  const map = new Map<number, { by: string; at: string }>()
+  for (const row of r.rows) {
+    map.set(Number(row.lead_row), { by: String(row.assigned_by), at: String(row.at) })
+  }
+  return map
+}
+
 export async function getAllAssignments(): Promise<TelecallerAssignment[]> {
   const db = getClient()
   const r = await db.execute('SELECT * FROM lead_telecaller_assignments')

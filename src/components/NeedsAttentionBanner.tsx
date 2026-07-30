@@ -21,7 +21,7 @@ interface AttentionLead {
   lead_priority: string
   assigned_to: string
   lead_score: number
-  reason_code: 'overdue_followup' | 'stale_activity' | 'opportunity_check'
+  reason_code: 'returned_by_telecaller' | 'overdue_followup' | 'stale_activity' | 'opportunity_check'
   reason_text: string
   hours_since_activity: number | null
   days_overdue: number | null
@@ -31,6 +31,7 @@ interface BannerData {
   count: number
   leads: AttentionLead[]
   by_reason: {
+    returned_by_telecaller?: number
     overdue_followup: number
     stale_activity: number
     opportunity_check: number
@@ -38,6 +39,7 @@ interface BannerData {
 }
 
 const REASON_LABEL: Record<AttentionLead['reason_code'], string> = {
+  returned_by_telecaller: 'Returned by telecaller',
   overdue_followup: 'Followup overdue',
   stale_activity: 'No recent activity',
   opportunity_check: 'Opportunity check',
@@ -116,6 +118,10 @@ export default function NeedsAttentionBanner({ defaultExpanded = false, showMax 
               {data.count} lead{data.count === 1 ? '' : 's'} need your attention
             </p>
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-muted)' }}>
+              {(data.by_reason.returned_by_telecaller ?? 0) > 0 && (
+                <span className="font-semibold">{data.by_reason.returned_by_telecaller} returned to you</span>
+              )}
+              {(data.by_reason.returned_by_telecaller ?? 0) > 0 && (data.by_reason.overdue_followup > 0 || data.by_reason.stale_activity > 0) && <span> · </span>}
               {data.by_reason.overdue_followup > 0 && (
                 <span>{data.by_reason.overdue_followup} overdue followup{data.by_reason.overdue_followup === 1 ? '' : 's'}</span>
               )}

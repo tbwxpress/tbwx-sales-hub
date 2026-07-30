@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { apiError } from '@/lib/api-error'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getLeads } from '@/lib/sheets'
-import { getTelecallerVisibleLeadRows, getAllAssignments } from '@/lib/telecaller'
+import { getTelecallerVisibleLeadRows, getAllAssignments, getTelecallerHandbacks } from '@/lib/telecaller'
 import { getOptedOutPhones, normalizePhone, getLastDiscussionByPhone } from '@/lib/db'
 import { getUserByEmail, isLockedGuidedAgent } from '@/lib/users'
 import { STATUS_MIGRATION } from '@/config/client'
@@ -51,8 +51,10 @@ interface NeedsAttention {
   //   'overdue_followup'  — next_followup date passed
   //   'stale_activity'    — no meaningful touch within the status ceiling
   //   'opportunity_check' — repeated calls without status progression
-  reason_code: 'overdue_followup' | 'stale_activity' | 'opportunity_check'
+  reason_code: 'returned_by_telecaller' | 'overdue_followup' | 'stale_activity' | 'opportunity_check'
   reason_text: string
+  /** Set when reason_code is 'returned_by_telecaller' — who warmed it. */
+  returned_by?: string
   // Hours since last meaningful activity (or null if never)
   hours_since_activity: number | null
   // Days overdue if overdue_followup
@@ -105,6 +107,7 @@ export async function GET() {
 
     // Build last-activity index (notes + calls + non-auto messages)
     const lastDiscussion = await getLastDiscussionByPhone()
+    const handbacks = await getTelecallerHandbacks()
     void getAllAssignments // reserved for future opportunity-check scoring
 
     const now = Date.now()
@@ -120,6 +123,35 @@ export async function GET() {
       const referenceTs = lastTs && !isNaN(lastTs)
         ? lastTs
         : (createdTs && !isNaN(createdTs) ? createdTs : null)
+
+      // 0. Returned by a telecaller and not yet picked up — the warmest
+      //    pickups a closer has; always surfaced first.
+      const hb = handbacks.get(lead.row_number)
+      if (hb && lead.assigned_to === user.name) {
+        const hbTs = Date.parse(hb.at.replace(' ', 'T') + 'Z')
+        const touchedSince = lastTs !== null && !isNaN(lastTs) && !isNaN(hbTs) && lastTs > hbTs
+        if (!isNaN(hbTs) && !touchedSince) {
+          const days = Math.floor((now - hbTs) / (24 * 60 * 60 * 1000))
+          results.push({
+            row_number: lead.row_number,
+            phone: lead.phone,
+            full_name: lead.full_name,
+            city: lead.city,
+            lead_status: lead.lead_status,
+            lead_priority: lead.lead_priority,
+            assigned_to: lead.assigned_to,
+            lead_score: computeLeadScore(lead),
+            reason_code: 'returned_by_telecaller',
+            reason_text: `Returned by ${hb.by}${days > 0 ? ` ${days}d ago` : ' today'} — warmed up, pick up first.`,
+            returned_by: hb.by,
+            hours_since_activity: referenceTs ? Math.floor((now - referenceTs) / (60 * 60 * 1000)) : null,
+            days_overdue: null,
+            last_activity_at: last?.at || null,
+            last_activity_kind: last?.source || null,
+          })
+          continue
+        }
+      }
 
       // 1. Overdue followup wins (highest signal — agent already scheduled a date)
       if (lead.next_followup) {
@@ -185,6 +217,8 @@ export async function GET() {
       NO_RESPONSE: 2, DELAYED: 1,
     }
     results.sort((a, b) => {
+      if (a.reason_code === 'returned_by_telecaller' && b.reason_code !== 'returned_by_telecaller') return -1
+      if (b.reason_code === 'returned_by_telecaller' && a.reason_code !== 'returned_by_telecaller') return 1
       if (a.reason_code === 'overdue_followup' && b.reason_code !== 'overdue_followup') return -1
       if (b.reason_code === 'overdue_followup' && a.reason_code !== 'overdue_followup') return 1
       const ua = STATUS_URGENCY[a.lead_status] || 0
@@ -202,6 +236,7 @@ export async function GET() {
         leads: results,
         // Buckets help the UI render a compact summary
         by_reason: {
+          returned_by_telecaller: results.filter(r => r.reason_code === 'returned_by_telecaller').length,
           overdue_followup: results.filter(r => r.reason_code === 'overdue_followup').length,
           stale_activity: results.filter(r => r.reason_code === 'stale_activity').length,
           opportunity_check: results.filter(r => r.reason_code === 'opportunity_check').length,
