@@ -28,9 +28,9 @@ function includes(value: string | undefined | null, ...keywords: string[]): bool
 
 function scoreBudgetModel(modelInterest: string | undefined | null): number {
   if (!modelInterest || modelInterest.trim() === '') return 5
-  if (includes(modelInterest, 'full store', '7-8')) return 25
-  if (includes(modelInterest, 'mini', '5-6')) return 20
-  if (includes(modelInterest, 'kiosk', '3-4')) return 15
+  if (includes(modelInterest, 'full store', 'cafe', '7-8', '7+', '6-7')) return 25
+  if (includes(modelInterest, 'mini', 'takeaway', '5-6')) return 20
+  if (includes(modelInterest, 'kiosk', 'cloud kitchen', '3-4', '4-5')) return 15
   return 10
 }
 
