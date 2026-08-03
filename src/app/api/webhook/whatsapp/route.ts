@@ -434,7 +434,7 @@ export async function POST(req: NextRequest) {
               // calling number — while their 24h window is open.
               try {
                 const { maybeSendAgentIntro } = await import('@/lib/agent-intro')
-                await maybeSendAgentIntro({ phone, leadRow: Number(contact.lead_row) })
+                await maybeSendAgentIntro({ phone, leadRow: Number(contact.lead_row), text })
               } catch { /* non-critical */ }
             }
           } catch {

@@ -13,17 +13,37 @@
 
 const MARKER = 'agent_intro'
 
+/**
+ * Copy is deliberately two-speed (per Gavish): the DEFAULT expectation is
+ * "your advisor will reach out" (so every lead doesn't dial at once and
+ * swamp the agent), while high-intent leads in a hurry get an explicit
+ * fast lane — the agent's direct number — so they never wait and slip away.
+ */
 export function buildAgentIntroText(leadName: string, agentName: string, agentPhone: string): string {
   const first = (leadName || '').trim().split(/\s+/)[0] || 'there'
   return (
-    `Hi ${first}! I'm ${agentName}, your dedicated TBWX franchise advisor — I'll be personally handling your enquiry from here.\n\n` +
-    `You can call or WhatsApp me directly anytime on ${agentPhone}.\n\n` +
-    `Or just tell me a good time today and I'll call you. — ${agentName}, TBWX`
+    `Hi ${first}! I'm ${agentName}, your dedicated TBWX franchise advisor — your enquiry is with me now and I'll personally reach out to you.\n\n` +
+    `In a hurry to discuss the TBWX franchise right away? Call or WhatsApp me directly on ${agentPhone}.\n\n` +
+    `Otherwise sit back — I'll be in touch shortly. — ${agentName}, TBWX`
   )
 }
 
-export async function maybeSendAgentIntro(params: { phone: string; leadRow: number }): Promise<boolean> {
-  const { phone, leadRow } = params
+// Lightweight urgency detector (English + Hinglish): a hurried lead gets the
+// intro IMMEDIATELY, even before the deck-first discipline would allow it.
+const URGENT_PATTERNS = [
+  'call me', 'call now', 'call kar', 'call karo', 'callback', 'call back',
+  'urgent', 'asap', 'right away', 'immediately', 'right now',
+  'abhi', 'jaldi', 'turant', 'baat kar', 'baat karni', 'speak now',
+  'talk now', 'need to talk', 'want to talk', 'can we talk', 'call please',
+]
+
+export function isUrgentText(text: string): boolean {
+  const t = (text || '').toLowerCase()
+  return URGENT_PATTERNS.some(p => t.includes(p))
+}
+
+export async function maybeSendAgentIntro(params: { phone: string; leadRow: number; text?: string }): Promise<boolean> {
+  const { phone, leadRow, text: inboundText } = params
   try {
     const { getSetting, getMessages, insertMessage, getOptedOutPhones, normalizePhone } = await import('./db')
 
@@ -50,11 +70,16 @@ export async function maybeSendAgentIntro(params: { phone: string; leadRow: numb
     if (sent.some((m: any) => m.template_used === MARKER)) return false
 
     // Touch #2 discipline: the deck conversation must already be under way —
-    // the human introduction never replaces the opener.
-    const { getMarketingFirstTemplateName } = await import('./template-settings')
-    const deckTemplate = await getMarketingFirstTemplateName()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (!sent.some((m: any) => m.template_used === deckTemplate && m.status !== 'failed')) return false
+    // the human introduction never replaces the opener. EXCEPTION: a lead
+    // whose message signals urgency ("call me", "jaldi", …) gets the intro
+    // immediately — a hurried high-intent lead must never wait.
+    const urgent = isUrgentText(inboundText || '')
+    if (!urgent) {
+      const { getMarketingFirstTemplateName } = await import('./template-settings')
+      const deckTemplate = await getMarketingFirstTemplateName()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (!sent.some((m: any) => m.template_used === deckTemplate && m.status !== 'failed')) return false
+    }
 
     const text = buildAgentIntroText(lead.full_name, agent.name, agentPhone)
     const { sendTextMessage } = await import('./whatsapp')
