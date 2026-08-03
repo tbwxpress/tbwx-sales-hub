@@ -1,17 +1,25 @@
 import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
-import { getLeads } from '@/lib/sheets'
-import { getUsers } from '@/lib/users'
-import { LEAD_STATUSES } from '@/config/client'
+import { getSetting, setSetting } from '@/lib/db'
+import { buildWindow, gatherWeeklyReport, renderWeeklyReportHtml } from '@/lib/weekly-report'
 
 const CRON_SECRET = process.env.CRON_SECRET
 const DIGEST_TO = process.env.DIGEST_EMAIL_TO || 'tbwxpress@gmail.com'
-const DIGEST_CC = process.env.DIGEST_EMAIL_CC || 'sales@tbwxpress.com'
+const DIGEST_CC = process.env.DIGEST_EMAIL_CC || ''
+
+// Watermark: the end of the window the last DELIVERED report covered. The
+// next report starts exactly there, so a missed Saturday is never a data
+// gap — the following one simply covers the longer stretch.
+const WATERMARK_KEY = 'weekly_report.last_sent_at'
+const MAX_LOOKBACK_DAYS = 31
 
 /**
  * POST /api/cron/weekly-report
  *
- * Runs Monday 9:30 AM IST. Sends weekly funnel + leaderboard via email.
+ * Saturday 19:00 IST (13:30 UTC). Detailed owner report of the Sales Hub
+ * week, emailed as HTML. Read-only: queries and sends mail, nothing else.
+ * Body/query `preview=1` sends a clearly-labelled preview WITHOUT advancing
+ * the watermark, so a live run still covers the same period.
  */
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
@@ -28,93 +36,80 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let preview = req.nextUrl.searchParams.get('preview') === '1'
   try {
-    const [leads, users] = await Promise.all([getLeads(), getUsers()])
+    const body = await req.json()
+    if (body?.preview === true) preview = true
+  } catch { /* no body is fine */ }
 
+  try {
     const now = new Date()
-    const weekAgo = new Date(now.getTime() - 7 * 86400000)
-    const weekAgoStr = weekAgo.toISOString().split('T')[0]
 
-    // Funnel
-    const funnel = LEAD_STATUSES.map(status => ({
-      stage: status,
-      count: leads.filter(l => l.lead_status === status).length,
-    }))
+    // Window start = watermark, clamped so a long dormancy can't produce a
+    // monster report; default 7 days for the very first run.
+    let since = new Date(now.getTime() - 7 * 86400000)
+    const stored = await getSetting(WATERMARK_KEY).catch(() => null)
+    if (stored) {
+      const parsed = new Date(stored)
+      if (!isNaN(parsed.getTime())) {
+        const earliest = new Date(now.getTime() - MAX_LOOKBACK_DAYS * 86400000)
+        since = parsed < earliest ? earliest : parsed
+      }
+    }
+    if (since >= now) since = new Date(now.getTime() - 7 * 86400000)
 
-    const funnelText = funnel
-      .map(f => `  ${f.stage.padEnd(12)} ${String(f.count).padStart(4)}`)
-      .join('\n')
+    const win = buildWindow(since, now)
+    const priorSpanMs = now.getTime() - since.getTime()
+    const prior = buildWindow(new Date(since.getTime() - priorSpanMs), since)
 
-    // Agent leaderboard
-    const activeAgents = users.filter(u => u.active)
-    const leaderboard = activeAgents.map(agent => {
-      const agentLeads = leads.filter(l => l.assigned_to === agent.name)
-      const converted = agentLeads.filter(l => l.lead_status === 'CONVERTED').length
-      const rate = agentLeads.length > 0 ? Math.round((converted / agentLeads.length) * 100) : 0
-      return { name: agent.name, assigned: agentLeads.length, converted, rate }
-    }).sort((a, b) => b.converted - a.converted)
+    const data = await gatherWeeklyReport(win, prior)
+    const html = renderWeeklyReportHtml(data, { preview })
 
-    const leaderboardText = leaderboard
-      .map((a, i) => `  ${i + 1}. ${a.name.padEnd(12)} ${a.converted} converted (${a.rate}%) — ${a.assigned} assigned`)
-      .join('\n')
+    const subject = `${preview ? '[PREVIEW] ' : ''}Sales Hub Weekly — ${win.label}` +
+      ` · ${data.headline.converted} converted, ${data.headline.qualified} qualified`
 
-    // New + conversions this week
-    const newThisWeek = leads.filter(l => l.created_time && l.created_time >= weekAgoStr).length
-    const totalConverted = leads.filter(l => l.lead_status === 'CONVERTED').length
-    const overallRate = leads.length > 0 ? Math.round((totalConverted / leads.length) * 100) : 0
-
-    const dateStr = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
-
-    // Send email
     const { google } = await import('googleapis')
     const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET)
     auth.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN || process.env.GOOGLE_REFRESH_TOKEN })
     const gmail = google.gmail({ version: 'v1', auth })
-
     const senderEmail = process.env.EMAIL_SENDER || 'ai@tbwxpress.com'
-    const subject = `TBWX Weekly Report — ${dateStr}`
 
-    const body = `TBWX Weekly Sales Report
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Week ending: ${dateStr}
-
-NEW leads this week: ${newThisWeek}
-Total leads: ${leads.length}
-Total converted: ${totalConverted} (${overallRate}%)
-
-PIPELINE FUNNEL
-${funnelText}
-
-AGENT LEADERBOARD
-${leaderboardText}
-
-View full analytics: https://sales.tbwxpress.com/analytics
-
-— TBWX Sales Hub
-`
-
-    const headers = [
+    const raw = [
       `From: TBWX Sales Hub <${senderEmail}>`,
       `To: ${DIGEST_TO}`,
       ...(DIGEST_CC ? [`Cc: ${DIGEST_CC}`] : []),
       `Subject: ${subject}`,
-      `Content-Type: text/plain; charset=UTF-8`,
-      ``,
-      body,
+      'MIME-Version: 1.0',
+      'Content-Type: text/html; charset=UTF-8',
+      '',
+      html,
     ].join('\r\n')
 
-    const encoded = Buffer.from(headers).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    const encoded = Buffer.from(raw, 'utf-8')
+      .toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
     const emailResult = await gmail.users.messages.send({
       userId: 'me',
       requestBody: { raw: encoded },
     })
 
+    // Only a DELIVERED live report moves the watermark.
+    if (!preview && emailResult.data.id) {
+      await setSetting(WATERMARK_KEY, win.untilIso).catch(() => {})
+    }
+
     return NextResponse.json({
       success: true,
+      preview,
       email_sent: !!emailResult.data.id,
-      stats: { newThisWeek, totalConverted, overallRate, agents: leaderboard.length },
+      window: { since: win.sinceIso, until: win.untilIso, label: win.label, days: win.days },
+      summary: {
+        converted: data.headline.converted,
+        qualified: data.headline.qualified,
+        new_leads: data.headline.new_leads,
+        ignored_conversations: data.engagement.reduce((a, e) => a + e.ignored, 0),
+        insights: data.insights.length,
+      },
     })
   } catch (err) {
     console.error('[weekly-report] Error:', err)
@@ -123,10 +118,13 @@ View full analytics: https://sales.tbwxpress.com/analytics
 }
 
 export async function GET() {
+  const last = await getSetting(WATERMARK_KEY).catch(() => null)
   return NextResponse.json({
     name: 'weekly-report',
-    description: 'Weekly funnel + leaderboard sent Monday 9:30 AM IST',
+    description: 'Detailed owner report, emailed Saturday 19:00 IST; covers everything since the last delivered report',
     digest_to: DIGEST_TO,
-    digest_cc: DIGEST_CC,
+    digest_cc: DIGEST_CC || null,
+    last_covered_until: last,
+    preview_hint: 'POST with ?preview=1 to send a labelled sample without moving the watermark',
   })
 }
