@@ -37,6 +37,7 @@ const PUBLIC_PATHS = [
   '/api/cron/work-autobounce',
   '/api/cron/morning-briefing',
   '/api/cron/weekly-report',
+  '/api/cron/mail-watcher',
   // Reactivation admin endpoint — enforces CRON_SECRET bearer auth itself
   '/api/admin/franchise-reactivation',
   // Public key is safe to expose; the SW fetches it before login on cold start.
