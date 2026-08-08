@@ -129,7 +129,9 @@ The TBWX franchise:
 
 View our franchise deck: https://tbwxpress.com/FranchiseDeck
 
-Reply to this email or WhatsApp us at +91 7973933630 to schedule a quick call.
+Reply to this email or WhatsApp us to schedule a quick call: https://wa.me/917814605490?text=Hi%2C%20I%20received%20your%20franchise%20overview%20email
+
+
 
 Thanks,
 TBWX Sales Team
