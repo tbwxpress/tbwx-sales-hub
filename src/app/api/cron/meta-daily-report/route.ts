@@ -4,6 +4,7 @@ import { apiError } from '@/lib/api-error'
 import { getLeads } from '@/lib/sheets'
 import { getOptedOutPhones, normalizePhone } from '@/lib/db'
 import { getCapiStats, getRecentCapiEvents, getMetaCapiSettings, getLastAudienceSync } from '@/lib/meta-capi'
+import { encodeSubject } from '@/lib/email'
 
 const CRON_SECRET = process.env.CRON_SECRET
 const REPORT_TO = process.env.META_REPORT_TO || process.env.DIGEST_EMAIL_TO || 'tbwxpress@gmail.com'
@@ -24,7 +25,7 @@ async function sendEmail(opts: { to: string; cc: string; subject: string; html: 
     `From: ${senderName} <${senderEmail}>`,
     `To: ${opts.to}`,
     ...(opts.cc ? [`Cc: ${opts.cc}`] : []),
-    `Subject: ${opts.subject}`,
+    `Subject: ${encodeSubject(opts.subject)}`,
     `MIME-Version: 1.0`,
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     ``,

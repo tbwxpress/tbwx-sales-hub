@@ -1,5 +1,16 @@
 import { google } from 'googleapis'
 
+/**
+ * RFC 2047 encoded-word for non-ASCII header values. Raw UTF-8 in a Subject
+ * header renders as mojibake ("—" → "Ã¢Â€Â") in most clients — every sender
+ * in this app must wrap subjects with this. ASCII passes through untouched.
+ */
+export function encodeSubject(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  if (/^[\x20-\x7e]*$/.test(value)) return value
+  return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`
+}
+
 function getGmail() {
   const auth = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -66,7 +77,7 @@ ${data.topPriorityAction ? `TOP PRIORITY: ${data.topPriorityAction}` : ''}
     `From: ${senderName} <${senderEmail}>`,
     `To: ${to}`,
     ...(cc ? [`Cc: ${cc}`] : []),
-    `Subject: ${subject}`,
+    `Subject: ${encodeSubject(subject)}`,
     `Content-Type: text/plain; charset=UTF-8`,
     ``,
     body,
@@ -128,7 +139,7 @@ The Belgian Waffle Xpress
   const rawEmail = [
     `From: ${senderName} <${senderEmail}>`,
     `To: ${toEmail}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodeSubject(subject)}`,
     `Content-Type: text/plain; charset=UTF-8`,
     ``,
     body,

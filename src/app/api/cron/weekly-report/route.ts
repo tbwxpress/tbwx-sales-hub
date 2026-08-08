@@ -2,6 +2,7 @@ import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSetting, setSetting } from '@/lib/db'
 import { buildWindow, gatherWeeklyReport, renderWeeklyReportHtml } from '@/lib/weekly-report'
+import { encodeSubject } from '@/lib/email'
 
 const CRON_SECRET = process.env.CRON_SECRET
 const DIGEST_TO = process.env.DIGEST_EMAIL_TO || 'tbwxpress@gmail.com'
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
       `From: TBWX Sales Hub <${senderEmail}>`,
       `To: ${DIGEST_TO}`,
       ...(DIGEST_CC ? [`Cc: ${DIGEST_CC}`] : []),
-      `Subject: ${subject}`,
+      `Subject: ${encodeSubject(subject)}`,
       'MIME-Version: 1.0',
       'Content-Type: text/html; charset=UTF-8',
       '',
