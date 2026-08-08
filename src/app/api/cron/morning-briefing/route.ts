@@ -116,6 +116,15 @@ export async function POST(req: NextRequest) {
       topPriorityAction,
     }
 
+    // Non-sending data mode: ?format=json returns the computed metrics only —
+    // no email, no WhatsApp, no notification watermark. Note it is not fully
+    // side-effect-free: getLeads() above already ran the standard read-path
+    // lead sync (ensureLeadsSeeded + background sheet→DB sync), same as any
+    // leads read anywhere in the app.
+    if (req.nextUrl.searchParams.get('format') === 'json') {
+      return NextResponse.json(digestData)
+    }
+
     // 1. Send email digest
     const emailResult = await sendDigestEmail(DIGEST_TO, DIGEST_CC, digestData)
 
@@ -151,7 +160,13 @@ export async function POST(req: NextRequest) {
 }
 
 // GET — info endpoint
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Recipient addresses + owner phone are not public info — same bearer
+  // guard as POST (2026-08-08; was unauthenticated).
+  const cronSecret = req.headers.get('authorization')?.replace('Bearer ', '')
+  if (!CRON_SECRET || cronSecret !== CRON_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   return NextResponse.json({
     name: 'morning-briefing',
     description: 'Daily WhatsApp + email briefing at 9 AM IST',

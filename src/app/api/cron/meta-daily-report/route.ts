@@ -222,6 +222,11 @@ ${failed24h > 5 ? '  · ⚠ ' + failed24h + ' CAPI events failed yesterday — c
 </div>
 </body></html>`
 
+    // Non-sending mode: ?render=fragment returns the built report without emailing
+    if (req.nextUrl.searchParams.get('render') === 'fragment') {
+      return NextResponse.json({ subject, html, text })
+    }
+
     const messageId = await sendEmail({ to: REPORT_TO, cc: REPORT_CC, subject, html, text })
 
     return NextResponse.json({
