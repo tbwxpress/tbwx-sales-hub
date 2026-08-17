@@ -2,13 +2,40 @@
 
 // FBA Pack — the fixed-format Location Booking Confirmation, sent by the
 // agent in one tap. Prefills from the lead, everything editable; the send is
-// blocked until the signed FBA + payment proof are attached. The same tap
-// creates the SOP launch project and brings back the partner's journey link.
+// blocked until the signed FBA + payment proof are attached. Submit opens a
+// review screen — the agent re-reads every line and types the city to confirm
+// before anything is emailed. The same send creates the SOP launch project
+// and brings back the partner's journey link.
 
 import { useEffect, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 
 type SentPack = { id: string; invite_url: string | null; sent_by: string; sent_at: string }
+
+type ReviewSummary = {
+  partnerName: string
+  partnerEmail: string
+  city: string
+  address: string
+  franchiseFee: string
+  bookingAmount: string
+  utr: string
+  waiveMonths: number
+  remarks: string
+  agentName: string
+  agentPhone: string
+  attachments: string[]
+}
+
+/** Mirrors the server's tag(): "Krish & Rishita" → "KrishRishita". */
+function tag(value: string): string {
+  return value.replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 40) || 'TBWX'
+}
+
+function extOf(name: string): string {
+  const dot = name.lastIndexOf('.')
+  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : 'pdf'
+}
 
 export default function FbaPackPanel({
   lead,
@@ -22,6 +49,9 @@ export default function FbaPackPanel({
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ inviteUrl: string | null } | null>(null)
   const [history, setHistory] = useState<SentPack[]>([])
+  const [pendingFd, setPendingFd] = useState<FormData | null>(null)
+  const [review, setReview] = useState<ReviewSummary | null>(null)
+  const [confirmText, setConfirmText] = useState('')
 
   useEffect(() => {
     fetch(`/api/fba-pack?phone=${encodeURIComponent(lead.phone)}`)
@@ -32,19 +62,71 @@ export default function FbaPackPanel({
       .catch(() => {})
   }, [lead.phone, result])
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function onReview(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    setError(null)
+    const fd = new FormData(e.currentTarget)
+    fd.set('leadPhone', lead.phone)
+
+    const str = (k: string) => String(fd.get(k) || '').trim()
+    const cityTag = tag(str('city'))
+    const nameTag = tag(str('partnerName'))
+    const attachments: string[] = []
+    const single: [string, string][] = [
+      ['fbaDraft', 'FBA_Draft'],
+      ['fbaSigned', 'FBA_Signed'],
+      ['paymentProof', 'Payment_Proof'],
+    ]
+    for (const [slot, label] of single) {
+      const f = fd.get(slot)
+      if (f instanceof File && f.size > 0)
+        attachments.push(`${cityTag}_${nameTag}_${label}.${extOf(f.name)}`)
+    }
+    let extraIndex = 0
+    for (const f of fd.getAll('extra')) {
+      if (f instanceof File && f.size > 0 && extraIndex < 6)
+        attachments.push(`${cityTag}_${nameTag}_Document_${++extraIndex}.${extOf(f.name)}`)
+    }
+
+    setPendingFd(fd)
+    setReview({
+      partnerName: str('partnerName'),
+      partnerEmail: str('partnerEmail'),
+      city: str('city'),
+      address: str('address'),
+      franchiseFee: str('franchiseFee'),
+      bookingAmount: str('bookingAmount'),
+      utr: str('utr'),
+      waiveMonths: Number(str('waiveMonths') || '0'),
+      remarks: str('remarks'),
+      agentName: str('agentName'),
+      agentPhone: str('agentPhone'),
+      attachments,
+    })
+    setConfirmText('')
+  }
+
+  function backToEdit() {
+    setReview(null)
+    setPendingFd(null)
+    setConfirmText('')
+  }
+
+  const confirmOk =
+    review !== null && confirmText.trim().toLowerCase() === review.city.trim().toLowerCase()
+
+  async function onConfirmSend() {
+    if (!pendingFd || !confirmOk) return
     setError(null)
     setSending(true)
     try {
-      const fd = new FormData(e.currentTarget)
-      fd.set('leadPhone', lead.phone)
-      const res = await fetch('/api/fba-pack', { method: 'POST', body: fd })
+      const res = await fetch('/api/fba-pack', { method: 'POST', body: pendingFd })
       const data = await res.json()
       if (!res.ok || !data.success) {
         setError(data.error || 'Send failed — try again.')
       } else {
         setResult({ inviteUrl: data.inviteUrl ?? null })
+        backToEdit()
       }
     } catch {
       setError('Connection problem — try again.')
@@ -56,6 +138,15 @@ export default function FbaPackPanel({
   const inputCls =
     'w-full bg-elevated/50 border border-border rounded px-2.5 py-1.5 text-xs text-text placeholder:text-muted focus:outline-none focus:border-accent'
   const labelCls = 'block text-[10px] font-semibold text-dim uppercase tracking-wide mb-1'
+
+  const reviewRow = (label: string, value: string) => (
+    <div className="flex gap-2 py-1 border-b border-border/40 last:border-0">
+      <span className="w-32 shrink-0 text-[10px] font-semibold text-dim uppercase tracking-wide pt-0.5">
+        {label}
+      </span>
+      <span className="text-xs text-text break-words min-w-0">{value}</span>
+    </div>
+  )
 
   return (
     <div className="bg-card rounded-lg border border-border">
@@ -94,101 +185,168 @@ export default function FbaPackPanel({
               </button>
             </div>
           ) : (
-            <form onSubmit={onSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className={labelCls}>Partner name *</label>
-                  <input name="partnerName" defaultValue={lead.full_name} required className={inputCls} />
+            <>
+              {/* Form stays mounted (hidden) during review so files/values survive Back. */}
+              <form onSubmit={onReview} className={review ? 'hidden' : 'space-y-3'}>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className={labelCls}>Partner name *</label>
+                    <input name="partnerName" defaultValue={lead.full_name} required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Partner email *</label>
+                    <input name="partnerEmail" type="email" defaultValue={lead.email} required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>City *</label>
+                    <input name="city" defaultValue={lead.city} required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Franchise fee *</label>
+                    <input name="franchiseFee" placeholder="e.g. ₹2,00,000 + GST" required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Booking received *</label>
+                    <input name="bookingAmount" placeholder="e.g. ₹25,000" required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>UTR / payment ref</label>
+                    <input name="utr" className={inputCls} />
+                  </div>
                 </div>
-                <div>
-                  <label className={labelCls}>Partner email *</label>
-                  <input name="partnerEmail" type="email" defaultValue={lead.email} required className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>City *</label>
-                  <input name="city" defaultValue={lead.city} required className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Franchise fee *</label>
-                  <input name="franchiseFee" placeholder="e.g. ₹2,00,000 + GST" required className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Booking received *</label>
-                  <input name="bookingAmount" placeholder="e.g. ₹25,000" required className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>UTR / payment ref</label>
-                  <input name="utr" className={inputCls} />
-                </div>
-              </div>
 
-              <div>
-                <label className={labelCls}>Shop address *</label>
-                <input name="address" required className={inputCls} />
-              </div>
+                <div>
+                  <label className={labelCls}>Shop address *</label>
+                  <input name="address" required className={inputCls} />
+                </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className={labelCls}>Royalty waive-off</label>
-                  <select name="waiveMonths" defaultValue="0" className={inputCls}>
-                    <option value="0">None — standard (5%)</option>
-                    <option value="1">1 month waived</option>
-                    <option value="2">2 months waived</option>
-                    <option value="3">3 months waived</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className={labelCls}>Royalty waive-off</label>
+                    <select name="waiveMonths" defaultValue="0" className={inputCls}>
+                      <option value="0">None — standard (5%)</option>
+                      <option value="1">1 month waived</option>
+                      <option value="2">2 months waived</option>
+                      <option value="3">3 months waived</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Additional remarks</label>
+                    <input name="remarks" placeholder="anything extra agreed" className={inputCls} />
+                  </div>
                 </div>
-                <div>
-                  <label className={labelCls}>Additional remarks</label>
-                  <input name="remarks" placeholder="anything extra agreed" className={inputCls} />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className={labelCls}>Your name (signature) *</label>
-                  <input name="agentName" defaultValue={agentName} required className={inputCls} />
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className={labelCls}>Your name (signature) *</label>
+                    <input name="agentName" defaultValue={agentName} required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Your company phone</label>
+                    <input name="agentPhone" placeholder="number partners can call" className={inputCls} />
+                  </div>
                 </div>
-                <div>
-                  <label className={labelCls}>Your company phone</label>
-                  <input name="agentPhone" placeholder="number partners can call" className={inputCls} />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className={labelCls}>FBA signed copy (PDF) *</label>
-                  <input name="fbaSigned" type="file" accept="application/pdf,image/*" required className={inputCls} />
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className={labelCls}>FBA signed copy (PDF) *</label>
+                    <input name="fbaSigned" type="file" accept="application/pdf,image/*" required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Payment proof *</label>
+                    <input name="paymentProof" type="file" accept="application/pdf,image/*" required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>FBA draft copy</label>
+                    <input name="fbaDraft" type="file" accept="application/pdf,image/*" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Other documents</label>
+                    <input name="extra" type="file" accept="application/pdf,image/*" multiple className={inputCls} />
+                  </div>
                 </div>
-                <div>
-                  <label className={labelCls}>Payment proof *</label>
-                  <input name="paymentProof" type="file" accept="application/pdf,image/*" required className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>FBA draft copy</label>
-                  <input name="fbaDraft" type="file" accept="application/pdf,image/*" className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Other documents</label>
-                  <input name="extra" type="file" accept="application/pdf,image/*" multiple className={inputCls} />
-                </div>
-              </div>
 
-              {error && <p className="text-xs text-danger font-medium">{error}</p>}
+                {!review && error && <p className="text-xs text-danger font-medium">{error}</p>}
 
-              <button
-                type="submit"
-                disabled={sending}
-                className="w-full bg-accent/10 hover:bg-accent/20 text-accent text-xs font-semibold px-3 py-2 rounded transition-colors disabled:opacity-50"
-              >
-                {sending
-                  ? 'Sending…'
-                  : 'Send Booking Confirmation (Management + Partner, CC GSquare)'}
-              </button>
-              <p className="text-[10px] text-muted">
-                Files are auto-renamed ({'City_Name_FBA_Signed.pdf'}) and the partner&apos;s SOP
-                onboarding starts automatically.
-              </p>
-            </form>
+                <button
+                  type="submit"
+                  className="w-full bg-accent/10 hover:bg-accent/20 text-accent text-xs font-semibold px-3 py-2 rounded transition-colors"
+                >
+                  Review before sending →
+                </button>
+                <p className="text-[10px] text-muted">
+                  Nothing is sent yet — the next screen shows the exact email for a final check.
+                </p>
+              </form>
+
+              {review && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-warning">
+                    ⚠ Final check — this email goes to the partner AND management. Read every line.
+                  </p>
+
+                  <div className="bg-elevated/40 border border-border rounded p-3">
+                    {reviewRow('To', `TBWX Management + ${review.partnerEmail}`)}
+                    {reviewRow('CC', 'gsquareco@tbwxpress.com')}
+                    {reviewRow('Partner', review.partnerName)}
+                    {reviewRow('City', review.city)}
+                    {reviewRow('Shop address', review.address)}
+                    {reviewRow('Franchise fee', review.franchiseFee)}
+                    {reviewRow(
+                      'Booking received',
+                      review.utr ? `${review.bookingAmount} (UTR: ${review.utr})` : review.bookingAmount
+                    )}
+                    {reviewRow(
+                      'Royalty in email',
+                      review.waiveMonths > 0
+                        ? `"First ${review.waiveMonths} month${review.waiveMonths > 1 ? 's' : ''} waived"`
+                        : 'Not mentioned — standard terms'
+                    )}
+                    {review.remarks ? reviewRow('Notes', review.remarks) : null}
+                    {reviewRow('Signature', review.agentPhone ? `${review.agentName} · ${review.agentPhone}` : review.agentName)}
+                    {reviewRow('Attachments', review.attachments.join(', ') || 'none')}
+                  </div>
+
+                  <div>
+                    <label className={labelCls}>
+                      Type the city name ({review.city}) to confirm everything above is correct
+                    </label>
+                    <input
+                      value={confirmText}
+                      onChange={(e) => setConfirmText(e.target.value)}
+                      placeholder={review.city}
+                      className={inputCls}
+                      autoFocus
+                    />
+                  </div>
+
+                  {error && <p className="text-xs text-danger font-medium">{error}</p>}
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={backToEdit}
+                      disabled={sending}
+                      className="flex-1 bg-elevated/60 hover:bg-elevated text-dim text-xs font-semibold px-3 py-2 rounded transition-colors disabled:opacity-50"
+                    >
+                      ← Back &amp; edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onConfirmSend}
+                      disabled={!confirmOk || sending}
+                      className="flex-1 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-semibold px-3 py-2 rounded transition-colors disabled:opacity-40"
+                    >
+                      {sending ? 'Sending…' : 'Confirm & Send'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted">
+                    Files are auto-renamed as shown and the partner&apos;s SOP onboarding starts
+                    automatically after send.
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
