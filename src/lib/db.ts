@@ -224,6 +224,19 @@ export async function ensureInit(): Promise<Client> {
       );
       CREATE INDEX IF NOT EXISTS idx_agreements_phone ON agreements(lead_phone);
 
+      CREATE TABLE IF NOT EXISTS fba_packs (
+        id TEXT PRIMARY KEY,
+        lead_phone TEXT NOT NULL,
+        payload TEXT NOT NULL DEFAULT '{}',
+        files TEXT NOT NULL DEFAULT '[]',
+        message_id TEXT,
+        invite_url TEXT,
+        sop_project_id TEXT,
+        sent_by TEXT DEFAULT '',
+        sent_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_fba_packs_phone ON fba_packs(lead_phone);
+
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL DEFAULT '',
@@ -2678,6 +2691,46 @@ export async function setMetaAdsSnapshot(type: string, data: unknown) {
           ON CONFLICT(snapshot_type) DO UPDATE SET data = ?, fetched_at = ?`,
     args: [type, json, now, json, now],
   })
+}
+
+// --- FBA Packs (Location Booking Confirmation emails) ---
+
+export async function insertFbaPack(data: {
+  id: string
+  lead_phone: string
+  payload: Record<string, unknown>
+  files: { slot: string; filename: string; path: string }[]
+  message_id?: string
+  invite_url?: string
+  sop_project_id?: string
+  sent_by?: string
+}): Promise<void> {
+  const db = await ensureInit()
+  await db.execute({
+    sql: `INSERT INTO fba_packs (id, lead_phone, payload, files, message_id, invite_url, sop_project_id, sent_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      data.id,
+      normalizePhone(data.lead_phone),
+      JSON.stringify(data.payload),
+      JSON.stringify(data.files),
+      data.message_id ?? null,
+      data.invite_url ?? null,
+      data.sop_project_id ?? null,
+      data.sent_by ?? '',
+    ],
+  })
+}
+
+export async function getFbaPacksForLead(
+  phone: string
+): Promise<{ id: string; invite_url: string | null; sent_by: string; sent_at: string }[]> {
+  const db = await ensureInit()
+  const result = await db.execute({
+    sql: 'SELECT id, invite_url, sent_by, sent_at FROM fba_packs WHERE lead_phone = ? ORDER BY sent_at DESC',
+    args: [normalizePhone(phone)],
+  })
+  return result.rows as unknown as { id: string; invite_url: string | null; sent_by: string; sent_at: string }[]
 }
 
 // --- Agreements CRUD ---

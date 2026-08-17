@@ -11,6 +11,7 @@ const VoiceAgentCard = dynamic(() => import('@/components/VoiceAgentCard'), {
   loading: () => null,
   ssr: false,
 })
+const FbaPackPanel = dynamic(() => import('./_components/FbaPackPanel'), { ssr: false })
 const AgreementForm = dynamic(() => import('@/components/AgreementForm'), {
   loading: () => null,
   ssr: false,
@@ -1251,6 +1252,19 @@ export default function LeadDetailPage() {
             )}
             </>
             )}
+
+            {/* FBA Pack — agent-facing Location Booking Confirmation. One send:
+                fixed-format email (Mgmt + partner, CC gsquareco), renamed
+                attachments, SOP onboarding started. */}
+            <FbaPackPanel
+              lead={{
+                phone: lead.phone,
+                full_name: lead.full_name,
+                email: lead.email || '',
+                city: lead.city || '',
+              }}
+              agentName={sessionUser?.name || ''}
+            />
 
             {/* AI Voice Agent Card — collapsible */}
             <div className="bg-card rounded-lg border border-border">

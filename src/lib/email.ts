@@ -174,3 +174,121 @@ The Belgian Waffle Xpress
     }
   }
 }
+
+// ─── FBA Pack — Location Booking Confirmation ────────────────────────────────
+// One fixed-format email from the Sales Team, addressed jointly to TBWX
+// Management and the partner, CC gsquareco@. The machine composes it so the
+// format cannot drift (the old agent-composed FBA emails arrived as three-line
+// WhatsApp pastes with "signed copy.pdf" attachments).
+
+export interface FbaAttachment {
+  filename: string
+  contentType: string
+  data: Buffer
+}
+
+export interface FbaPackEmailInput {
+  partnerName: string
+  partnerEmail: string
+  city: string
+  address: string
+  franchiseFee: string
+  bookingAmount: string
+  utr: string
+  /** 0 = standard signing — NO royalty line appears at all. */
+  waiveMonths: number
+  remarks: string
+  agentName: string
+  agentPhone: string
+  inviteUrl: string | null
+  attachments: FbaAttachment[]
+}
+
+/** ~20MB practical cap under Gmail's 25MB raw limit (base64 inflates ~37%). */
+export const FBA_MAX_TOTAL_BYTES = 18 * 1024 * 1024
+
+export async function sendFbaPackEmail(input: FbaPackEmailInput): Promise<SendEmailResult> {
+  // Sender: ai@ mailbox "dressed" via a verified send-as alias. Until the
+  // bookings@ alias exists in Workspace, FBA_FROM_EMAIL stays ai@ — flipping
+  // the env to bookings@tbwxpress.com needs no redeploy. Display name is the
+  // team, reply flows to sales@.
+  const senderName = 'TBWX Sales Team'
+  const senderEmail = process.env.FBA_FROM_EMAIL || process.env.EMAIL_SENDER || 'ai@tbwxpress.com'
+  const managementTo = process.env.FBA_MGMT_TO || 'tbwxpress@gmail.com'
+  const cc = process.env.FBA_CC || 'gsquareco@tbwxpress.com'
+  const replyTo = process.env.FBA_REPLY_TO || 'sales@tbwxpress.com'
+
+  const subject = `The Belgian Waffle Xpress — Location Booking Confirmation | ${input.city}`
+
+  const royaltyLine =
+    input.waiveMonths > 0
+      ? `Royalty            : 5% as per agreement — first ${input.waiveMonths} month${input.waiveMonths > 1 ? 's' : ''} waived\n`
+      : ''
+  const remarksLine = input.remarks ? `Notes              : ${input.remarks}\n` : ''
+  const inviteBlock = input.inviteUrl
+    ? `\nNext step for ${input.partnerName.split(' ')[0]}: create your TBWX account and track your outlet's journey — from paperwork to grand opening — here:\n${input.inviteUrl}\n`
+    : ''
+
+  const body = `To TBWX Management and ${input.partnerName},
+
+The Sales Team is pleased to confirm the location booking below. The signed Franchise Booking Agreement (FBA) and payment proof are attached.
+
+Partner             : ${input.partnerName}
+Location            : ${input.city}
+Shop address        : ${input.address}
+Franchise fee       : ${input.franchiseFee}
+Booking received    : ${input.bookingAmount}${input.utr ? ` (UTR: ${input.utr})` : ''}
+${royaltyLine}${remarksLine}${inviteBlock}
+Welcome to the TBWX family!
+
+Warm regards,
+${input.agentName}
+The Belgian Waffle Xpress — Sales Team
+${input.agentPhone ? `Phone: ${input.agentPhone}\n` : ''}Email: sales@tbwxpress.com
+`
+
+  const boundary = `fba${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+  const parts: string[] = [
+    `From: ${senderName} <${senderEmail}>`,
+    `To: ${managementTo}, ${input.partnerEmail}`,
+    `Cc: ${cc}`,
+    `Reply-To: ${replyTo}`,
+    `Subject: ${encodeSubject(subject)}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    ``,
+    `--${boundary}`,
+    `Content-Type: text/plain; charset=UTF-8`,
+    `Content-Transfer-Encoding: base64`,
+    ``,
+    Buffer.from(body, 'utf8').toString('base64'),
+  ]
+  for (const att of input.attachments) {
+    parts.push(
+      `--${boundary}`,
+      `Content-Type: ${att.contentType}; name="${att.filename}"`,
+      `Content-Disposition: attachment; filename="${att.filename}"`,
+      `Content-Transfer-Encoding: base64`,
+      ``,
+      att.data.toString('base64')
+    )
+  }
+  parts.push(`--${boundary}--`)
+
+  try {
+    const gmail = getGmail()
+    const res = await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw: Buffer.from(parts.join('\r\n'))
+          .toString('base64')
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/, ''),
+      },
+    })
+    return { success: true, message_id: res.data.id ?? undefined }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Send failed' }
+  }
+}
