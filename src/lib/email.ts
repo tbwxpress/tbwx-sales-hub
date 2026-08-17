@@ -220,6 +220,18 @@ export async function sendFbaPackEmail(input: FbaPackEmailInput): Promise<SendEm
 
   const subject = `The Belgian Waffle Xpress — Location Booking Confirmation | ${input.city}`
 
+  // Agents enter plain digits (fee is excl. GST by policy); render "₹2,00,000".
+  // Anything non-numeric passes through untouched so legacy free-text still works.
+  const formatMoney = (v: string): string => {
+    const digits = v.replace(/[₹,\s]/g, '')
+    return /^\d+$/.test(digits) ? `₹${Number(digits).toLocaleString('en-IN')}` : v
+  }
+  const feeIsNumeric = /^\d+$/.test(input.franchiseFee.replace(/[₹,\s]/g, ''))
+  const feeDisplay = feeIsNumeric
+    ? `${formatMoney(input.franchiseFee)} (GST extra)`
+    : input.franchiseFee
+  const bookingDisplay = formatMoney(input.bookingAmount)
+
   const royaltyLine =
     input.waiveMonths > 0
       ? `Royalty         : First ${input.waiveMonths} month${input.waiveMonths > 1 ? 's' : ''} waived` + '\n'
@@ -237,14 +249,14 @@ The Sales Team is pleased to confirm the location booking below. The signed Fran
 Partner         : ${input.partnerName}
 Location        : ${input.city}
 Shop address    : ${input.address}
-Franchise fee   : ${input.franchiseFee}
-Booking received: ${input.bookingAmount}${input.utr ? ` (UTR: ${input.utr})` : ''}
+Franchise fee   : ${feeDisplay}
+Booking received: ${bookingDisplay}${input.utr ? ` (UTR: ${input.utr})` : ''}
 ${royaltyLine}${remarksLine}${inviteBlock}
 Welcome to the TBWX family!
 
 Warm regards,
 ${input.agentName}
-The Belgian Waffle Xpress â€” Sales Team
+The Belgian Waffle Xpress — Sales Team
 ${input.agentPhone ? `Phone: ${input.agentPhone}` + '\n' : ''}Email: sales@tbwxpress.com
 `
 
@@ -258,10 +270,10 @@ ${input.agentPhone ? `Phone: ${input.agentPhone}` + '\n' : ''}Email: sales@tbwxp
     detailRow('Partner', esc(input.partnerName)),
     detailRow('Location', esc(input.city)),
     detailRow('Shop address', esc(input.address)),
-    detailRow('Franchise fee', esc(input.franchiseFee)),
+    detailRow('Franchise fee', esc(feeDisplay)),
     detailRow(
       'Booking received',
-      `${esc(input.bookingAmount)}${input.utr ? ` <span style="color:#8a7f70;font-weight:400;">(UTR: ${esc(input.utr)})</span>` : ''}`
+      `${esc(bookingDisplay)}${input.utr ? ` <span style="color:#8a7f70;font-weight:400;">(UTR: ${esc(input.utr)})</span>` : ''}`
     ),
     input.waiveMonths > 0
       ? detailRow('Royalty', `First ${input.waiveMonths} month${input.waiveMonths > 1 ? 's' : ''} waived`)

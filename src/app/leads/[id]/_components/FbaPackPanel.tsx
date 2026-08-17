@@ -40,6 +40,13 @@ function mb(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/** "200000" → "₹2,00,000". Mirrors the email's formatter so the review screen
+ * shows exactly what the partner will read. Non-numeric input passes through. */
+function formatMoney(v: string): string {
+  const digits = v.replace(/[₹,\s]/g, '')
+  return /^\d+$/.test(digits) ? `₹${Number(digits).toLocaleString('en-IN')}` : v
+}
+
 function extOf(name: string): string {
   const dot = name.lastIndexOf('.')
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : 'pdf'
@@ -230,8 +237,16 @@ export default function FbaPackPanel({
                     <input name="city" defaultValue={lead.city} required className={inputCls} />
                   </div>
                   <div>
-                    <label className={labelCls}>Franchise fee *</label>
-                    <input name="franchiseFee" placeholder="e.g. ₹2,00,000 + GST" required className={inputCls} />
+                    <label className={labelCls}>Franchise fee (₹, excl. GST) *</label>
+                    <input
+                      name="franchiseFee"
+                      inputMode="numeric"
+                      pattern="[0-9,\s]+"
+                      title="Numbers only — GST is added automatically in the email"
+                      placeholder="e.g. 200000"
+                      required
+                      className={inputCls}
+                    />
                   </div>
                   <div>
                     <label className={labelCls}>Booking received *</label>
@@ -319,10 +334,12 @@ export default function FbaPackPanel({
                     {reviewRow('Partner', review.partnerName)}
                     {reviewRow('City', review.city)}
                     {reviewRow('Shop address', review.address)}
-                    {reviewRow('Franchise fee', review.franchiseFee)}
+                    {reviewRow('Franchise fee', `${formatMoney(review.franchiseFee)} (GST extra)`)}
                     {reviewRow(
                       'Booking received',
-                      review.utr ? `${review.bookingAmount} (UTR: ${review.utr})` : review.bookingAmount
+                      review.utr
+                        ? `${formatMoney(review.bookingAmount)} (UTR: ${review.utr})`
+                        : formatMoney(review.bookingAmount)
                     )}
                     {reviewRow(
                       'Royalty in email',
