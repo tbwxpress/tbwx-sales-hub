@@ -32,6 +32,14 @@ function tag(value: string): string {
   return value.replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 40) || 'TBWX'
 }
 
+// Gmail rejects emails over 25MB on the wire; base64 inflates ~33%, so ~18MB
+// of raw attachments is the hard ceiling for one email. Same cap as the server.
+const MAX_TOTAL_BYTES = 18 * 1024 * 1024
+
+function mb(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 function extOf(name: string): string {
   const dot = name.lastIndexOf('.')
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : 'pdf'
@@ -72,6 +80,7 @@ export default function FbaPackPanel({
     const cityTag = tag(str('city'))
     const nameTag = tag(str('partnerName'))
     const attachments: string[] = []
+    const sized: { name: string; size: number }[] = []
     const single: [string, string][] = [
       ['fbaDraft', 'FBA_Draft'],
       ['fbaSigned', 'FBA_Signed'],
@@ -79,13 +88,32 @@ export default function FbaPackPanel({
     ]
     for (const [slot, label] of single) {
       const f = fd.get(slot)
-      if (f instanceof File && f.size > 0)
-        attachments.push(`${cityTag}_${nameTag}_${label}.${extOf(f.name)}`)
+      if (f instanceof File && f.size > 0) {
+        const renamed = `${cityTag}_${nameTag}_${label}.${extOf(f.name)}`
+        attachments.push(`${renamed} (${mb(f.size)})`)
+        sized.push({ name: renamed, size: f.size })
+      }
     }
     let extraIndex = 0
     for (const f of fd.getAll('extra')) {
-      if (f instanceof File && f.size > 0 && extraIndex < 6)
-        attachments.push(`${cityTag}_${nameTag}_Document_${++extraIndex}.${extOf(f.name)}`)
+      if (f instanceof File && f.size > 0 && extraIndex < 6) {
+        const renamed = `${cityTag}_${nameTag}_Document_${++extraIndex}.${extOf(f.name)}`
+        attachments.push(`${renamed} (${mb(f.size)})`)
+        sized.push({ name: renamed, size: f.size })
+      }
+    }
+
+    // Preflight the Gmail size ceiling here — a clear message beats a failed
+    // upload after the agent has already waited on a big transfer.
+    const totalBytes = sized.reduce((sum, f) => sum + f.size, 0)
+    if (totalBytes > MAX_TOTAL_BYTES) {
+      const heaviest = [...sized].sort((a, b) => b.size - a.size)[0]
+      setError(
+        `Attachments total ${mb(totalBytes)} — one email can carry at most ${mb(MAX_TOTAL_BYTES)} ` +
+          `(Gmail's limit). Heaviest file: ${heaviest.name} (${mb(heaviest.size)}). ` +
+          `Compress it or remove a document and try again.`
+      )
+      return
     }
 
     setPendingFd(fd)
@@ -261,7 +289,7 @@ export default function FbaPackPanel({
                     <input name="fbaDraft" type="file" accept="application/pdf,image/*" className={inputCls} />
                   </div>
                   <div>
-                    <label className={labelCls}>Other documents</label>
+                    <label className={labelCls}>Other documents (up to 6, all files ≤18 MB total)</label>
                     <input name="extra" type="file" accept="application/pdf,image/*" multiple className={inputCls} />
                   </div>
                 </div>

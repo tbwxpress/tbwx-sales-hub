@@ -26,6 +26,8 @@ const nextConfig: NextConfig = {
   experimental: {
     // Tree-shake heavy barrel imports so per-route client JS is smaller.
     optimizePackageImports: ['lucide-react', 'date-fns', '@tanstack/react-table'],
+    // FBA Pack uploads (multi-file) — default 10MB truncates bodies silently.
+    middlewareClientMaxBodySize: '50mb',
   },
   async headers() {
     // /admin/wa-numbers loads Meta's JS SDK for WhatsApp Embedded Signup
