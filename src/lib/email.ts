@@ -222,32 +222,65 @@ export async function sendFbaPackEmail(input: FbaPackEmailInput): Promise<SendEm
 
   const royaltyLine =
     input.waiveMonths > 0
-      ? `Royalty            : 5% as per agreement — first ${input.waiveMonths} month${input.waiveMonths > 1 ? 's' : ''} waived\n`
+      ? `Royalty         : First ${input.waiveMonths} month${input.waiveMonths > 1 ? 's' : ''} waived` + '\n'
       : ''
-  const remarksLine = input.remarks ? `Notes              : ${input.remarks}\n` : ''
+  const remarksLine = input.remarks ? `Notes           : ${input.remarks}` + '\n' : ''
   const inviteBlock = input.inviteUrl
-    ? `\nNext step for ${input.partnerName.split(' ')[0]}: create your TBWX account and track your outlet's journey — from paperwork to grand opening — here:\n${input.inviteUrl}\n`
+    ? '\n' + `Next step for ${input.partnerName.split(' ')[0]}: create your TBWX account and track your outlet's journey here:` + '\n' + input.inviteUrl + '\n'
     : ''
 
-  const body = `To TBWX Management and ${input.partnerName},
+  // Plain-text fallback for old clients; the HTML part is what most people see.
+  const textBody = `To TBWX Management and ${input.partnerName},
 
 The Sales Team is pleased to confirm the location booking below. The signed Franchise Booking Agreement (FBA) and payment proof are attached.
 
-Partner             : ${input.partnerName}
-Location            : ${input.city}
-Shop address        : ${input.address}
-Franchise fee       : ${input.franchiseFee}
-Booking received    : ${input.bookingAmount}${input.utr ? ` (UTR: ${input.utr})` : ''}
+Partner         : ${input.partnerName}
+Location        : ${input.city}
+Shop address    : ${input.address}
+Franchise fee   : ${input.franchiseFee}
+Booking received: ${input.bookingAmount}${input.utr ? ` (UTR: ${input.utr})` : ''}
 ${royaltyLine}${remarksLine}${inviteBlock}
 Welcome to the TBWX family!
 
 Warm regards,
 ${input.agentName}
-The Belgian Waffle Xpress — Sales Team
-${input.agentPhone ? `Phone: ${input.agentPhone}\n` : ''}Email: sales@tbwxpress.com
+The Belgian Waffle Xpress â€” Sales Team
+${input.agentPhone ? `Phone: ${input.agentPhone}` + '\n' : ''}Email: sales@tbwxpress.com
 `
 
-  const boundary = `fba${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+  const esc = (v: string) =>
+    v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+  const detailRow = (label: string, value: string) =>
+    `<tr><td style="padding:8px 16px 8px 0;color:#8a7f70;font-size:13px;white-space:nowrap;vertical-align:top;">${label}</td><td style="padding:8px 0;color:#1a1209;font-size:14px;font-weight:600;">${value}</td></tr>`
+
+  const htmlRows = [
+    detailRow('Partner', esc(input.partnerName)),
+    detailRow('Location', esc(input.city)),
+    detailRow('Shop address', esc(input.address)),
+    detailRow('Franchise fee', esc(input.franchiseFee)),
+    detailRow(
+      'Booking received',
+      `${esc(input.bookingAmount)}${input.utr ? ` <span style="color:#8a7f70;font-weight:400;">(UTR: ${esc(input.utr)})</span>` : ''}`
+    ),
+    input.waiveMonths > 0
+      ? detailRow('Royalty', `First ${input.waiveMonths} month${input.waiveMonths > 1 ? 's' : ''} waived`)
+      : '',
+    input.remarks ? detailRow('Notes', esc(input.remarks)) : '',
+  ].join('')
+
+  const inviteHtml = input.inviteUrl
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:24px;"><tr><td align="center" style="font-family:Arial,sans-serif;"><p style="margin:0 0 12px;color:#4a4036;font-size:13px;">Next step for ${esc(input.partnerName.split(' ')[0])} &mdash; create your TBWX account and follow your outlet&rsquo;s journey, from paperwork to grand opening:</p><a href="${input.inviteUrl}" style="display:inline-block;background:#f5c518;color:#1a1209;font-size:14px;font-weight:bold;text-decoration:none;padding:12px 30px;border-radius:999px;">Create your TBWX account &rarr;</a></td></tr></table>`
+    : ''
+
+  const agentPhoneHtml = input.agentPhone
+    ? `<p style="margin:6px 0 0;color:#4a4036;font-size:12px;">Phone: ${esc(input.agentPhone)}</p>`
+    : ''
+
+  const htmlBody = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4efe3;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4efe3;padding:24px 12px;"><tr><td align="center"><table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fffdf7;border-radius:12px;overflow:hidden;border:1px solid #e8dfc9;"><tr><td style="background:#1a1209;padding:22px 32px;"><div style="font-family:Georgia,serif;color:#fef6d8;font-size:20px;font-weight:bold;letter-spacing:0.5px;">The Belgian Waffle Xpress</div><div style="font-family:Arial,sans-serif;color:#f5c518;font-size:11px;letter-spacing:2.5px;text-transform:uppercase;margin-top:5px;">Location Booking Confirmation</div></td></tr><tr><td style="height:4px;background:#f5c518;font-size:0;">&nbsp;</td></tr><tr><td style="padding:30px 32px 0;font-family:Arial,sans-serif;"><p style="margin:0 0 14px;color:#1a1209;font-size:14px;">To <strong>TBWX Management</strong> and <strong>${esc(input.partnerName)}</strong>,</p><p style="margin:0 0 22px;color:#4a4036;font-size:14px;line-height:1.55;">The Sales Team is pleased to confirm the location booking below. The signed Franchise Booking Agreement (FBA) and payment proof are attached to this email.</p><table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#faf6ea;border:1px solid #e8dfc9;border-radius:8px;"><tr><td style="padding:16px 20px;"><table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="font-family:Arial,sans-serif;">${htmlRows}</table></td></tr></table>${inviteHtml}<p style="margin:26px 0 0;color:#1a1209;font-size:14px;font-weight:600;">Welcome to the TBWX family! &#128591;</p></td></tr><tr><td style="padding:24px 32px 28px;font-family:Arial,sans-serif;"><div style="border-top:1px solid #e8dfc9;padding-top:18px;"><p style="margin:0;color:#1a1209;font-size:14px;font-weight:bold;">${esc(input.agentName)}</p><p style="margin:2px 0 0;color:#8a7f70;font-size:12px;">The Belgian Waffle Xpress &mdash; Sales Team</p>${agentPhoneHtml}<p style="margin:2px 0 0;color:#4a4036;font-size:12px;">Email: sales@tbwxpress.com</p></div></td></tr></table><p style="font-family:Arial,sans-serif;color:#a89c8a;font-size:11px;margin:14px 0 0;">Sent by the TBWX Sales Team &middot; replies go to sales@tbwxpress.com</p></td></tr></table></body></html>`
+
+  const mixed = `fba${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+  const alt = `alt${Math.random().toString(36).slice(2, 10)}`
   const parts: string[] = [
     `From: ${senderName} <${senderEmail}>`,
     `To: ${managementTo}, ${input.partnerEmail}`,
@@ -255,17 +288,26 @@ ${input.agentPhone ? `Phone: ${input.agentPhone}\n` : ''}Email: sales@tbwxpress.
     `Reply-To: ${replyTo}`,
     `Subject: ${encodeSubject(subject)}`,
     `MIME-Version: 1.0`,
-    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    `Content-Type: multipart/mixed; boundary="${mixed}"`,
     ``,
-    `--${boundary}`,
+    `--${mixed}`,
+    `Content-Type: multipart/alternative; boundary="${alt}"`,
+    ``,
+    `--${alt}`,
     `Content-Type: text/plain; charset=UTF-8`,
     `Content-Transfer-Encoding: base64`,
     ``,
-    Buffer.from(body, 'utf8').toString('base64'),
+    Buffer.from(textBody, 'utf8').toString('base64'),
+    `--${alt}`,
+    `Content-Type: text/html; charset=UTF-8`,
+    `Content-Transfer-Encoding: base64`,
+    ``,
+    Buffer.from(htmlBody, 'utf8').toString('base64'),
+    `--${alt}--`,
   ]
   for (const att of input.attachments) {
     parts.push(
-      `--${boundary}`,
+      `--${mixed}`,
       `Content-Type: ${att.contentType}; name="${att.filename}"`,
       `Content-Disposition: attachment; filename="${att.filename}"`,
       `Content-Transfer-Encoding: base64`,
@@ -273,7 +315,7 @@ ${input.agentPhone ? `Phone: ${input.agentPhone}\n` : ''}Email: sales@tbwxpress.
       att.data.toString('base64')
     )
   }
-  parts.push(`--${boundary}--`)
+  parts.push(`--${mixed}--`)
 
   try {
     const gmail = getGmail()
