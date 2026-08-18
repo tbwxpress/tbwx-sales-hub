@@ -47,6 +47,14 @@ function formatMoney(v: string): string {
   return /^\d+$/.test(digits) ? `₹${Number(digits).toLocaleString('en-IN')}` : v
 }
 
+/** SQLite UTC "YYYY-MM-DD HH:MM:SS" → readable IST. */
+function fmtIst(sqlUtc: string): string {
+  const d = new Date(sqlUtc.replace(' ', 'T') + 'Z')
+  return Number.isNaN(d.getTime())
+    ? sqlUtc
+    : d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
 function extOf(name: string): string {
   const dot = name.lastIndexOf('.')
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : 'pdf'
@@ -149,6 +157,11 @@ export default function FbaPackPanel({
 
   const confirmOk =
     review !== null && confirmText.trim().toLowerCase() === review.city.trim().toLowerCase()
+
+  const lastSent =
+    history.length > 0
+      ? history.reduce((a, b) => (a.sent_at > b.sent_at ? a : b))
+      : null
 
   async function onConfirmSend() {
     if (!pendingFd || !confirmOk) return
@@ -327,6 +340,13 @@ export default function FbaPackPanel({
                   <p className="text-xs font-semibold text-warning">
                     ⚠ Final check — this email goes to the partner AND management. Read every line.
                   </p>
+                  {history.length > 0 && (
+                    <p className="text-xs font-bold text-danger">
+                      ⛔ Already sent for this lead{lastSent ? ` on ${fmtIst(lastSent.sent_at)} by ${lastSent.sent_by}` : ''}.
+                      Sending again emails the partner and management a second time — proceed only
+                      if you are correcting a mistake.
+                    </p>
+                  )}
 
                   <div className="bg-elevated/40 border border-border rounded p-3">
                     {reviewRow('To', `TBWX Management + ${review.partnerEmail}`)}
