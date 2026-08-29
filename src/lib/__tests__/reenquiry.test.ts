@@ -14,6 +14,7 @@ interface Existing {
   lead_status: string
   assigned_to: string
   enquiry_count: number
+  created_time?: string
 }
 
 let existing: Existing[] = []
@@ -137,11 +138,26 @@ describe('dbApplyReEnquiries', () => {
 
   it('folds into the OLDEST record when the phone already appears twice', async () => {
     existing = [
-      { row_number: 5100, phone: '919876543210', lead_status: 'NEW', assigned_to: 'Happy', enquiry_count: 1 },
-      { row_number: 4200, phone: '919876543210', lead_status: 'REPLIED', assigned_to: 'Anmol', enquiry_count: 1 },
+      { row_number: 5100, phone: '919876543210', lead_status: 'NEW', assigned_to: 'Happy', enquiry_count: 1, created_time: '2026-07-01T00:00:00Z' },
+      { row_number: 4200, phone: '919876543210', lead_status: 'REPLIED', assigned_to: 'Anmol', enquiry_count: 1, created_time: '2026-05-01T00:00:00Z' },
     ]
     const { dbApplyReEnquiries } = await import('../leads-db')
     await dbApplyReEnquiries([lead()])
     expect(sqlFor('merged_into = ?')[0].args[0]).toBe(4200)
+  })
+
+  it('picks the master by AGE, not row number — row numbers are band-offset per form', async () => {
+    // The lead with the history came through the newer form, so it sits in the
+    // 200000 band; the low-numbered row is a newer enquiry on the original form.
+    // Ordering by row number would archive the record holding the conversation.
+    existing = [
+      { row_number: 200072, phone: '919876543210', lead_status: 'DECK_SENT', assigned_to: 'Anmol', enquiry_count: 1, created_time: '2026-08-25T09:00:00Z' },
+      { row_number: 5421, phone: '919876543210', lead_status: 'NEW', assigned_to: '', enquiry_count: 1, created_time: '2026-08-29T09:00:00Z' },
+    ]
+    const { dbApplyReEnquiries } = await import('../leads-db')
+    await dbApplyReEnquiries([lead({ row_number: 5999, created_time: '2026-12-01T10:00:00+05:30' })])
+    const archive = sqlFor('merged_into = ?')[0]
+    expect(archive.args[0]).toBe(200072) // the record with the conversation survives
+    expect(archive.args[1]).toBe(5999)
   })
 })

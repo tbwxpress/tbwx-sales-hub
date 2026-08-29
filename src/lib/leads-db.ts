@@ -154,15 +154,25 @@ export async function dbApplyReEnquiries(incoming: Lead[]): Promise<ReEnquiryRes
   const db = await ensureInit()
 
   const existingRes = await db.execute(
-    'SELECT row_number, phone, lead_status, assigned_to, enquiry_count FROM leads WHERE merged_into IS NULL',
+    'SELECT row_number, phone, lead_status, assigned_to, enquiry_count, created_time FROM leads WHERE merged_into IS NULL',
   )
-  // Oldest row wins as the master, so the record carrying the history keeps it.
+  // The master is the EARLIEST-CREATED record — the one carrying the thread,
+  // the agent and the history. Explicitly not the lowest row_number: row
+  // numbers are band-offset per form source (0, 100000, 200000…), so a lead
+  // that came through a newer form always sorts higher than an older lead from
+  // the original form, regardless of age. Ordering by row number would archive
+  // the record with the history into the empty new one.
+  const olderWins = (a: Record<string, unknown>, b: Record<string, unknown>) => {
+    const at = String(a.created_time || ''), bt = String(b.created_time || '')
+    if (at && bt && at !== bt) return at < bt
+    return Number(a.row_number) < Number(b.row_number)
+  }
   const byPhone = new Map<string, Record<string, unknown>>()
   for (const r of existingRes.rows as unknown as Record<string, unknown>[]) {
     const key = normalizePhone(String(r.phone || ''))
     if (key.length < 12) continue
     const prev = byPhone.get(key)
-    if (!prev || Number(r.row_number) < Number(prev.row_number)) byPhone.set(key, r)
+    if (!prev || olderWins(r, prev)) byPhone.set(key, r)
   }
 
   for (const lead of incoming) {
