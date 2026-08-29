@@ -432,6 +432,20 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        // The "already sent" check above is a read, so two overlapping cron
+        // runs can both clear it and both send. This claim is atomic — one
+        // opt-in template per lead, whichever run gets there first.
+        const { claimEvent } = await import('@/lib/db')
+        if (!(await claimEvent(`optin:lead:${lead.row_number}`, 'auto_send_optin'))) {
+          results.push({
+            phone: lead.phone_formatted,
+            name: lead.full_name,
+            status: 'skipped',
+            error: 'Already claimed by a concurrent run',
+          })
+          continue
+        }
+
         // Send WhatsApp template to lead
         const refId = `TBWX-${lead.row_number}`
         const waResult = await sendTemplate(

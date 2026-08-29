@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
-import { upsertContact, insertMessage, updateMessageStatus, getMessages, getContact, getDripState, upsertDripState, getWaNumber, markMessagesRead, setSetting } from '@/lib/db'
+import { upsertContact, insertMessage, updateMessageStatus, getMessages, getContact, getDripState, upsertDripState, getWaNumber, markMessagesRead, setSetting, claimEvent } from '@/lib/db'
 import { sendTemplate } from '@/lib/whatsapp'
 import { logSentMessage, getLeadByRow } from '@/lib/sheets'
 import { getMarketingFirstTemplateName } from '@/lib/template-settings'
@@ -114,6 +114,16 @@ export async function POST(req: NextRequest) {
         const contacts = value.contacts || []
 
         for (const msg of messages) {
+          // Meta redelivers this whole payload whenever our ack is slow, and
+          // every redelivery used to re-run the sends below — one lead received
+          // the same intro 10 times inside 1.4 s. Claim the message id once;
+          // repeats fall straight through. insertMessage already dedupes the
+          // stored row, so skipping here loses nothing.
+          if (!(await claimEvent(`wa:msg:${msg.id}`, 'inbound_message'))) {
+            console.log(`[Webhook] duplicate delivery for ${msg.id} — skipping side effects`)
+            continue
+          }
+
           const phone = msg.from // e.g. "919876543210"
           const contactInfo = contacts.find((c: { wa_id: string }) => c.wa_id === phone)
           const contactName = contactInfo?.profile?.name || ''

@@ -87,6 +87,18 @@ export async function ensureInit(): Promise<Client> {
       CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
       CREATE INDEX IF NOT EXISTS idx_messages_wa_id ON messages(wa_message_id);
 
+      -- One row per side-effect-bearing event we have already handled. Meta
+      -- retries a webhook whenever we are slow to ack, and every retry used to
+      -- re-run the whole side-effect chain (deck, agent intro, away message)
+      -- because each one read "not sent yet" before any of them had written.
+      -- The PRIMARY KEY makes the claim atomic: exactly one caller wins.
+      CREATE TABLE IF NOT EXISTS processed_events (
+        event_id TEXT PRIMARY KEY,
+        kind TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_processed_events_created ON processed_events(created_at);
+
       CREATE TABLE IF NOT EXISTS call_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         phone TEXT NOT NULL,
@@ -972,6 +984,50 @@ export async function getContact(phone: string) {
   phone = normalizePhone(phone)
   const result = await db.execute({ sql: 'SELECT * FROM contacts WHERE phone = ?', args: [phone] })
   return result.rows[0] ? serializeRow(result.rows[0]) : null
+}
+
+// --- Idempotency ---
+
+/**
+ * Claim an event exactly once, process-wide and across concurrent requests.
+ *
+ * Returns true for the FIRST caller and false for every repeat, so callers can
+ * run side effects (WhatsApp sends) under `if (await claimEvent(id))`. The
+ * guarantee comes from the PRIMARY KEY, not from a read-then-write check —
+ * that is the whole point: Meta redelivers a webhook whenever we ack slowly,
+ * and the old "have we sent this already?" reads all returned "no" before the
+ * first send landed, so one inbound message went out up to 10 times.
+ *
+ * Fails OPEN (returns true) if the claim itself errors: a bookkeeping outage
+ * must never silently stop leads from being answered.
+ */
+export async function claimEvent(eventId: string, kind = ''): Promise<boolean> {
+  if (!eventId) return true
+  try {
+    const db = await ensureInit()
+    const res = await db.execute({
+      sql: 'INSERT OR IGNORE INTO processed_events (event_id, kind) VALUES (?, ?)',
+      args: [eventId, kind],
+    })
+    return Number(res.rowsAffected || 0) > 0
+  } catch (err) {
+    console.error('[claimEvent] failed, allowing through:', err)
+    return true
+  }
+}
+
+/** Housekeeping: drop claims older than `days` (default 30). */
+export async function pruneProcessedEvents(days = 30): Promise<number> {
+  try {
+    const db = await ensureInit()
+    const res = await db.execute({
+      sql: `DELETE FROM processed_events WHERE created_at < datetime('now', ?)`,
+      args: [`-${Math.max(1, Math.floor(days))} days`],
+    })
+    return Number(res.rowsAffected || 0)
+  } catch {
+    return 0
+  }
 }
 
 // --- Message operations ---

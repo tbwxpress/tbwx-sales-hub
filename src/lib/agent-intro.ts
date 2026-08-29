@@ -81,6 +81,13 @@ export async function maybeSendAgentIntro(params: { phone: string; leadRow: numb
       if (!sent.some((m: any) => m.template_used === deckTemplate && m.status !== 'failed')) return false
     }
 
+    // Last gate before we spend a send. The marker check above is a read, so
+    // two concurrent callers can both pass it; this claim is atomic, so exactly
+    // one of them gets to send. Keyed on the lead, because the intro is a
+    // once-per-lead event no matter which path triggers it.
+    const { claimEvent } = await import('./db')
+    if (!(await claimEvent(`agent_intro:lead:${leadRow}`, 'agent_intro'))) return false
+
     const text = buildAgentIntroText(lead.full_name, agent.name, agentPhone)
     const { sendTextMessage } = await import('./whatsapp')
     const res = await sendTextMessage(phone, text)
