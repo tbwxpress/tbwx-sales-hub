@@ -2,6 +2,7 @@ import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { sendTemplate } from '@/lib/whatsapp'
+import { resolveAssignee } from '@/lib/assignment'
 import { sendFranchiseEmail } from '@/lib/email'
 import { logSentMessage, updateLead, getLeads } from '@/lib/sheets'
 import { upsertContact, insertMessage, getMessages, getSetting, setSetting, logAssignment } from '@/lib/db'
@@ -51,6 +52,8 @@ interface RawLead {
   model_interest: string
   lead_priority: string
   source_tab: 'new' | 'old'
+  /** Agent already on the lead, if any. An existing owner is kept, never re-rotated. */
+  assigned_to?: string
   /** Latest enquiry timestamp — blank for the legacy sheet tab, which has no such column. */
   last_enquiry_at?: string
   /** Meta lead id of the newest enquiry; scopes the send-once claim to THIS enquiry. */
@@ -156,11 +159,6 @@ const COUNTER_KEY = 'auto_assign.counter'
 
 interface PoolAgent { name: string }
 interface AgentData { activeAgents: PoolAgent[]; allLeads: { assigned_to: string; lead_status: string }[] }
-
-function pickAgentByCounter(pool: PoolAgent[], counter: number): string {
-  if (pool.length === 0) return ''
-  return pool[((counter % pool.length) + pool.length) % pool.length].name
-}
 
 // --- Update the correct tab ---
 async function markContacted(lead: RawLead, waMessageId: string, assignedTo: string) {
@@ -284,6 +282,7 @@ export async function POST(request: NextRequest) {
         model_interest: l.model_interest || '',
         lead_priority: l.lead_priority || '',
         source_tab: 'new',
+        assigned_to: l.assigned_to || '',
         last_enquiry_at: l.last_enquiry_at || '',
         enquiry_id: l.id || '',
       }
@@ -405,15 +404,18 @@ export async function POST(request: NextRequest) {
         // We're going to act on this lead (assign + send/mark), so take the next
         // rotation slot now. Skipped-above leads never reach here, so they no
         // longer waste assignment slots.
-        const assignedTo = pickAgentByCounter(agentData.activeAgents, assignCounter)
-        if (assignedTo) assignCounter++
+        //
+        // An owner already on the lead wins over the rotation — see
+        // resolveAssignee for why.
+        const decision = resolveAssignee(lead.assigned_to, agentData.activeAgents, assignCounter)
+        const assignedTo = decision.assignedTo
+        if (decision.consumedRotationSlot) assignCounter++
         // "Already messaged" is only true for THIS enquiry. Someone who filled
         // the form again months later must get the current deck again, so every
         // guard below counts only messages sent after their latest enquiry.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const enquiryCutoff = String((lead as any).last_enquiry_at || '')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const enquiryCutoff = String(lead.last_enquiry_at || '')
         const sinceEnquiry = enquiryCutoff
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ? sentMsgs.filter((m: any) => String(m.timestamp || '') >= enquiryCutoff)
           : sentMsgs
 
