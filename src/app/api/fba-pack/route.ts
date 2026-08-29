@@ -197,6 +197,33 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Ship the pack's files to SOP (owner 2026-08-27: "how does the outlet know
+    // which FBA pack belongs to it?"). They become evidence on the launch steps
+    // and land in the outlet's Drive folder beside the partner's documents.
+    // Runs AFTER the email — the confirmation is already out, so a hiccup here
+    // costs nothing; the launch page simply keeps the tick without the file.
+    if (sopProjectId && sopSecret && attachments.length) {
+      try {
+        const fd = new FormData()
+        fd.set('projectId', sopProjectId)
+        for (const a of attachments) {
+          const slot = storedFiles.find((s) => s.filename === a.filename)?.slot ?? 'extra'
+          fd.append(slot, new Blob([new Uint8Array(a.data)], { type: a.contentType }), a.filename)
+        }
+        const res = await fetch(`${sopBase}/api/integrations/saleshub/fba-files`, {
+          method: 'POST',
+          headers: { 'x-integration-secret': sopSecret },
+          body: fd,
+          signal: AbortSignal.timeout(25_000),
+        })
+        if (!res.ok) {
+          console.error('[fba-pack] SOP file push failed', res.status, await res.text())
+        }
+      } catch (err) {
+        console.error('[fba-pack] SOP file push error', err)
+      }
+    }
+
     const packId = randomUUID()
     await insertFbaPack({
       id: packId,
