@@ -85,8 +85,11 @@ export async function maybeSendAgentIntro(params: { phone: string; leadRow: numb
     // two concurrent callers can both pass it; this claim is atomic, so exactly
     // one of them gets to send. Keyed on the lead, because the intro is a
     // once-per-lead event no matter which path triggers it.
+    // Keyed on lead + agent, not lead alone: concurrent deliveries collapse to
+    // one send, but if the lead is later handed to a different advisor the key
+    // changes, so a genuine "I'm your new advisor" intro is still possible.
     const { claimEvent } = await import('./db')
-    if (!(await claimEvent(`agent_intro:lead:${leadRow}`, 'agent_intro'))) return false
+    if (!(await claimEvent(`agent_intro:lead:${leadRow}:${agent.name}`, 'agent_intro'))) return false
 
     const text = buildAgentIntroText(lead.full_name, agent.name, agentPhone)
     const { sendTextMessage } = await import('./whatsapp')

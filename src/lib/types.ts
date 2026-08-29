@@ -70,6 +70,10 @@ export interface Lead {
   form_name?: string
   /** Verbatim question→answer JSON captured from the lead's form. */
   form_answers?: string
+  /** When this person most recently filled a form. Cutoff for "already messaged them?" checks. */
+  last_enquiry_at?: string
+  /** How many times they have enquired. 1 for everyone who has only come in once. */
+  enquiry_count?: number
   /** Set when this lead was folded into another (duplicate) — treat as invisible. */
   merged_into?: number | null
 }

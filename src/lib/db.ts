@@ -655,6 +655,15 @@ export async function ensureInit(): Promise<Client> {
     try { await db.execute("ALTER TABLE leads ADD COLUMN form_name TEXT DEFAULT ''") } catch { /* column may already exist */ }
     try { await db.execute("ALTER TABLE leads ADD COLUMN form_answers TEXT DEFAULT ''") } catch { /* column may already exist */ }
 
+    // Re-enquiry tracking. A person who fills a form again months later used to
+    // become a SECOND lead row: their old record kept the conversation and the
+    // agent, the new record sat unworked, and the pair showed up as a duplicate.
+    // Now the original lead is updated in place and these two columns carry the
+    // repeat: last_enquiry_at is the cutoff every "have we already messaged
+    // them?" guard compares against, so each fresh enquiry gets a fresh deck.
+    try { await db.execute("ALTER TABLE leads ADD COLUMN last_enquiry_at TEXT DEFAULT ''") } catch { /* column may already exist */ }
+    try { await db.execute('ALTER TABLE leads ADD COLUMN enquiry_count INTEGER DEFAULT 1') } catch { /* column may already exist */ }
+
     // Form-source registry: one row per form tab in the leads spreadsheet.
     // row_offset gives each tab a disjoint 100k lead-key band (see
     // lib/form-sources.ts). Empty registry = pre-registry behavior.

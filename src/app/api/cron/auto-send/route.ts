@@ -51,6 +51,10 @@ interface RawLead {
   model_interest: string
   lead_priority: string
   source_tab: 'new' | 'old'
+  /** Latest enquiry timestamp — blank for the legacy sheet tab, which has no such column. */
+  last_enquiry_at?: string
+  /** Meta lead id of the newest enquiry; scopes the send-once claim to THIS enquiry. */
+  enquiry_id?: string
 }
 
 // --- Google Sheets Auth ---
@@ -280,6 +284,8 @@ export async function POST(request: NextRequest) {
         model_interest: l.model_interest || '',
         lead_priority: l.lead_priority || '',
         source_tab: 'new',
+        last_enquiry_at: l.last_enquiry_at || '',
+        enquiry_id: l.id || '',
       }
     })
 
@@ -401,11 +407,21 @@ export async function POST(request: NextRequest) {
         // longer waste assignment slots.
         const assignedTo = pickAgentByCounter(agentData.activeAgents, assignCounter)
         if (assignedTo) assignCounter++
+        // "Already messaged" is only true for THIS enquiry. Someone who filled
+        // the form again months later must get the current deck again, so every
+        // guard below counts only messages sent after their latest enquiry.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const enquiryCutoff = String((lead as any).last_enquiry_at || '')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sinceEnquiry = enquiryCutoff
+          ? sentMsgs.filter((m: any) => String(m.timestamp || '') >= enquiryCutoff)
+          : sentMsgs
+
         // Inbound-first leads (they texted the WABA line, webhook auto-replied
         // with the deck) must NOT get the opt-in afterwards — it reads backwards.
         // Failed deck sends don't count: those leads take the normal opt-in path.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const deckAlreadyOut = sentMsgs.some((m: any) =>
+        const deckAlreadyOut = sinceEnquiry.some((m: any) =>
           m.template_used === DECK_TEMPLATE && m.status !== 'failed'
         )
         if (deckAlreadyOut) {
@@ -418,9 +434,10 @@ export async function POST(request: NextRequest) {
           })
           continue
         }
-        // If our own opt-in already went out, mark/assign but don't re-send.
+        // If our own opt-in already went out for this enquiry, mark/assign but
+        // don't re-send.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const alreadySent = sentMsgs.some((m: any) => m.template_used === TEMPLATE_NAME)
+        const alreadySent = sinceEnquiry.some((m: any) => m.template_used === TEMPLATE_NAME)
         if (alreadySent) {
           try { await markContacted(lead, 'already-sent', assignedTo) } catch {}
           results.push({
@@ -435,8 +452,13 @@ export async function POST(request: NextRequest) {
         // The "already sent" check above is a read, so two overlapping cron
         // runs can both clear it and both send. This claim is atomic — one
         // opt-in template per lead, whichever run gets there first.
+        // Scoped to the enquiry, not just the lead: someone who fills the form
+        // again gets a new Meta lead id, so a repeat enquiry is a new claim and
+        // the deck goes out again — while overlapping cron runs on the SAME
+        // enquiry still collapse to one send.
         const { claimEvent } = await import('@/lib/db')
-        if (!(await claimEvent(`optin:lead:${lead.row_number}`, 'auto_send_optin'))) {
+        const optinKey = `optin:lead:${lead.row_number}:${lead.enquiry_id || lead.created_time || ''}`
+        if (!(await claimEvent(optinKey, 'auto_send_optin'))) {
           results.push({
             phone: lead.phone_formatted,
             name: lead.full_name,

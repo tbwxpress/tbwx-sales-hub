@@ -54,6 +54,8 @@ function rowToLead(r: Record<string, unknown>): Lead {
     form_id: s(r.form_id),
     form_name: s(r.form_name),
     form_answers: s(r.form_answers),
+    last_enquiry_at: s(r.last_enquiry_at),
+    enquiry_count: r.enquiry_count == null ? 1 : Number(r.enquiry_count),
     merged_into: r.merged_into == null ? null : Number(r.merged_into),
   }
 }
@@ -112,6 +114,114 @@ export async function dbInsertLead(lead: Lead): Promise<void> {
   })
 }
 
+/**
+ * Statuses a re-enquiry resets to NEW. A cold or finished lead who fills the
+ * form again is, for the agent's purposes, a fresh lead: it belongs back in the
+ * queue and should get the deck again.
+ *
+ * Everything NOT listed here is a live conversation the agent is already in the
+ * middle of (Call Done, HOT, Final Negotiation, Converted). Dropping one of
+ * those back to NEW would erase real pipeline signal — Final Negotiation closes
+ * at ~47% — so those keep their stage and are surfaced by priority + a note
+ * instead.
+ */
+const REVIVABLE_STATUSES = new Set([
+  'NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'DELAYED', 'LOST', 'ARCHIVED', '',
+])
+
+export interface ReEnquiryResult {
+  updated: number
+  archivedDuplicates: number
+}
+
+/**
+ * Fold repeat enquiries into the lead that already exists for that phone.
+ *
+ * Meta writes a brand-new sheet row every time someone fills a form, so the
+ * same person enquiring in August and again in December used to produce two
+ * lead records. The old one held the WhatsApp thread, the agent and the
+ * history; the new one held the fresh answers and nobody worked it.
+ *
+ * The incoming row is still inserted (the sync tracks its progress by the
+ * highest row number it has seen, so skipping rows would make it re-read them
+ * forever) but is immediately archived and pointed at the original via
+ * merged_into — the same mechanism the manual merge tool uses, so it stays out
+ * of every active query and leaves an audit trail.
+ */
+export async function dbApplyReEnquiries(incoming: Lead[]): Promise<ReEnquiryResult> {
+  const out: ReEnquiryResult = { updated: 0, archivedDuplicates: 0 }
+  if (incoming.length === 0) return out
+  const db = await ensureInit()
+
+  const existingRes = await db.execute(
+    'SELECT row_number, phone, lead_status, assigned_to, enquiry_count FROM leads WHERE merged_into IS NULL',
+  )
+  // Oldest row wins as the master, so the record carrying the history keeps it.
+  const byPhone = new Map<string, Record<string, unknown>>()
+  for (const r of existingRes.rows as unknown as Record<string, unknown>[]) {
+    const key = normalizePhone(String(r.phone || ''))
+    if (key.length < 12) continue
+    const prev = byPhone.get(key)
+    if (!prev || Number(r.row_number) < Number(prev.row_number)) byPhone.set(key, r)
+  }
+
+  for (const lead of incoming) {
+    const key = normalizePhone(String(lead.phone || ''))
+    if (key.length < 12) continue
+    const master = byPhone.get(key)
+    if (!master) continue
+    const masterRow = Number(master.row_number)
+    if (masterRow === Number(lead.row_number)) continue // this IS the master
+
+    const status = String(master.lead_status || '')
+    const revive = REVIVABLE_STATUSES.has(status)
+    const enquiryAt = String(lead.created_time || new Date().toISOString())
+
+    try {
+      // 1. Park the duplicate row against the master.
+      await db.execute({
+        sql: `UPDATE leads SET merged_into = ?, lead_status = 'ARCHIVED'
+              WHERE row_number = ? AND merged_into IS NULL`,
+        args: [masterRow, Number(lead.row_number)],
+      })
+
+      // 2. Refresh the master with what they just told us. assigned_to is
+      //    untouched: the agent who knows them keeps them.
+      const sets = [
+        'id = ?', 'campaign_name = ?', 'form_id = ?', 'form_name = ?', 'form_answers = ?',
+        'model_interest = ?', 'timeline = ?', 'experience = ?', 'platform = ?',
+        'last_enquiry_at = ?', 'enquiry_count = COALESCE(enquiry_count, 1) + 1',
+      ]
+      const args: (string | number)[] = [
+        String(lead.id || ''), String(lead.campaign_name || ''), String(lead.form_id || ''),
+        String(lead.form_name || ''), String(lead.form_answers || ''),
+        String(lead.model_interest || ''), String(lead.timeline || ''),
+        String(lead.experience || ''), String(lead.platform || ''), enquiryAt,
+      ]
+      if (revive) {
+        sets.push("lead_status = 'NEW'", "attempted_contact = ''", "next_followup = ''")
+      } else {
+        sets.push("lead_priority = 'HOT'")
+      }
+      args.push(masterRow)
+      await db.execute({ sql: `UPDATE leads SET ${sets.join(', ')} WHERE row_number = ?`, args })
+
+      // 3. Audit trail the agent can see on the lead.
+      const label = `Re-enquired ${enquiryAt.slice(0, 10)} via ${lead.campaign_name || 'ad'}${lead.form_name ? ` (${lead.form_name})` : ''}`
+      await db.execute({
+        sql: `INSERT INTO lead_status_changes (lead_row, phone, old_status, new_status, changed_by, source, reason)
+              VALUES (?, ?, ?, ?, 'system', 'reenquiry', ?)`,
+        args: [masterRow, key, status, revive ? 'NEW' : status, label],
+      })
+      out.updated++
+      out.archivedDuplicates++
+    } catch (err) {
+      console.error(`[reenquiry] failed for row ${lead.row_number} -> ${masterRow}:`, err)
+    }
+  }
+  return out
+}
+
 // Insert many leads but NEVER overwrite an existing row (INSERT OR IGNORE).
 // This is what the sheet→DB sync uses, so a sync can never clobber an
 // agent's edit that already lives in the DB. Runs as a SINGLE batch (one
@@ -146,7 +256,23 @@ export async function dbInsertLeadsIfAbsent(leads: Lead[]): Promise<number> {
     console.error('[dbInsertLeadsIfAbsent] contact backfill failed (non-fatal):', err)
   }
 
-  return results.reduce((sum, r) => sum + Number(r.rowsAffected ?? 0), 0)
+  const inserted = results.reduce((sum, r) => sum + Number(r.rowsAffected ?? 0), 0)
+
+  // Fold repeats into the lead that already exists for that phone. Runs after
+  // the insert so the sync's row-number bookkeeping still advances; failures
+  // are contained so a re-enquiry problem can never block the sync itself.
+  if (inserted > 0) {
+    try {
+      const re = await dbApplyReEnquiries(leads)
+      if (re.updated > 0) {
+        console.log(`[leads-sync] ${re.updated} re-enquiry/ies folded into existing leads`)
+      }
+    } catch (err) {
+      console.error('[leads-sync] re-enquiry pass failed (non-fatal):', err)
+    }
+  }
+
+  return inserted
 }
 
 // Apply a partial field update to one lead. Field names are validated against
