@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
     const str = (k: string) => String(form.get(k) ?? '').trim()
 
     const leadPhone = str('leadPhone')
+    const leadId = str('leadId')
     const partnerName = str('partnerName')
     const partnerEmail = str('partnerEmail').toLowerCase()
     const city = str('city')
@@ -160,6 +161,10 @@ export async function POST(req: NextRequest) {
             phone: leadPhone,
             city,
             utr,
+            // SOP stores these on the launch project so the outlet links back
+            // to this Hub lead and shows who sent the pack.
+            leadId,
+            agentName,
           }),
           signal: AbortSignal.timeout(15000),
         })

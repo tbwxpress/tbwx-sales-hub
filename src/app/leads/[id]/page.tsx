@@ -1258,6 +1258,7 @@ export default function LeadDetailPage() {
                 attachments, SOP onboarding started. */}
             <FbaPackPanel
               lead={{
+                id: lead.id,
                 phone: lead.phone,
                 full_name: lead.full_name,
                 email: lead.email || '',

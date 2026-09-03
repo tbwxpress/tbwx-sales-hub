@@ -2787,15 +2787,21 @@ export async function insertFbaPack(data: {
   })
 }
 
-export async function getFbaPacksForLead(
-  phone: string
-): Promise<{ id: string; invite_url: string | null; sent_by: string; sent_at: string }[]> {
+export type FbaPackRow = {
+  id: string
+  invite_url: string | null
+  sop_project_id: string | null
+  sent_by: string
+  sent_at: string
+}
+
+export async function getFbaPacksForLead(phone: string): Promise<FbaPackRow[]> {
   const db = await ensureInit()
   const result = await db.execute({
-    sql: 'SELECT id, invite_url, sent_by, sent_at FROM fba_packs WHERE lead_phone = ? ORDER BY sent_at DESC',
+    sql: 'SELECT id, invite_url, sop_project_id, sent_by, sent_at FROM fba_packs WHERE lead_phone = ? ORDER BY sent_at DESC',
     args: [normalizePhone(phone)],
   })
-  return result.rows as unknown as { id: string; invite_url: string | null; sent_by: string; sent_at: string }[]
+  return result.rows as unknown as FbaPackRow[]
 }
 
 // --- Agreements CRUD ---

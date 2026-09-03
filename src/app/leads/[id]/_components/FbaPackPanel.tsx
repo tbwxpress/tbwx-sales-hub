@@ -10,7 +10,15 @@
 import { useEffect, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 
-type SentPack = { id: string; invite_url: string | null; sent_by: string; sent_at: string }
+type SentPack = {
+  id: string
+  invite_url: string | null
+  sop_project_id: string | null
+  sent_by: string
+  sent_at: string
+}
+
+const SOP_BASE_URL = process.env.NEXT_PUBLIC_SOP_BASE_URL || 'https://sop.tbwxpress.com'
 
 type ReviewSummary = {
   partnerName: string
@@ -64,7 +72,7 @@ export default function FbaPackPanel({
   lead,
   agentName,
 }: {
-  lead: { phone: string; full_name: string; email: string; city: string }
+  lead: { id: string; phone: string; full_name: string; email: string; city: string }
   agentName: string
 }) {
   const [open, setOpen] = useState(false)
@@ -90,6 +98,7 @@ export default function FbaPackPanel({
     setError(null)
     const fd = new FormData(e.currentTarget)
     fd.set('leadPhone', lead.phone)
+    fd.set('leadId', lead.id)
 
     const str = (k: string) => String(fd.get(k) || '').trim()
     const cityTag = tag(str('city'))
@@ -214,6 +223,24 @@ export default function FbaPackPanel({
 
       {open && (
         <div className="px-4 pb-4 border-t border-border/60 pt-3">
+          {lastSent && (
+            <p className="text-[10px] text-muted mb-2">
+              Last sent {fmtIst(lastSent.sent_at)} by {lastSent.sent_by}.
+              {lastSent.sop_project_id && (
+                <>
+                  {' '}
+                  <a
+                    href={`${SOP_BASE_URL}/admin/launch/${lastSent.sop_project_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent underline"
+                  >
+                    Open SOP journey ↗
+                  </a>
+                </>
+              )}
+            </p>
+          )}
           {result ? (
             <div className="space-y-2 text-xs">
               <p className="text-success font-medium">
