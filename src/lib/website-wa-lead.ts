@@ -102,7 +102,16 @@ export async function maybeCreateWebsiteWaLead(params: {
     const noteParts = [
       `[Auto] Created from website WhatsApp click — first message: "${(text || '').trim().slice(0, 300)}"`,
     ]
-    if (prefill.via) noteParts.push(`(via ${prefill.via})`)
+    // Write attribution in the same `src: | page:` shape the website's
+    // /api/lead uses for form leads, so one report covers both paths. The
+    // website sends "(via <component> / <path>)"; a bare "(via <component>)"
+    // still gets a src tag.
+    if (prefill.via) {
+      const [component, ...rest] = prefill.via.split(' / ')
+      noteParts.push(`src:${component.trim()}`)
+      const page = rest.join(' / ').trim()
+      if (page) noteParts.push(`page:${page}`)
+    }
 
     const newRow = await createLead({
       full_name: name,
@@ -110,7 +119,8 @@ export async function maybeCreateWebsiteWaLead(params: {
       city: prefill.city || '',
       lead_priority: 'WARM',
       assigned_to: assignedTo,
-      notes: noteParts.join(' '),
+      // " | " is the separator /api/lead uses; attribution reports split on it.
+      notes: noteParts.join(' | '),
       source: 'WA Organic (Website)',
       id: `wac:${p10}`,
       platform: 'Website WA',

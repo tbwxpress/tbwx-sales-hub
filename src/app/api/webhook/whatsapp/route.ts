@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
+import { prependNote } from '@/lib/notes'
 import { upsertContact, insertMessage, updateMessageStatus, getMessages, getContact, getDripState, upsertDripState, getWaNumber, markMessagesRead, setSetting, claimEvent } from '@/lib/db'
 import { sendTemplate } from '@/lib/whatsapp'
 import { logSentMessage, getLeadByRow } from '@/lib/sheets'
@@ -243,7 +244,7 @@ export async function POST(req: NextRequest) {
                     lead_status: 'HOT',
                     lead_priority: 'HOT',
                     next_followup: new Date().toISOString().split('T')[0],
-                    notes: `[Auto] Lead tapped "${buttonText}" on follow-up — marked HOT`,
+                    notes: prependNote(String(prev?.notes || ''), `[Auto] Lead tapped "${buttonText}" on follow-up — marked HOT`),
                   })
                   if (prev && prev.lead_status !== 'HOT') {
                     await insertStatusChange({
@@ -294,7 +295,7 @@ export async function POST(req: NextRequest) {
                     await updateLead(Number(contact.lead_row), {
                       lead_status: 'REPLIED',
                       next_followup: new Date().toISOString().split('T')[0],
-                      notes: `[Auto] Lead tapped "${buttonText}" — engaged, awaiting human follow-up`,
+                      notes: prependNote(String(prev?.notes || ''), `[Auto] Lead tapped "${buttonText}" — engaged, awaiting human follow-up`),
                     })
                     await insertStatusChange({
                       lead_row: Number(contact.lead_row), phone,
@@ -314,7 +315,7 @@ export async function POST(req: NextRequest) {
                   await updateLead(Number(contact.lead_row), {
                     lead_status: 'DELAYED',
                     next_followup: followup30.toISOString().split('T')[0],
-                    notes: `[Auto] Lead tapped "${buttonText}" — delayed 30 days`,
+                    notes: prependNote(String(prev?.notes || ''), `[Auto] Lead tapped "${buttonText}" — delayed 30 days`),
                   })
                   if (prev && prev.lead_status !== 'DELAYED') {
                     await insertStatusChange({
@@ -336,7 +337,7 @@ export async function POST(req: NextRequest) {
                   const prev = await getLeadByRow(Number(contact.lead_row))
                   await updateLead(Number(contact.lead_row), {
                     lead_status: 'LOST',
-                    notes: `[Auto] Lead tapped "${buttonText}" — opted out, no further messages`,
+                    notes: prependNote(String(prev?.notes || ''), `[Auto] Lead tapped "${buttonText}" — opted out, no further messages`),
                   })
                   if (prev && prev.lead_status !== 'LOST') {
                     await insertStatusChange({

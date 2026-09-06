@@ -1,4 +1,5 @@
 import { apiError } from '@/lib/api-error'
+import { prependNote } from '@/lib/notes'
 import { NextRequest, NextResponse } from 'next/server'
 import type { gmail_v1 } from 'googleapis'
 import {
@@ -52,7 +53,6 @@ const LOCK_KEY = 'mail_watcher.run_lock_ms'
 const LOCK_STALE_MS = 10 * 60 * 1000
 
 const BODY_CAP = 2000
-const NOTES_CAP = 1500
 const MAX_MESSAGES_PER_QUERY = 200
 
 // ---------- processed-message ledger ----------
@@ -259,13 +259,6 @@ function matchLeadByEmail(leads: Lead[], email: string): Lead | null {
 
 // Prepend an auto-marker to the lead's notes WITHOUT destroying what an agent
 // hand-wrote there. Idempotent: never stacks the same marker twice.
-function prependNote(existingNotes: string, marker: string): string {
-  const cur = String(existingNotes || '').trim()
-  if (!cur) return marker.slice(0, NOTES_CAP)
-  if (cur.includes(marker)) return cur
-  return `${marker} | ${cur}`.slice(0, NOTES_CAP)
-}
-
 // ---------- ingestion ----------
 
 // Same early-stage gate the WhatsApp webhook uses: never regress an advanced

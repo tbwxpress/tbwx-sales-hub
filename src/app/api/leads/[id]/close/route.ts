@@ -1,8 +1,9 @@
 import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
-import { updateLead } from '@/lib/sheets'
+import { getLeadByRow, updateLead } from '@/lib/sheets'
 import { insertNote, recordLeadClose } from '@/lib/db'
+import { prependNote } from '@/lib/notes'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -24,7 +25,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // Update lead status in Google Sheets
     const updates: Record<string, string> = { lead_status: outcome }
-    if (reason) updates.notes = `LOST: ${reason}`
+    if (reason) {
+      // Prepend, never replace: the existing notes carry the lead's source
+      // attribution (src:/page:), which a close reason must not erase.
+      const prev = await getLeadByRow(rowNumber)
+      updates.notes = prependNote(String(prev?.notes || ''), `LOST: ${reason}`)
+    }
 
     await updateLead(rowNumber, updates)
 
