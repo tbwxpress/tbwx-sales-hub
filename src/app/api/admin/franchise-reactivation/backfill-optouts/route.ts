@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getLeads, updateLead } from '@/lib/sheets'
+import { getLeadByRow, getLeads, updateLead } from '@/lib/sheets'
 import { getMessagesContainingText, upsertDripState, insertStatusChange, getContact, normalizePhone } from '@/lib/db'
 import { apiError } from '@/lib/api-error'
+import { prependNote } from '@/lib/notes'
 
 // Patterns that count as an opt-out reply from a lead.
 const OPT_OUT_PATTERNS: RegExp[] = [
@@ -99,9 +100,14 @@ export async function POST(req: NextRequest) {
     const errors: { phone: string; error: string }[] = []
     for (const fix of toFix) {
       try {
+        // Prepend so the lead's source attribution in notes survives the backfill.
+        const prev = await getLeadByRow(fix.lead_row)
         await updateLead(fix.lead_row, {
           lead_status: 'LOST',
-          notes: `[Backfill] Replied opt-out "${fix.first_optout_text}" on ${fix.timestamp} — marked LOST`,
+          notes: prependNote(
+            String(prev?.notes || ''),
+            `[Backfill] Replied opt-out "${fix.first_optout_text}" on ${fix.timestamp} — marked LOST`,
+          ),
         })
         await insertStatusChange({
           lead_row: fix.lead_row,
