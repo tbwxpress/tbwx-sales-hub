@@ -66,6 +66,12 @@ const MAX_MESSAGES_PER_QUERY = 200
 // ages out of the query window; on a later match the row is upgraded in place.
 
 const RETRYABLE_KINDS = ['reply_unmatched', 'bounce_unmatched', 'inbox_unmatched']
+// ...but not on EVERY run. 2026-09-12: ~166 unmatched inbox messages were being
+// re-probed against Gmail every 15 minutes (170 API calls a run, 32 hours at
+// 30% CPU on a one-core box, and the site stalled). An unmatched message is
+// re-checked at most once per RECHECK window; the window is short enough that
+// a lead added today still gets its reply picked up today.
+const RECHECK_UNMATCHED_MS = 6 * 60 * 60 * 1000
 
 async function ensureLedger() {
   const db = await ensureInit()
@@ -78,25 +84,35 @@ async function ensureLedger() {
       created_at TEXT DEFAULT (datetime('now'))
     )
   `)
+  // checked_at (ISO) = when this message was last looked at; drives the
+  // re-check throttle for unmatched kinds. Additive; safe on existing tables.
+  try {
+    await db.execute('ALTER TABLE mail_watcher_ledger ADD COLUMN checked_at TEXT')
+  } catch {
+    /* column already exists */
+  }
   return db
 }
 
 async function isProcessed(gmailId: string): Promise<boolean> {
   const db = await ensureInit()
   const r = await db.execute({
-    sql: 'SELECT kind FROM mail_watcher_ledger WHERE gmail_message_id = ?',
+    sql: 'SELECT kind, checked_at FROM mail_watcher_ledger WHERE gmail_message_id = ?',
     args: [gmailId],
   })
   if (r.rows.length === 0) return false
-  return !RETRYABLE_KINDS.includes(String(r.rows[0].kind || ''))
+  if (!RETRYABLE_KINDS.includes(String(r.rows[0].kind || ''))) return true
+  // Retryable, but only once the re-check window has passed.
+  const checkedMs = Date.parse(String(r.rows[0].checked_at || ''))
+  return Number.isFinite(checkedMs) && Date.now() - checkedMs < RECHECK_UNMATCHED_MS
 }
 
 async function markProcessed(gmailId: string, kind: string, fromEmail = '', leadRow: number | null = null): Promise<void> {
   const db = await ensureInit()
   await db.execute({
-    sql: `INSERT INTO mail_watcher_ledger (gmail_message_id, kind, from_email, lead_row) VALUES (?, ?, ?, ?)
-          ON CONFLICT(gmail_message_id) DO UPDATE SET kind = excluded.kind, from_email = excluded.from_email, lead_row = excluded.lead_row`,
-    args: [gmailId, kind, fromEmail, leadRow],
+    sql: `INSERT INTO mail_watcher_ledger (gmail_message_id, kind, from_email, lead_row, checked_at) VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(gmail_message_id) DO UPDATE SET kind = excluded.kind, from_email = excluded.from_email, lead_row = excluded.lead_row, checked_at = excluded.checked_at`,
+    args: [gmailId, kind, fromEmail, leadRow, new Date().toISOString()],
   })
 }
 
