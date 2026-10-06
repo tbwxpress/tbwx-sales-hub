@@ -9,6 +9,7 @@
 // the pure payload helpers (unit-tested) + the Graph API calls.
 
 import { WHATSAPP } from '@/config/client'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 // ---------- pure helpers ----------
 
@@ -104,7 +105,7 @@ export async function fetchWabaPhoneNumbers(): Promise<{ success: boolean; numbe
   const wabaId = process.env.WHATSAPP_WABA_ID
   if (!wabaId) return { success: false, error: 'WHATSAPP_WABA_ID not set' }
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${WHATSAPP.apiBase}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,platform_type&limit=100`,
       { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } }
     )
@@ -124,7 +125,7 @@ export async function requestSmbSync(
   syncType: 'smb_app_state_sync' | 'history'
 ): Promise<{ success: boolean; request_id?: string; error?: string }> {
   try {
-    const res = await fetch(`${WHATSAPP.apiBase}/${phoneNumberId}/smb_app_data`, {
+    const res = await fetchWithTimeout(`${WHATSAPP.apiBase}/${phoneNumberId}/smb_app_data`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,

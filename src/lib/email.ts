@@ -17,7 +17,9 @@ function getGmail() {
     process.env.GOOGLE_CLIENT_SECRET
   )
   auth.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN || process.env.GOOGLE_REFRESH_TOKEN })
-  return google.gmail({ version: 'v1', auth })
+  // googleapis has no timeout by default; a hung call hung its caller (and any
+  // cron lock it held) during the Sep-Oct 2026 incident.
+  return google.gmail({ version: 'v1', auth, timeout: 20_000 })
 }
 
 interface SendEmailResult {

@@ -7,6 +7,7 @@
 // quota is one call per agent per day at most.
 
 import { ensureInit, getSetting, setSetting } from './db'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models'
 const MODEL = process.env.COACH_MODEL || 'gemini-2.5-flash'
@@ -300,14 +301,14 @@ Field notes: replies_waiting = leads who messaged and are STILL waiting for this
 Write a coaching read in simple English (light Hinglish is fine). Be specific — quote their actual numbers. No fluff, no generic advice.
 Return STRICT JSON only: {"headline": string (one punchy sentence), "working_well": string[] (max 3), "gaps": string[] (max 3, each tied to a number above), "actions": string[] (max 3 concrete things to do TOMORROW, most impactful first)}`
 
-  const res = await fetch(`${GEMINI_API}/${MODEL}:generateContent?key=${key}`, {
+  const res = await fetchWithTimeout(`${GEMINI_API}/${MODEL}:generateContent?key=${key}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: 'application/json', temperature: 0.4 },
     }),
-  })
+  }, 60_000)
   if (!res.ok) throw new Error(`Gemini ${res.status}`)
   const data = await res.json()
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''

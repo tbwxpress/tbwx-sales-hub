@@ -4,6 +4,8 @@
 // happen in a single request (no separate speech-to-text service). The model is
 // asked to return strict JSON we store as the call's "report card".
 
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
+
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models'
 const MODEL = process.env.CALL_SCORING_MODEL || 'gemini-2.5-flash'
 
@@ -95,7 +97,7 @@ export async function scoreCallAudio(mp3: Buffer | ArrayBuffer): Promise<ReportC
   const buf = Buffer.isBuffer(mp3) ? mp3 : Buffer.from(mp3)
   const base64 = buf.toString('base64')
 
-  const res = await fetch(`${GEMINI_API}/${MODEL}:generateContent?key=${key}`, {
+  const res = await fetchWithTimeout(`${GEMINI_API}/${MODEL}:generateContent?key=${key}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -109,7 +111,7 @@ export async function scoreCallAudio(mp3: Buffer | ArrayBuffer): Promise<ReportC
       ],
       generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
     }),
-  })
+  }, 120_000)
 
   const json = await res.json().catch(() => ({}))
   if (!res.ok) {

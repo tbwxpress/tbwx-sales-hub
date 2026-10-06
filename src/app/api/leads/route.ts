@@ -7,6 +7,7 @@ import { STATUS_MIGRATION } from '@/config/client'
 import { getTelecallerVisibleLeadRows, getAllAssignments } from '@/lib/telecaller'
 import { getOptedOutPhones, getLastDiscussionByPhone, normalizePhone, upsertContact, getActiveDelegationsFor, getAllActiveDelegations, getLeadSignalsByRows, getLastReceivedMessageByPhone } from '@/lib/db'
 import { isLockedGuidedAgent } from '@/lib/users'
+import { activeLeads } from '@/lib/leads-db'
 
 // Last-10 digits of a phone — the key getLastReceivedMessageByPhone() returns.
 const last10 = (p: string | undefined | null) => String(p || '').replace(/\D/g, '').slice(-10)
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
     if (statsOnly === 'true') {
       // Agents see own stats (+ unassigned if can_assign); admins see everything
       if (session!.role === 'agent') {
-        let statsLeads = (await getLeads()).map(l => ({
+        let statsLeads = activeLeads(await getLeads()).map(l => ({
           ...l,
           lead_status: (STATUS_MIGRATION[l.lead_status] || l.lead_status) as typeof l.lead_status,
         }))
@@ -58,7 +59,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, data: stats })
     }
 
-    let leads = await getLeads()
+    // Merged duplicates are copies of another lead (same rule as
+    // lib/visibility.ts): the surviving row is the one anybody works.
+    let leads = activeLeads(await getLeads())
 
     // Migrate old status values to new names (CALLING→NO_RESPONSE, etc.)
     leads = leads.map(l => ({

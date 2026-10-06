@@ -70,6 +70,9 @@ export async function sendPushTo(userId: string, payload: PushPayload): Promise<
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
         json,
+        // web-push has no default timeout. notifyQuiet() awaits this inside
+        // cron loops and the webhook, so a hung push endpoint used to stall them.
+        { timeout: 10_000 },
       )
       sent++
       // Best-effort touch — don't block on success path

@@ -1,4 +1,5 @@
 import { WHATSAPP } from '@/config/client'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 const WHATSAPP_API = WHATSAPP.apiBase
 
@@ -13,7 +14,7 @@ export async function sendTextMessage(phone: string, text: string): Promise<Send
   const cleanPhone = phone.replace(/\D/g, '')
 
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${WHATSAPP_API}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
         method: 'POST',
@@ -68,7 +69,7 @@ export async function sendTemplate(
         ...(components.length ? { components } : {}),
       },
     }
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${WHATSAPP_API}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
         method: 'POST',
@@ -103,7 +104,7 @@ export async function getMessageStatus(waMessageId: string): Promise<{
   }
 
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${WHATSAPP_API}/${waMessageId}`,
       {
         method: 'GET',

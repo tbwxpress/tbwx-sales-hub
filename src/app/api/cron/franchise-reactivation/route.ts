@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSetting } from '@/lib/db'
+import { withCronLock } from '@/lib/cron-guard'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 // Legacy hardcoded schedule from the May 2026 blast.
 // Dates that fall on these keys still fire regardless of the recurring setting.
@@ -27,24 +29,36 @@ function domInIST(): number {
   return new Date(Date.now() + offsetMs).getUTCDate()
 }
 
+// Recurring mode repeats the same steps every month; nobody gets the same step
+// again within this many days.
+const RECURRING_RESEND_GAP_DAYS = 30
+
 async function callReactivation(
   origin: string,
   secret: string,
   key: 'd0' | 'd5' | 'd7',
   dryRun: boolean,
+  skipIfSentWithinDays = 0,
 ) {
-  const res = await fetch(`${origin}/api/admin/franchise-reactivation`, {
+  const res = await fetchWithTimeout(`${origin}/api/admin/franchise-reactivation`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${secret}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ template: key, dryRun }),
-  })
+    body: JSON.stringify({ template: key, dryRun, ...(skipIfSentWithinDays ? { skipIfSentWithinDays } : {}) }),
+  }, 240_000)
   return { status: res.status, body: await res.json().catch(() => ({})) }
 }
 
+/** One run at a time with a time budget — a second cron tick while a run is
+ *  in flight gets 409 instead of piling synchronous SQLite work on the
+ *  process (the pattern behind the Oct-2026 hourly freezes). */
 export async function POST(req: NextRequest) {
+  return withCronLock('franchise-reactivation', { budgetMs: 300000 }, () => handlePost(req))
+}
+
+async function handlePost(req: NextRequest) {
   const auth = req.headers.get('authorization') || ''
   const secret = process.env.CRON_SECRET
   if (!secret || auth !== `Bearer ${secret}`) {
@@ -87,7 +101,7 @@ export async function POST(req: NextRequest) {
     const dom = domInIST()
     const recurringKey = RECURRING_DOM[dom]
     if (recurringKey) {
-      const result = await callReactivation(origin, secret, recurringKey, dryRun)
+      const result = await callReactivation(origin, secret, recurringKey, dryRun, RECURRING_RESEND_GAP_DAYS)
       return NextResponse.json({
         success: true,
         mode: dryRun ? 'dry_run' : 'live',

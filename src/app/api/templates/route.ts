@@ -2,6 +2,7 @@ import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth, requireAdmin } from '@/lib/auth'
 import { WHATSAPP } from '@/config/client'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 const WHATSAPP_API = WHATSAPP.apiBase
 const WABA_ID = WHATSAPP.wabaId
@@ -12,7 +13,7 @@ export async function GET() {
     const session = await getSession()
     requireAuth(session)
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${WHATSAPP_API}/${WABA_ID}/message_templates?fields=name,status,category,components,id&limit=50`,
       {
         headers: {
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
       components.push({ type: 'BUTTONS', buttons })
     }
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${WHATSAPP_API}/${WABA_ID}/message_templates`,
       {
         method: 'POST',
@@ -136,7 +137,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Template name required' }, { status: 400 })
     }
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${WHATSAPP_API}/${WABA_ID}/message_templates?name=${encodeURIComponent(name)}`,
       {
         method: 'DELETE',

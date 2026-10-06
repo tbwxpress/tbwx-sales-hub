@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronLock } from '@/lib/cron-guard'
 import { runFullBackup } from '@/lib/sheet-backup'
 
 /**
@@ -23,8 +24,12 @@ export async function POST(req: NextRequest) {
     }
   }
   try {
-    const result = await runFullBackup()
-    return NextResponse.json({ success: true, ...result, at: new Date().toISOString() })
+    // One run at a time: a slow run overlapping the next tick stacks the load
+    // (see src/lib/cron-guard.ts for the Sep-Oct 2026 CPU incident).
+    return await withCronLock('sheet-backup', { budgetMs: 300_000 }, async () => {
+      const result = await runFullBackup()
+      return NextResponse.json({ success: true, ...result, at: new Date().toISOString() })
+    })
   } catch (err) {
     console.error('[sheet-backup] failed:', err)
     return NextResponse.json(

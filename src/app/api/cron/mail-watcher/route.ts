@@ -1,6 +1,7 @@
 import { apiError } from '@/lib/api-error'
 import { prependNote } from '@/lib/notes'
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronLock } from '@/lib/cron-guard'
 import type { gmail_v1 } from 'googleapis'
 import {
   ensureInit,
@@ -51,6 +52,16 @@ const LAST_SUCCESS_KEY = 'mail_watcher.last_success_ms'
 // 15-min tick or a manual admin POST — notifications would double-fire.
 const LOCK_KEY = 'mail_watcher.run_lock_ms'
 const LOCK_STALE_MS = 10 * 60 * 1000
+
+// Time budget per run. Each processed message is several Gmail round trips
+// plus synchronous SQLite writes, and a big backlog (the 30-day self-heal
+// window, or the 2026-09-12 unmatched re-probe storm) used to keep one run
+// going for many minutes on a one-core box. Each loop checks the budget
+// between messages and stops. Whatever is left is not ledgered, so the next
+// 15-min tick picks it up.
+const MAIL_WATCHER_BUDGET_MS = 90_000
+// Per-request timeout for the Gmail client (googleapis has none by default).
+const GMAIL_TIMEOUT_MS = 15_000
 
 const BODY_CAP = 2000
 const MAX_MESSAGES_PER_QUERY = 200
@@ -444,254 +455,268 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await ensureLedger()
+    // One run at a time: a slow run overlapping the next tick stacks the load
+    // (see src/lib/cron-guard.ts for the Sep-Oct 2026 CPU incident).
+    return await withCronLock('mail-watcher', { budgetMs: MAIL_WATCHER_BUDGET_MS }, async (ctx) => {
+      await ensureLedger()
 
-    if (!(await acquireRunLock())) {
-      return NextResponse.json({ success: true, skipped: true, reason: 'another run is in progress' })
-    }
-
-    try {
-      // First-run watermark: anything older than (first run − 7d) is dead history.
-      let watermarkMs = Number((await getSetting(WATERMARK_KEY).catch(() => null)) || 0)
-      if (!watermarkMs || Number.isNaN(watermarkMs)) {
-        watermarkMs = Date.now() - 7 * 86400000
-        await setSetting(WATERMARK_KEY, String(watermarkMs)).catch(() => { /* non-critical */ })
+      if (!(await acquireRunLock())) {
+        return NextResponse.json({ success: true, skipped: true, reason: 'another run is in progress' })
       }
 
-      // Self-healing window: cover any cron outage gap (up to 30d) instead of
-      // silently losing mail older than 7d; the ledger keeps this idempotent.
-      const lastSuccessMs = Number((await getSetting(LAST_SUCCESS_KEY).catch(() => null)) || 0)
-      let windowDays = 7
-      if (lastSuccessMs > 0) {
-        const gapDays = Math.ceil((Date.now() - lastSuccessMs) / 86400000) + 1
-        windowDays = Math.min(Math.max(7, gapDays), 30)
-      }
-
-      const { google } = await import('googleapis')
-      const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET)
-      auth.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN || process.env.GOOGLE_REFRESH_TOKEN })
-      const gmail = google.gmail({ version: 'v1', auth })
-
-      const listIds = async (q: string): Promise<string[]> => {
-        const ids: string[] = []
-        let pageToken: string | undefined
-        do {
-          const res = await gmail.users.messages.list({ userId: 'me', q, maxResults: 100, pageToken })
-          for (const m of res.data.messages || []) if (m.id) ids.push(m.id)
-          pageToken = res.data.nextPageToken || undefined
-        } while (pageToken && ids.length < MAX_MESSAGES_PER_QUERY)
-        return ids
-      }
-
-      const counts = {
-        bounces_seen: 0,
-        bounces_marked: 0,
-        bounces_unmatched: 0,
-        replies_seen: 0,
-        replies_ingested: 0,
-        replies_unmatched: 0,
-        inbox_unmatched: 0,
-        skipped_self: 0,
-        skipped_auto: 0,
-        skipped_old: 0,
-        skipped_no_phone: 0,
-        already_processed: 0,
-      }
-
-      const leads = await getLeads()
-      if (leads.length === 0) {
-        // A transient lead-source outage (DB empty + every sheet read failing)
-        // returns []; matching against it would mis-ledger every pending
-        // message as unmatched. Abort with NOTHING ledgered — next run retries.
-        console.error('[mail-watcher] lead source returned 0 leads — aborting run, nothing ledgered')
-        return NextResponse.json({ success: true, skipped: true, reason: 'lead source returned 0 leads — run aborted, will retry' })
-      }
-
-      const seenThisRun = new Set<string>()
-
-      const fetchFull = async (id: string) => {
-        const res = await gmail.users.messages.get({ userId: 'me', id, format: 'full' })
-        return res.data
-      }
-      // Cheap header-only probe for the broad inbox sweep — the full body is
-      // fetched only once the sender matches a lead (or is a bounce daemon).
-      const fetchMeta = async (id: string) => {
-        const res = await gmail.users.messages.get({
-          userId: 'me',
-          id,
-          format: 'metadata',
-          metadataHeaders: ['From', 'Subject', 'Auto-Submitted', 'X-Autoreply', 'X-Autorespond', 'Precedence'],
-        })
-        return res.data
-      }
-
-      // Shared bounce processor (needs a full message for the DSN body).
-      const processBounce = async (id: string, msg: gmail_v1.Schema$Message): Promise<void> => {
-        const pool = { plain: [] as string[], html: [] as string[], other: [] as string[] }
-        collectParts(msg.payload, pool)
-        const bodyPool = [...pool.plain, ...pool.other, ...pool.html.map(htmlToText)].join('\n')
-        const failedEmail = parseFailedRecipient(msg.payload, bodyPool)
-        const lead = failedEmail ? matchLeadByEmail(leads, failedEmail) : null
-        if (!lead) {
-          counts.bounces_unmatched++
-          await markProcessed(id, 'bounce_unmatched', failedEmail) // retryable
-          return
+      try {
+        // First-run watermark: anything older than (first run − 7d) is dead history.
+        let watermarkMs = Number((await getSetting(WATERMARK_KEY).catch(() => null)) || 0)
+        if (!watermarkMs || Number.isNaN(watermarkMs)) {
+          watermarkMs = Date.now() - 7 * 86400000
+          await setSetting(WATERMARK_KEY, String(watermarkMs)).catch(() => { /* non-critical */ })
         }
-        await ingestBounce(lead, failedEmail)
-        counts.bounces_marked++
-        await markProcessed(id, 'bounce', failedEmail, lead.row_number)
-      }
 
-      // Shared reply processor for an already-matched lead (full message).
-      const processReply = async (id: string, msg: gmail_v1.Schema$Message, lead: Lead, fromEmail: string): Promise<void> => {
-        const pool = { plain: [] as string[], html: [] as string[], other: [] as string[] }
-        collectParts(msg.payload, pool)
-        const rawBody = pool.plain.join('\n').trim() || htmlToText(pool.html.join('\n'))
-        const body = trimReplyBody(rawBody) || '(empty email body)'
-        const internalMs = Number(msg.internalDate || 0)
-        const tsIso = internalMs ? new Date(internalMs).toISOString() : new Date().toISOString()
-        const outcome = await ingestReply(lead, fromEmail, body, tsIso, id)
-        if (outcome === 'no_phone') {
-          counts.skipped_no_phone++
-          await markProcessed(id, 'reply_no_phone', fromEmail, lead.row_number)
-          return
+        // Self-healing window: cover any cron outage gap (up to 30d) instead of
+        // silently losing mail older than 7d; the ledger keeps this idempotent.
+        const lastSuccessMs = Number((await getSetting(LAST_SUCCESS_KEY).catch(() => null)) || 0)
+        let windowDays = 7
+        if (lastSuccessMs > 0) {
+          const gapDays = Math.ceil((Date.now() - lastSuccessMs) / 86400000) + 1
+          windowDays = Math.min(Math.max(7, gapDays), 30)
         }
-        counts.replies_ingested++
-        await markProcessed(id, 'reply', fromEmail, lead.row_number)
-      }
 
-      // --- PASS 1 — BOUNCES FIRST: a DSN can also match the reply/inbox
-      // queries (subject quotes the original) — the ledger + seenThisRun then
-      // keep the later passes off it. ---
-      for (const id of await listIds(bounceQuery(windowDays))) {
-        if (seenThisRun.has(id)) continue
-        seenThisRun.add(id)
-        try {
-          if (await isProcessed(id)) { counts.already_processed++; continue }
-          counts.bounces_seen++
-          const msg = await fetchFull(id)
-          const internalMs = Number(msg.internalDate || 0)
-          if (internalMs && internalMs < watermarkMs) {
-            counts.skipped_old++
-            await markProcessed(id, 'skipped_old')
-            continue
-          }
-          await processBounce(id, msg)
-        } catch (err) {
-          // Not ledgered — retried next run.
-          console.error(`[mail-watcher] bounce ${id} failed (will retry):`, err)
+        const { google } = await import('googleapis')
+        const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET)
+        auth.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN || process.env.GOOGLE_REFRESH_TOKEN })
+        const gmail = google.gmail({ version: 'v1', auth, timeout: GMAIL_TIMEOUT_MS })
+
+        const listIds = async (q: string): Promise<string[]> => {
+          const ids: string[] = []
+          let pageToken: string | undefined
+          do {
+            const res = await gmail.users.messages.list({ userId: 'me', q, maxResults: 100, pageToken })
+            for (const m of res.data.messages || []) if (m.id) ids.push(m.id)
+            pageToken = res.data.nextPageToken || undefined
+          } while (pageToken && ids.length < MAX_MESSAGES_PER_QUERY)
+          return ids
         }
-      }
 
-      // --- PASS 2 — IN-THREAD REPLIES (subject match) ---
-      for (const id of await listIds(replyQuery(windowDays))) {
-        if (seenThisRun.has(id)) continue
-        seenThisRun.add(id)
-        try {
-          if (await isProcessed(id)) { counts.already_processed++; continue }
-          counts.replies_seen++
-          const msg = await fetchFull(id)
-          const internalMs = Number(msg.internalDate || 0)
-          if (internalMs && internalMs < watermarkMs) {
-            counts.skipped_old++
-            await markProcessed(id, 'skipped_old')
-            continue
-          }
-          const fromEmail = parseAddress(headerValue(msg.payload, 'From'))
-          const subject = headerValue(msg.payload, 'Subject')
-          if (!fromEmail || SELF_ADDRESSES.includes(fromEmail)) {
-            counts.skipped_self++
-            await markProcessed(id, 'skipped_self', fromEmail)
-            continue
-          }
-          if (isDaemonAddress(fromEmail)) {
-            // An NDR that quoted our subject ("Undeliverable: ... franchise
-            // overview") — route it through the bounce handler so the lead's
-            // email still gets marked invalid.
-            await processBounce(id, msg)
-            continue
-          }
-          if (isAutoReply(msg.payload, subject)) {
-            counts.skipped_auto++
-            await markProcessed(id, 'skipped_auto', fromEmail)
-            continue
-          }
-          const lead = matchLeadByEmail(leads, fromEmail)
+        const counts = {
+          bounces_seen: 0,
+          bounces_marked: 0,
+          bounces_unmatched: 0,
+          replies_seen: 0,
+          replies_ingested: 0,
+          replies_unmatched: 0,
+          inbox_unmatched: 0,
+          skipped_self: 0,
+          skipped_auto: 0,
+          skipped_old: 0,
+          skipped_no_phone: 0,
+          already_processed: 0,
+        }
+
+        const leads = await getLeads()
+        if (leads.length === 0) {
+          // A transient lead-source outage (DB empty + every sheet read failing)
+          // returns []; matching against it would mis-ledger every pending
+          // message as unmatched. Abort with NOTHING ledgered — next run retries.
+          console.error('[mail-watcher] lead source returned 0 leads — aborting run, nothing ledgered')
+          return NextResponse.json({ success: true, skipped: true, reason: 'lead source returned 0 leads — run aborted, will retry' })
+        }
+
+        const seenThisRun = new Set<string>()
+        // Set when the time budget runs out. Every loop checks it between
+        // messages; anything not reached is not ledgered and is retried next tick.
+        let truncated = false
+
+        const fetchFull = async (id: string) => {
+          const res = await gmail.users.messages.get({ userId: 'me', id, format: 'full' })
+          return res.data
+        }
+        // Cheap header-only probe for the broad inbox sweep — the full body is
+        // fetched only once the sender matches a lead (or is a bounce daemon).
+        const fetchMeta = async (id: string) => {
+          const res = await gmail.users.messages.get({
+            userId: 'me',
+            id,
+            format: 'metadata',
+            metadataHeaders: ['From', 'Subject', 'Auto-Submitted', 'X-Autoreply', 'X-Autorespond', 'Precedence'],
+          })
+          return res.data
+        }
+
+        // Shared bounce processor (needs a full message for the DSN body).
+        const processBounce = async (id: string, msg: gmail_v1.Schema$Message): Promise<void> => {
+          const pool = { plain: [] as string[], html: [] as string[], other: [] as string[] }
+          collectParts(msg.payload, pool)
+          const bodyPool = [...pool.plain, ...pool.other, ...pool.html.map(htmlToText)].join('\n')
+          const failedEmail = parseFailedRecipient(msg.payload, bodyPool)
+          const lead = failedEmail ? matchLeadByEmail(leads, failedEmail) : null
           if (!lead) {
-            counts.replies_unmatched++
-            await markProcessed(id, 'reply_unmatched', fromEmail) // retryable
-            continue
+            counts.bounces_unmatched++
+            await markProcessed(id, 'bounce_unmatched', failedEmail) // retryable
+            return
           }
-          await processReply(id, msg, lead, fromEmail)
-        } catch (err) {
-          // Not ledgered — retried next run.
-          console.error(`[mail-watcher] reply ${id} failed (will retry):`, err)
+          await ingestBounce(lead, failedEmail)
+          counts.bounces_marked++
+          await markProcessed(id, 'bounce', failedEmail, lead.row_number)
         }
-      }
 
-      // --- PASS 3 — FRESH MAIL FROM KNOWN LEAD ADDRESSES: prospects routinely
-      // compose a NEW email (or edit the subject) instead of hitting reply.
-      // Header-only probe first; full fetch only for lead/daemon senders. ---
-      for (const id of await listIds(inboxQuery(windowDays))) {
-        if (seenThisRun.has(id)) continue
-        seenThisRun.add(id)
-        try {
-          if (await isProcessed(id)) { counts.already_processed++; continue }
-          const meta = await fetchMeta(id)
-          const internalMs = Number(meta.internalDate || 0)
-          if (internalMs && internalMs < watermarkMs) {
-            counts.skipped_old++
-            await markProcessed(id, 'skipped_old')
-            continue
+        // Shared reply processor for an already-matched lead (full message).
+        const processReply = async (id: string, msg: gmail_v1.Schema$Message, lead: Lead, fromEmail: string): Promise<void> => {
+          const pool = { plain: [] as string[], html: [] as string[], other: [] as string[] }
+          collectParts(msg.payload, pool)
+          const rawBody = pool.plain.join('\n').trim() || htmlToText(pool.html.join('\n'))
+          const body = trimReplyBody(rawBody) || '(empty email body)'
+          const internalMs = Number(msg.internalDate || 0)
+          const tsIso = internalMs ? new Date(internalMs).toISOString() : new Date().toISOString()
+          const outcome = await ingestReply(lead, fromEmail, body, tsIso, id)
+          if (outcome === 'no_phone') {
+            counts.skipped_no_phone++
+            await markProcessed(id, 'reply_no_phone', fromEmail, lead.row_number)
+            return
           }
-          const fromEmail = parseAddress(headerValue(meta.payload, 'From'))
-          const subject = headerValue(meta.payload, 'Subject')
-          if (!fromEmail || SELF_ADDRESSES.includes(fromEmail)) {
-            counts.skipped_self++
-            await markProcessed(id, 'skipped_self', fromEmail)
-            continue
-          }
-          if (isDaemonAddress(fromEmail)) {
+          counts.replies_ingested++
+          await markProcessed(id, 'reply', fromEmail, lead.row_number)
+        }
+
+        // --- PASS 1 — BOUNCES FIRST: a DSN can also match the reply/inbox
+        // queries (subject quotes the original) — the ledger + seenThisRun then
+        // keep the later passes off it. ---
+        for (const id of truncated ? [] : await listIds(bounceQuery(windowDays))) {
+          if (ctx.outOfTime()) { truncated = true; break }
+          if (seenThisRun.has(id)) continue
+          seenThisRun.add(id)
+          try {
+            if (await isProcessed(id)) { counts.already_processed++; continue }
             counts.bounces_seen++
-            await processBounce(id, await fetchFull(id))
-            continue
+            const msg = await fetchFull(id)
+            const internalMs = Number(msg.internalDate || 0)
+            if (internalMs && internalMs < watermarkMs) {
+              counts.skipped_old++
+              await markProcessed(id, 'skipped_old')
+              continue
+            }
+            await processBounce(id, msg)
+          } catch (err) {
+            // Not ledgered — retried next run.
+            console.error(`[mail-watcher] bounce ${id} failed (will retry):`, err)
           }
-          if (isAutoReply(meta.payload, subject)) {
-            counts.skipped_auto++
-            await markProcessed(id, 'skipped_auto', fromEmail)
-            continue
-          }
-          const lead = matchLeadByEmail(leads, fromEmail)
-          if (!lead) {
-            // Normal inbox noise — ledgered for audit but retryable, so a
-            // transiently-degraded lead list can't permanently void a reply.
-            counts.inbox_unmatched++
-            await markProcessed(id, 'inbox_unmatched', fromEmail)
-            continue
-          }
-          counts.replies_seen++
-          await processReply(id, await fetchFull(id), lead, fromEmail)
-        } catch (err) {
-          // Not ledgered — retried next run.
-          console.error(`[mail-watcher] inbox ${id} failed (will retry):`, err)
         }
+
+        // --- PASS 2 — IN-THREAD REPLIES (subject match) ---
+        for (const id of truncated ? [] : await listIds(replyQuery(windowDays))) {
+          if (ctx.outOfTime()) { truncated = true; break }
+          if (seenThisRun.has(id)) continue
+          seenThisRun.add(id)
+          try {
+            if (await isProcessed(id)) { counts.already_processed++; continue }
+            counts.replies_seen++
+            const msg = await fetchFull(id)
+            const internalMs = Number(msg.internalDate || 0)
+            if (internalMs && internalMs < watermarkMs) {
+              counts.skipped_old++
+              await markProcessed(id, 'skipped_old')
+              continue
+            }
+            const fromEmail = parseAddress(headerValue(msg.payload, 'From'))
+            const subject = headerValue(msg.payload, 'Subject')
+            if (!fromEmail || SELF_ADDRESSES.includes(fromEmail)) {
+              counts.skipped_self++
+              await markProcessed(id, 'skipped_self', fromEmail)
+              continue
+            }
+            if (isDaemonAddress(fromEmail)) {
+              // An NDR that quoted our subject ("Undeliverable: ... franchise
+              // overview") — route it through the bounce handler so the lead's
+              // email still gets marked invalid.
+              await processBounce(id, msg)
+              continue
+            }
+            if (isAutoReply(msg.payload, subject)) {
+              counts.skipped_auto++
+              await markProcessed(id, 'skipped_auto', fromEmail)
+              continue
+            }
+            const lead = matchLeadByEmail(leads, fromEmail)
+            if (!lead) {
+              counts.replies_unmatched++
+              await markProcessed(id, 'reply_unmatched', fromEmail) // retryable
+              continue
+            }
+            await processReply(id, msg, lead, fromEmail)
+          } catch (err) {
+            // Not ledgered — retried next run.
+            console.error(`[mail-watcher] reply ${id} failed (will retry):`, err)
+          }
+        }
+
+        // --- PASS 3 — FRESH MAIL FROM KNOWN LEAD ADDRESSES: prospects routinely
+        // compose a NEW email (or edit the subject) instead of hitting reply.
+        // Header-only probe first; full fetch only for lead/daemon senders. ---
+        for (const id of truncated ? [] : await listIds(inboxQuery(windowDays))) {
+          if (ctx.outOfTime()) { truncated = true; break }
+          if (seenThisRun.has(id)) continue
+          seenThisRun.add(id)
+          try {
+            if (await isProcessed(id)) { counts.already_processed++; continue }
+            const meta = await fetchMeta(id)
+            const internalMs = Number(meta.internalDate || 0)
+            if (internalMs && internalMs < watermarkMs) {
+              counts.skipped_old++
+              await markProcessed(id, 'skipped_old')
+              continue
+            }
+            const fromEmail = parseAddress(headerValue(meta.payload, 'From'))
+            const subject = headerValue(meta.payload, 'Subject')
+            if (!fromEmail || SELF_ADDRESSES.includes(fromEmail)) {
+              counts.skipped_self++
+              await markProcessed(id, 'skipped_self', fromEmail)
+              continue
+            }
+            if (isDaemonAddress(fromEmail)) {
+              counts.bounces_seen++
+              await processBounce(id, await fetchFull(id))
+              continue
+            }
+            if (isAutoReply(meta.payload, subject)) {
+              counts.skipped_auto++
+              await markProcessed(id, 'skipped_auto', fromEmail)
+              continue
+            }
+            const lead = matchLeadByEmail(leads, fromEmail)
+            if (!lead) {
+              // Normal inbox noise — ledgered for audit but retryable, so a
+              // transiently-degraded lead list can't permanently void a reply.
+              counts.inbox_unmatched++
+              await markProcessed(id, 'inbox_unmatched', fromEmail)
+              continue
+            }
+            counts.replies_seen++
+            await processReply(id, await fetchFull(id), lead, fromEmail)
+          } catch (err) {
+            // Not ledgered — retried next run.
+            console.error(`[mail-watcher] inbox ${id} failed (will retry):`, err)
+          }
+        }
+
+        // A truncated run has NOT covered the window, so it must not count as
+        // a success: the self-healing window would shrink and skip the backlog.
+        if (!truncated) {
+          await setSetting(LAST_SUCCESS_KEY, String(Date.now())).catch(() => { /* non-critical */ })
+        }
+
+        // Counts only — never bodies.
+        console.log(
+          `[mail-watcher] replies ${counts.replies_ingested}/${counts.replies_seen} ingested ` +
+          `(${counts.replies_unmatched} unmatched, ${counts.inbox_unmatched} inbox-unmatched, ${counts.skipped_auto} auto, ` +
+          `${counts.skipped_self} self, ${counts.skipped_no_phone} no-phone), ` +
+          `bounces ${counts.bounces_marked}/${counts.bounces_seen} marked (${counts.bounces_unmatched} unmatched), ` +
+          `${counts.already_processed} already processed, ${counts.skipped_old} pre-watermark, window ${windowDays}d${truncated ? ', TRUNCATED (time budget)' : ''}`,
+        )
+
+        return NextResponse.json({ success: true, window_days: windowDays, truncated, ...counts })
+      } finally {
+        await releaseRunLock()
       }
-
-      await setSetting(LAST_SUCCESS_KEY, String(Date.now())).catch(() => { /* non-critical */ })
-
-      // Counts only — never bodies.
-      console.log(
-        `[mail-watcher] replies ${counts.replies_ingested}/${counts.replies_seen} ingested ` +
-        `(${counts.replies_unmatched} unmatched, ${counts.inbox_unmatched} inbox-unmatched, ${counts.skipped_auto} auto, ` +
-        `${counts.skipped_self} self, ${counts.skipped_no_phone} no-phone), ` +
-        `bounces ${counts.bounces_marked}/${counts.bounces_seen} marked (${counts.bounces_unmatched} unmatched), ` +
-        `${counts.already_processed} already processed, ${counts.skipped_old} pre-watermark, window ${windowDays}d`,
-      )
-
-      return NextResponse.json({ success: true, window_days: windowDays, ...counts })
-    } finally {
-      await releaseRunLock()
-    }
+    })
   } catch (err) {
     console.error('[mail-watcher] Error:', err)
     return NextResponse.json({ success: false, error: apiError(err, 'Mail watcher failed') }, { status: 500 })

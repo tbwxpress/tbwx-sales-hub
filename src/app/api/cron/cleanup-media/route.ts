@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronLock } from '@/lib/cron-guard'
 import fs from 'fs'
 import path from 'path'
 
@@ -20,30 +21,34 @@ export async function POST(req: NextRequest) {
       requireAdmin(user)
     }
 
-    if (!fs.existsSync(MEDIA_DIR)) {
-      return NextResponse.json({ success: true, data: { scanned: 0, deleted: 0, freed_bytes: 0 } })
-    }
+    // One run at a time: a slow run overlapping the next tick stacks the load
+    // (see src/lib/cron-guard.ts for the Sep-Oct 2026 CPU incident).
+    return await withCronLock('cleanup-media', { budgetMs: 120_000 }, async () => {
+      if (!fs.existsSync(MEDIA_DIR)) {
+        return NextResponse.json({ success: true, data: { scanned: 0, deleted: 0, freed_bytes: 0 } })
+      }
 
-    const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
-    const files = fs.readdirSync(MEDIA_DIR)
-    let scanned = 0, deleted = 0, freedBytes = 0
-    for (const name of files) {
-      const full = path.join(MEDIA_DIR, name)
-      try {
-        const st = fs.statSync(full)
-        if (!st.isFile()) continue
-        scanned++
-        if (st.mtimeMs < cutoff) {
-          freedBytes += st.size
-          fs.unlinkSync(full)
-          deleted++
-        }
-      } catch { /* skip unreadable */ }
-    }
+      const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
+      const files = fs.readdirSync(MEDIA_DIR)
+      let scanned = 0, deleted = 0, freedBytes = 0
+      for (const name of files) {
+        const full = path.join(MEDIA_DIR, name)
+        try {
+          const st = fs.statSync(full)
+          if (!st.isFile()) continue
+          scanned++
+          if (st.mtimeMs < cutoff) {
+            freedBytes += st.size
+            fs.unlinkSync(full)
+            deleted++
+          }
+        } catch { /* skip unreadable */ }
+      }
 
-    return NextResponse.json({
-      success: true,
-      data: { scanned, deleted, freed_bytes: freedBytes, retention_days: RETENTION_DAYS },
+      return NextResponse.json({
+        success: true,
+        data: { scanned, deleted, freed_bytes: freedBytes, retention_days: RETENTION_DAYS },
+      })
     })
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 })

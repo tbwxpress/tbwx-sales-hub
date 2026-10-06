@@ -89,12 +89,20 @@ export async function maybeSendAgentIntro(params: { phone: string; leadRow: numb
     // one send, but if the lead is later handed to a different advisor the key
     // changes, so a genuine "I'm your new advisor" intro is still possible.
     const { claimEvent } = await import('./db')
-    if (!(await claimEvent(`agent_intro:lead:${leadRow}:${agent.name}`, 'agent_intro'))) return false
+    const claimKey = `agent_intro:lead:${leadRow}:${agent.name}`
+    if (!(await claimEvent(claimKey, 'agent_intro'))) return false
 
     const text = buildAgentIntroText(lead.full_name, agent.name, agentPhone)
     const { sendTextMessage } = await import('./whatsapp')
     const res = await sendTextMessage(phone, text)
-    if (!res.success) return false
+    if (!res.success) {
+      // Nothing was delivered: hand the claim back so the lead's next message
+      // can retry the intro instead of it being marked sent forever.
+      const { releaseEvent } = await import('./leads-db-extra')
+      await releaseEvent(claimKey)
+      console.error(`[agent-intro] send failed for lead ${leadRow}: ${res.error || 'unknown error'}`)
+      return false
+    }
 
     await insertMessage({
       phone,

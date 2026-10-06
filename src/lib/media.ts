@@ -20,6 +20,7 @@
 import fs from 'fs'
 import path from 'path'
 import { WHATSAPP } from '@/config/client'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 const MEDIA_DIR = process.env.MEDIA_DIR || path.resolve(process.cwd(), 'data', 'media')
 
@@ -81,7 +82,7 @@ export async function downloadInboundMedia(opts: {
     ensureMediaDir()
 
     // 1. Get signed URL
-    const metaRes = await fetch(`${WHATSAPP.apiBase}/${opts.mediaId}`, {
+    const metaRes = await fetchWithTimeout(`${WHATSAPP.apiBase}/${opts.mediaId}`, {
       headers: { 'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}` },
     })
     if (!metaRes.ok) return { success: false, error: `Meta media meta ${metaRes.status}` }
@@ -90,9 +91,9 @@ export async function downloadInboundMedia(opts: {
     const mime = meta.mime_type || opts.mimeFromWebhook || 'application/octet-stream'
 
     // 2. Download binary
-    const binRes = await fetch(meta.url, {
+    const binRes = await fetchWithTimeout(meta.url, {
       headers: { 'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}` },
-    })
+    }, 60_000)
     if (!binRes.ok) return { success: false, error: `Meta media bin ${binRes.status}` }
     const buf = Buffer.from(await binRes.arrayBuffer())
 
@@ -146,11 +147,11 @@ export async function uploadMediaToMeta(opts: {
     const blob = new Blob([new Uint8Array(opts.buffer)], { type: opts.mime })
     form.append('file', blob, opts.filename)
 
-    const res = await fetch(`${WHATSAPP.apiBase}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/media`, {
+    const res = await fetchWithTimeout(`${WHATSAPP.apiBase}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/media`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}` },
       body: form,
-    })
+    }, 60_000)
     const data = await res.json() as { id?: string; error?: { message?: string } }
     if (!res.ok || !data.id) {
       return { success: false, error: data.error?.message || `Upload failed (${res.status})` }
@@ -194,7 +195,7 @@ export async function sendMediaMessage(opts: {
       [opts.type]: mediaPayload,
     }
 
-    const res = await fetch(`${WHATSAPP.apiBase}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    const res = await fetchWithTimeout(`${WHATSAPP.apiBase}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}`,

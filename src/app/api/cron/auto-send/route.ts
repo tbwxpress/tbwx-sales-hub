@@ -5,9 +5,14 @@ import { sendTemplate } from '@/lib/whatsapp'
 import { resolveAssignee } from '@/lib/assignment'
 import { sendFranchiseEmail } from '@/lib/email'
 import { logSentMessage, updateLead, getLeads } from '@/lib/sheets'
-import { upsertContact, insertMessage, getMessages, getSetting, setSetting, logAssignment } from '@/lib/db'
+import { upsertContact, insertMessage, insertNote, getSetting, setSetting, logAssignment } from '@/lib/db'
+import { activeLeads } from '@/lib/leads-db'
+import { releaseEvent, recordSendFailure, countSendFailures, getSentMessagesForPhone } from '@/lib/leads-db-extra'
+import { isAutoSendEligible, templateAlreadySent, waMessageIdToWrite, MAX_OPTIN_ATTEMPTS } from '@/lib/auto-send-rules'
 import { getUsers } from '@/lib/users'
 import { getOptInTemplateName, getMarketingFirstTemplateName } from '@/lib/template-settings'
+import { withCronLock } from '@/lib/cron-guard'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 const VOICE_AGENT_URL = process.env.VOICE_AGENT_URL || 'https://voice.tbwxpress.com'
 
@@ -56,8 +61,10 @@ interface RawLead {
   assigned_to?: string
   /** Latest enquiry timestamp — blank for the legacy sheet tab, which has no such column. */
   last_enquiry_at?: string
-  /** Meta lead id of the newest enquiry; scopes the send-once claim to THIS enquiry. */
+  /** The lead's Meta lead id (the ORIGINAL one: a re-enquiry keeps it). With last_enquiry_at it scopes the send-once claim to one enquiry. */
   enquiry_id?: string
+  /** What the lead's wa_message_id column holds now; a real WhatsApp id is never overwritten by a placeholder. */
+  wa_message_id?: string
 }
 
 // --- Google Sheets Auth ---
@@ -98,6 +105,7 @@ async function readTab(tabName: string, sourceTab: 'new' | 'old'): Promise<RawLe
         model_interest: row[12] || '',
         lead_priority: '',
         source_tab: 'new',
+        wa_message_id: row[24] || '',
       }
     })
   } else {
@@ -126,6 +134,7 @@ async function readTab(tabName: string, sourceTab: 'new' | 'old'): Promise<RawLe
         model_interest: row[12] || '',
         lead_priority: '',
         source_tab: 'old',
+        wa_message_id: row[24] || '',
       }
     })
   }
@@ -166,16 +175,18 @@ async function markContacted(lead: RawLead, waMessageId: string, assignedTo: str
   const followup = new Date()
   followup.setDate(followup.getDate() + 1)
   const followupStr = followup.toISOString().split('T')[0]
+  // undefined = keep the column as is (it already holds a real WhatsApp id).
+  const waToWrite = waMessageIdToWrite(lead.wa_message_id, waMessageId)
 
   if (lead.source_tab === 'new') {
     // New-tab leads live in the DB (source of truth). updateLead writes the DB
     // and mirrors the same fields back to the sheet.
     const fields: Record<string, string> = {
       lead_status: 'DECK_SENT',
-      wa_message_id: waMessageId,
       lead_priority: lead.lead_priority,
       next_followup: followupStr,
     }
+    if (waToWrite !== undefined) fields.wa_message_id = waToWrite
     if (assignedTo) fields.assigned_to = assignedTo
     await updateLead(lead.row_number, fields)
   } else {
@@ -185,10 +196,12 @@ async function markContacted(lead: RawLead, waMessageId: string, assignedTo: str
     const tabName = process.env.OLD_LEADS_TAB_NAME || 'Previous campaign leads'
     const data = [
       { range: `${tabName}!V${lead.row_number}`, values: [['DECK_SENT']] },
-      { range: `${tabName}!Y${lead.row_number}`, values: [[waMessageId]] },
       { range: `${tabName}!Z${lead.row_number}`, values: [[lead.lead_priority]] },
       { range: `${tabName}!AB${lead.row_number}`, values: [[followupStr]] },
     ]
+    if (waToWrite !== undefined) {
+      data.push({ range: `${tabName}!Y${lead.row_number}`, values: [[waToWrite]] })
+    }
     if (assignedTo) {
       data.push({ range: `${tabName}!AA${lead.row_number}`, values: [[assignedTo]] })
     }
@@ -213,7 +226,34 @@ async function markContacted(lead: RawLead, waMessageId: string, assignedTo: str
   } catch { /* audit log non-critical */ }
 }
 
+// After MAX_OPTIN_ATTEMPTS failed opt-in sends we stop retrying and hand the
+// lead to a person: log it, leave a note on the lead, and alert the manager on
+// WhatsApp (the same alert path the webhook uses for HOT leads).
+async function reportOptinGaveUp(lead: RawLead, attempts: number, error?: string) {
+  const reason = String(error || 'unknown error').replace(/\s+/g, ' ').slice(0, 120)
+  console.error(`[auto-send] opt-in to lead ${lead.row_number} failed ${attempts} times, giving up: ${reason}`)
+  try {
+    await insertNote({
+      phone: lead.phone_formatted,
+      note: `[Auto-send] WhatsApp opt-in failed ${attempts} times (${reason}). Contact this lead manually.`,
+      created_by: 'auto-send',
+    })
+  } catch { /* the note is best-effort */ }
+  const managerPhone = process.env.MANAGER_PHONE || '917973933630'
+  const alert = await sendTemplate(managerPhone, 'sales_lead_alert', [
+    { type: 'text', text: `AUTO-SEND GAVE UP: WhatsApp opt-in to ${lead.full_name} (${lead.phone_formatted}) failed ${attempts} times: ${reason}. Contact them manually.` },
+  ])
+  if (!alert.success) console.error(`[auto-send] manager alert failed: ${alert.error}`)
+}
+
+/** One run at a time with a time budget — a second cron tick while a run is
+ *  in flight gets 409 instead of piling synchronous SQLite work on the
+ *  process (the pattern behind the Oct-2026 hourly freezes). */
 export async function POST(request: NextRequest) {
+  return withCronLock('auto-send', { budgetMs: 100000 }, () => handlePost(request))
+}
+
+async function handlePost(request: NextRequest) {
   // Auth: accept either Vercel CRON_SECRET or a valid session cookie
   const authHeader = request.headers.get('authorization')
   const cronSecret = authHeader?.replace('Bearer ', '')
@@ -260,7 +300,9 @@ export async function POST(request: NextRequest) {
       getLeads(),
       readTab(oldTabName, 'old'),
     ])
-    const newLeads: RawLead[] = dbLeads
+    // activeLeads drops merged duplicates: a merged row is a copy of another
+    // lead and must never be messaged or decide a send.
+    const newLeads: RawLead[] = activeLeads(dbLeads)
       // Skip manually-entered leads (telecaller-sourced, e.g. Apurva's). They must
       // NOT receive the automated franchise opt-in/deck and must NOT be rotated
       // away from their owner — only genuine inbound campaign leads are auto-handled.
@@ -285,23 +327,17 @@ export async function POST(request: NextRequest) {
         assigned_to: l.assigned_to || '',
         last_enquiry_at: l.last_enquiry_at || '',
         enquiry_id: l.id || '',
+        wa_message_id: l.wa_message_id || '',
       }
     })
 
     // 2. Merge
     const allLeads = [...newLeads, ...oldLeads]
 
-    // 3. Filter: only NEW leads (anything beyond NEW has already been handled)
-    const SKIP_STATUSES = [
-      'deck_sent', 'replied', 'converted', 'delayed', 'lost', 'contacted',
-      // New status names
-      'no_response', 'call_done_interested', 'hot', 'final_negotiation',
-      // Old status names (leads in Sheet may still have these)
-      'calling', 'call_done', 'interested', 'negotiation',
-    ]
+    // 3. Filter: only NEW leads. A deny-list of handled statuses let ARCHIVED
+    //    and admin-created stages through, and those got reset to DECK_SENT.
     const uncontacted = allLeads.filter(lead => {
-      const status = lead.lead_status.toLowerCase()
-      if (SKIP_STATUSES.includes(status)) return false
+      if (!isAutoSendEligible(lead)) return false
       if (!lead.phone_formatted || lead.phone_formatted.length < 10) return false
       if (lead.full_name.toLowerCase().includes('test lead')) return false
       return true
@@ -382,14 +418,13 @@ export async function POST(request: NextRequest) {
 
       try {
         // Double-check: skip if we already sent to this phone (prevents duplicates
-        // when Google Sheet update is slow and cron runs again before status propagates)
-        const existingMsgs = await getMessages(lead.phone_formatted, 20, 0)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sentMsgs = (existingMsgs || []).filter((m: any) => m.direction === 'sent')
+        // when Google Sheet update is slow and cron runs again before status propagates).
+        // The FULL sent history for the phone: the old 20-message page could
+        // miss an earlier opt-in on a busy thread.
+        const sentMsgs = await getSentMessagesForPhone(lead.phone_formatted)
         // Anti-double-text: if a HUMAN agent already reached out, leave the lead to
         // them — do NOT auto-message, mark, or rotate it. (No send slot consumed.)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const manuallyEngaged = sentMsgs.some((m: any) =>
+        const manuallyEngaged = sentMsgs.some(m =>
           m.sent_by && !['auto-send', 'System (Auto)', 'bot', ''].includes(String(m.sent_by))
         )
         if (manuallyEngaged) {
@@ -398,6 +433,25 @@ export async function POST(request: NextRequest) {
             name: lead.full_name,
             status: 'skipped',
             error: 'Agent already engaged — left for the agent',
+          })
+          continue
+        }
+        // Send-once claim for this enquiry's opt-in (taken just before the send).
+        // Scoped to the enquiry, not just the lead: a re-enquiry keeps the
+        // original Meta id but stamps last_enquiry_at, so each repeat is a new
+        // claim. First enquiries have no last_enquiry_at, so their key is
+        // unchanged from before.
+        const optinKey = `optin:lead:${lead.row_number}:${lead.enquiry_id || lead.created_time || ''}` +
+          (lead.last_enquiry_at ? `@${lead.last_enquiry_at}` : '')
+        // Gave up on this enquiry after repeated send failures. The manager was
+        // alerted when the last attempt failed; a person takes it from here.
+        const failedAttempts = await countSendFailures(optinKey)
+        if (failedAttempts >= MAX_OPTIN_ATTEMPTS) {
+          results.push({
+            phone: lead.phone_formatted,
+            name: lead.full_name,
+            status: 'skipped',
+            error: `Opt-in failed ${failedAttempts} times — left for a person`,
           })
           continue
         }
@@ -410,22 +464,18 @@ export async function POST(request: NextRequest) {
         const decision = resolveAssignee(lead.assigned_to, agentData.activeAgents, assignCounter)
         const assignedTo = decision.assignedTo
         if (decision.consumedRotationSlot) assignCounter++
-        // "Already messaged" is only true for THIS enquiry. Someone who filled
-        // the form again months later must get the current deck again, so every
-        // guard below counts only messages sent after their latest enquiry.
+        // "Already messaged" is per enquiry. Someone who filled the form again
+        // months later must get the current deck again, so the guards below
+        // count messages sent after their latest enquiry, plus anything sent in
+        // the last 7 days: a second form submit a few minutes or days after the
+        // first must not trigger a second opt-in.
         const enquiryCutoff = String(lead.last_enquiry_at || '')
-        const sinceEnquiry = enquiryCutoff
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ? sentMsgs.filter((m: any) => String(m.timestamp || '') >= enquiryCutoff)
-          : sentMsgs
+        const now = new Date()
 
         // Inbound-first leads (they texted the WABA line, webhook auto-replied
         // with the deck) must NOT get the opt-in afterwards — it reads backwards.
         // Failed deck sends don't count: those leads take the normal opt-in path.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const deckAlreadyOut = sinceEnquiry.some((m: any) =>
-          m.template_used === DECK_TEMPLATE && m.status !== 'failed'
-        )
+        const deckAlreadyOut = templateAlreadySent(sentMsgs, DECK_TEMPLATE, { enquiryCutoff, now, ignoreFailed: true })
         if (deckAlreadyOut) {
           try { await markContacted(lead, 'deck-already-sent', assignedTo) } catch {}
           results.push({
@@ -438,8 +488,7 @@ export async function POST(request: NextRequest) {
         }
         // If our own opt-in already went out for this enquiry, mark/assign but
         // don't re-send.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const alreadySent = sinceEnquiry.some((m: any) => m.template_used === TEMPLATE_NAME)
+        const alreadySent = templateAlreadySent(sentMsgs, TEMPLATE_NAME, { enquiryCutoff, now })
         if (alreadySent) {
           try { await markContacted(lead, 'already-sent', assignedTo) } catch {}
           results.push({
@@ -453,13 +502,8 @@ export async function POST(request: NextRequest) {
 
         // The "already sent" check above is a read, so two overlapping cron
         // runs can both clear it and both send. This claim is atomic — one
-        // opt-in template per lead, whichever run gets there first.
-        // Scoped to the enquiry, not just the lead: someone who fills the form
-        // again gets a new Meta lead id, so a repeat enquiry is a new claim and
-        // the deck goes out again — while overlapping cron runs on the SAME
-        // enquiry still collapse to one send.
+        // opt-in template per enquiry, whichever run gets there first.
         const { claimEvent } = await import('@/lib/db')
-        const optinKey = `optin:lead:${lead.row_number}:${lead.enquiry_id || lead.created_time || ''}`
         if (!(await claimEvent(optinKey, 'auto_send_optin'))) {
           results.push({
             phone: lead.phone_formatted,
@@ -479,11 +523,18 @@ export async function POST(request: NextRequest) {
         )
 
         if (!waResult.success) {
+          // Hand the claim back so the next run retries. Keeping it marked the
+          // lead as messaged forever although nothing was delivered.
+          await releaseEvent(optinKey)
+          // The lead was never assigned, so the rotation slot was not used.
+          if (decision.consumedRotationSlot) assignCounter--
+          const attempt = await recordSendFailure(optinKey)
+          if (attempt >= MAX_OPTIN_ATTEMPTS) await reportOptinGaveUp(lead, attempt, waResult.error)
           results.push({
             phone: lead.phone_formatted,
             name: lead.full_name,
             status: 'failed',
-            error: waResult.error,
+            error: `${waResult.error || 'Send failed'} (attempt ${attempt}/${MAX_OPTIN_ATTEMPTS})`,
           })
           continue
         }
@@ -564,7 +615,7 @@ export async function POST(request: NextRequest) {
               const phoneForCall = lead.phone_formatted.startsWith('91')
                 ? `+${lead.phone_formatted}`
                 : `+91${lead.phone_formatted.slice(-10)}`
-              const callRes = await fetch(`${VOICE_AGENT_URL}/call`, {
+              const callRes = await fetchWithTimeout(`${VOICE_AGENT_URL}/call`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ phone: phoneForCall, name: lead.full_name, lead_id: String(lead.row_number) }),

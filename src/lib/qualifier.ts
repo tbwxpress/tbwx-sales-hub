@@ -17,6 +17,7 @@ import { getLeadByRow, updateLead } from './sheets'
 import { notifyQuiet } from './notifications'
 import { getUsers } from './users'
 import { BOT_SENDER } from './advisor-bot'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models'
 const MODEL = process.env.QUALIFIER_MODEL || 'gemini-2.5-flash'
@@ -84,14 +85,14 @@ Return STRICT JSON:
  "qualified_hot": boolean (true ONLY if budget clearly fits AND timeline is within ~3 months),
  "summary": string (one line, e.g. "Pune · budget OK (10L) · wants to start in 2 months")}`
 
-  const res = await fetch(`${GEMINI_API}/${MODEL}:generateContent?key=${key}`, {
+  const res = await fetchWithTimeout(`${GEMINI_API}/${MODEL}:generateContent?key=${key}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: 'application/json', temperature: 0 },
     }),
-  })
+  }, 30_000)
   if (!res.ok) return
   const data = await res.json()
   let x: Extraction

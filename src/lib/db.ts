@@ -86,6 +86,12 @@ export async function ensureInit(): Promise<Client> {
       CREATE INDEX IF NOT EXISTS idx_messages_phone ON messages(phone);
       CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
       CREATE INDEX IF NOT EXISTS idx_messages_wa_id ON messages(wa_message_id);
+      -- Per-thread lookups ("latest message for this phone", "unread inbound for
+      -- this phone"). During the Sep-Oct 2026 CPU incident these ran as
+      -- phone-only index scans plus a row fetch for every message in the
+      -- thread, once per lead. The composite indexes answer them from the index.
+      CREATE INDEX IF NOT EXISTS idx_messages_phone_ts ON messages(phone, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_messages_phone_read_dir ON messages(phone, read, direction);
 
       -- One row per side-effect-bearing event we have already handled. Meta
       -- retries a webhook whenever we are slow to ack, and every retry used to
@@ -800,6 +806,8 @@ async function ensureContactExists(normPhone: string): Promise<void> {
   })
 }
 
+const AVATAR_COLORS = ['#f97316', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#f5c518']
+
 export async function upsertContact(phone: string, data: {
   name?: string
   is_lead?: boolean
@@ -825,8 +833,7 @@ export async function upsertContact(phone: string, data: {
       await db.execute({ sql: `UPDATE contacts SET ${updates.join(', ')} WHERE phone = ?`, args: values })
     }
   } else {
-    const colors = ['#f97316', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#f5c518']
-    const color = colors[Math.floor(Math.random() * colors.length)]
+    const color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]
     await db.execute({
       sql: `INSERT INTO contacts (phone, name, is_lead, lead_row, lead_id, city, avatar_color)
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -841,6 +848,136 @@ export async function upsertContact(phone: string, data: {
       ],
     })
   }
+}
+
+type SqlArg = string | number | null
+type SqlStmt = { sql: string; args: SqlArg[] }
+
+/**
+ * Bulk import behind POST /api/inbox/sync (Google Sheet → SQLite).
+ *
+ * The old route called upsertContact() for every lead with a WhatsApp id and
+ * insertMessage() for every sheet message, every 2 minutes while an admin had
+ * the inbox open: tens of thousands of synchronous statements per run, nearly
+ * all of them rewriting rows that had not changed. In libsql local-file mode
+ * that blocks the whole Node process (Sep-Oct 2026 CPU incident).
+ *
+ * Now: two reads (existing contacts, existing message ids), then only the real
+ * changes, written in ONE transaction (db.batch) and capped at `maxWrites`
+ * statements per run. Anything over the cap is picked up by the next run.
+ * Field semantics match upsertContact / insertMessage: a contact update sets
+ * only the fields provided; a message with a known wa_message_id is skipped.
+ * Sheet messages WITHOUT a wa_message_id are skipped too: insertMessage cannot
+ * dedupe them, so the old loop would have re-inserted them on every run.
+ */
+export async function importInboxSheetData(input: {
+  leadContacts: Array<{ phone: string; name: string; lead_row: number; lead_id: string; city: string }>
+  messages: Array<{
+    phone: string
+    name: string
+    direction: 'sent' | 'received'
+    text: string
+    timestamp: string
+    wa_message_id: string
+    sent_by?: string
+    status?: string
+    template_used?: string
+  }>
+  maxWrites: number
+}): Promise<{ contacts_created: number; contacts_updated: number; messages_imported: number; truncated: boolean }> {
+  const db = await ensureInit()
+  const out = { contacts_created: 0, contacts_updated: 0, messages_imported: 0, truncated: false }
+
+  type C = { name: string; is_lead: number; lead_row: number | null; lead_id: string; city: string }
+  const contacts = new Map<string, C>()
+  const cRes = await db.execute('SELECT phone, name, is_lead, lead_row, lead_id, city FROM contacts')
+  for (const r of cRes.rows) {
+    contacts.set(String(r.phone), {
+      name: String(r.name ?? ''),
+      is_lead: Number(r.is_lead ?? 0),
+      lead_row: r.lead_row == null ? null : Number(r.lead_row),
+      lead_id: String(r.lead_id ?? ''),
+      city: String(r.city ?? ''),
+    })
+  }
+  const knownIds = new Set<string>()
+  const mRes = await db.execute("SELECT wa_message_id FROM messages WHERE wa_message_id <> ''")
+  for (const r of mRes.rows) knownIds.add(String(r.wa_message_id))
+
+  const stmts: SqlStmt[] = []
+  const full = () => {
+    if (stmts.length >= input.maxWrites) { out.truncated = true; return true }
+    return false
+  }
+
+  // Same field rules as upsertContact: insert if missing; otherwise set only
+  // the provided fields, and only when something actually changes.
+  const upsert = (phone: string, data: { name?: string; is_lead?: boolean; lead_row?: number; lead_id?: string; city?: string }) => {
+    const cur = contacts.get(phone)
+    if (!cur) {
+      const next: C = {
+        name: data.name || '',
+        is_lead: data.is_lead ? 1 : 0,
+        lead_row: data.lead_row || null,
+        lead_id: data.lead_id || '',
+        city: data.city || '',
+      }
+      stmts.push({
+        sql: `INSERT OR IGNORE INTO contacts (phone, name, is_lead, lead_row, lead_id, city, avatar_color)
+              VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        args: [phone, next.name, next.is_lead, next.lead_row, next.lead_id, next.city,
+          AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]],
+      })
+      contacts.set(phone, next)
+      out.contacts_created++
+      return
+    }
+    const sets: string[] = []
+    const args: SqlArg[] = []
+    if (data.name && data.name !== cur.name) { sets.push('name = ?'); args.push(data.name); cur.name = data.name }
+    if (data.is_lead !== undefined && (data.is_lead ? 1 : 0) !== cur.is_lead) {
+      cur.is_lead = data.is_lead ? 1 : 0
+      sets.push('is_lead = ?'); args.push(cur.is_lead)
+    }
+    if (data.lead_row && data.lead_row !== cur.lead_row) { sets.push('lead_row = ?'); args.push(data.lead_row); cur.lead_row = data.lead_row }
+    if (data.lead_id && data.lead_id !== cur.lead_id) { sets.push('lead_id = ?'); args.push(data.lead_id); cur.lead_id = data.lead_id }
+    if (data.city && data.city !== cur.city) { sets.push('city = ?'); args.push(data.city); cur.city = data.city }
+    if (sets.length === 0) return
+    stmts.push({ sql: `UPDATE contacts SET ${sets.join(', ')}, updated_at = datetime('now') WHERE phone = ?`, args: [...args, phone] })
+    out.contacts_updated++
+  }
+
+  for (const c of input.leadContacts) {
+    if (full()) break
+    const digits = String(c.phone || '').replace(/\D/g, '')
+    if (!digits) continue
+    upsert(normalizePhone(digits), { name: c.name, is_lead: true, lead_row: c.lead_row, lead_id: c.lead_id, city: c.city })
+  }
+
+  const touchedPhones = new Set<string>()
+  for (const m of input.messages) {
+    if (full()) break
+    const digits = String(m.phone || '').replace(/\D/g, '')
+    const waId = String(m.wa_message_id || '')
+    if (!digits || !waId || knownIds.has(waId)) continue
+    const phone = normalizePhone(digits)
+    upsert(phone, { name: m.name })
+    stmts.push({
+      sql: `INSERT INTO messages (phone, direction, text, timestamp, sent_by, wa_message_id, status, template_used, read)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      args: [phone, m.direction, m.text || '', m.timestamp || '', m.sent_by || '', waId, m.status || '', m.template_used || ''],
+    })
+    knownIds.add(waId)
+    touchedPhones.add(phone)
+    out.messages_imported++
+  }
+  // insertMessage bumps the thread's updated_at; do it once per thread.
+  for (const phone of touchedPhones) {
+    stmts.push({ sql: "UPDATE contacts SET updated_at = datetime('now') WHERE phone = ?", args: [phone] })
+  }
+
+  if (stmts.length > 0) await db.batch(stmts, 'write')
+  return out
 }
 
 // Derive the inbox-triage booleans + normalize the joined lead fields on a
@@ -1008,7 +1145,10 @@ export async function getContact(phone: string) {
  * first send landed, so one inbound message went out up to 10 times.
  *
  * Fails OPEN (returns true) if the claim itself errors: a bookkeeping outage
- * must never silently stop leads from being answered.
+ * must never silently stop leads from being answered. This is a deliberate
+ * trade-off: while the DB is erroring, a Meta redelivery CAN run its side
+ * effects twice. The error is logged loudly (with the event id) so a burst of
+ * fail-open claims is visible in the container logs.
  */
 export async function claimEvent(eventId: string, kind = ''): Promise<boolean> {
   if (!eventId) return true
@@ -1020,8 +1160,25 @@ export async function claimEvent(eventId: string, kind = ''): Promise<boolean> {
     })
     return Number(res.rowsAffected || 0) > 0
   } catch (err) {
-    console.error('[claimEvent] failed, allowing through:', err)
+    console.error(`[claimEvent] DB ERROR, FAILING OPEN: "${eventId}" (${kind || 'no kind'}) is allowed through unclaimed, so a redelivery may repeat its side effects:`, err)
     return true
+  }
+}
+
+/**
+ * Give a claim back so the event can be processed again. Used when processing
+ * fails after the claim. The WhatsApp webhook acks Meta first and processes in
+ * the background, so a crash mid-processing would otherwise leave the message
+ * claimed but never handled, and any redelivery would be skipped.
+ * Best effort: a failure here is logged, never thrown.
+ */
+export async function releaseEvent(eventId: string): Promise<void> {
+  if (!eventId) return
+  try {
+    const db = await ensureInit()
+    await db.execute({ sql: 'DELETE FROM processed_events WHERE event_id = ?', args: [eventId] })
+  } catch (err) {
+    console.error(`[releaseEvent] could not release "${eventId}":`, err)
   }
 }
 
@@ -2178,6 +2335,165 @@ export async function getLastWorkEventByLead(leadRows: number[]): Promise<Map<nu
   } catch (err) {
     console.error('[getLastWorkEventByLead] non-critical:', err)
   }
+  return map
+}
+
+// --- Auto-bounce candidate scan (set-based) ---
+
+/**
+ * SQL expression that turns any stored timestamp into a julianday number (UTC
+ * days), so timestamps from different tables compare correctly. This DB holds
+ * three shapes: SQLite datetime('now') 'YYYY-MM-DD HH:MM:SS' (UTC, every
+ * created_at), ISO '...T...Z' with or without ms (messages.timestamp), and lead
+ * created_time with '+05:30' / '-05:00' offsets. Comparing them as raw strings
+ * is wrong whenever the shapes differ (' ' 0x20 sorts before 'T' 0x54). The
+ * old auto-bounce did exactly that when picking a lead's "last touch".
+ * An offset SQLite cannot parse ('+0530') falls back to the first 19 chars;
+ * empty or junk values give NULL.
+ */
+export function sqlTsToJulian(col: string): string {
+  return `COALESCE(julianday(${col}), julianday(substr(${col}, 1, 19)))`
+}
+
+// leads.phone is stored raw ('+919876543210', '9876543210'); messages /
+// call_logs / lead_notes / fba_packs use normalizePhone() = '91' + last 10
+// digits. Same mapping in SQL so the touch lookups can use the phone indexes.
+const SQL_LEAD_NORM_PHONE = `'91' || substr(replace(replace(replace(phone, '+', ''), ' ', ''), '-', ''), -10)`
+
+export interface AutoBounceCandidate {
+  row_number: number
+  phone: string
+  full_name: string
+  lead_status: string
+  assigned_to: string
+  /** ISO UTC time of the latest touch (or the created/re-enquiry floor); '' if none is known. */
+  last_touch_at: string
+}
+
+/**
+ * Stale-lead scan for the auto-bounce cron, as two SQL statements instead of
+ * one lookup per lead.
+ *
+ * The old code loaded every lead (~7k) into JS and then queried messages and
+ * call logs lead by lead. In libsql local-file mode each statement blocks the
+ * Node process, so one run pinned the CPU for 9+ minutes and the site timed
+ * out (Sep-Oct 2026, up to 24 times a day). Here each eligible lead gets a few
+ * index lookups inside one statement.
+ *
+ * A "touch" is the latest of:
+ *   - any WhatsApp message on the thread, in or out (a lead who replied this
+ *     week is engaged; bouncing them to a telecaller would be disruptive —
+ *     same as the pre-Oct-2026 behaviour)
+ *   - a call log
+ *   - a note written by a person (System/bot notes are skipped)
+ *   - a manual or work-rail status change (not auto-send/webhook/cron)
+ *   - a lead edit by a person (follow-up date, priority, ...; not the cron)
+ *   - an FBA pack sent (fba_packs.sent_at)
+ *   - any work-rail event
+ *   - the current owner receiving the lead (assignment_log.to_agent = assigned_to)
+ * Floor: created_time and last_enquiry_at, so a fresh or re-enquired lead is
+ * never stale before it has existed for `idleDays`. A lead with no usable
+ * timestamp at all counts as stale (same as before).
+ *
+ * Eligible: merged_into IS NULL, assigned_to in `agents`, status not in
+ * `excludeStatuses`. Returns how many leads were eligible (`scanned`) and the
+ * stale ones, oldest touch first, at most `limit`.
+ */
+export async function getAutoBounceCandidates(opts: {
+  agents: string[]
+  excludeStatuses: string[]
+  idleDays: number
+  limit: number
+}): Promise<{ scanned: number; stale: AutoBounceCandidate[] }> {
+  if (opts.agents.length === 0) return { scanned: 0, stale: [] }
+  const db = await ensureInit()
+  const agentPh = opts.agents.map(() => '?').join(', ')
+  const statusPh = opts.excludeStatuses.map(() => '?').join(', ') || "''"
+  const eligible = `merged_into IS NULL
+      AND assigned_to IN (${agentPh})
+      AND COALESCE(lead_status, '') NOT IN (${statusPh})`
+  const eligibleArgs = [...opts.agents, ...opts.excludeStatuses]
+  const jd = sqlTsToJulian
+
+  const countRes = await db.execute({
+    sql: `SELECT COUNT(*) AS n FROM leads WHERE ${eligible}`,
+    args: eligibleArgs,
+  })
+  const scanned = Number(countRes.rows[0]?.n ?? 0)
+  if (scanned === 0) return { scanned, stale: [] }
+
+  const res = await db.execute({
+    sql: `
+      WITH cand AS (
+        SELECT row_number, phone, full_name, lead_status, assigned_to, created_time, last_enquiry_at,
+               ${SQL_LEAD_NORM_PHONE} AS norm_phone
+        FROM leads
+        WHERE ${eligible}
+      ),
+      -- MATERIALIZED: compute each lead's touch once. Inlined, SQLite re-runs
+      -- the subqueries for WHERE, ORDER BY and SELECT (measured ~2.4x slower).
+      touched AS MATERIALIZED (
+        SELECT c.row_number, c.phone, c.full_name, c.lead_status, c.assigned_to,
+          MAX(
+            COALESCE(${jd('c.created_time')}, 0),
+            COALESCE(${jd('c.last_enquiry_at')}, 0),
+            COALESCE((SELECT MAX(${jd('m.timestamp')}) FROM messages m
+                      WHERE m.phone = c.norm_phone), 0),
+            COALESCE((SELECT MAX(${jd('cl.created_at')}) FROM call_logs cl
+                      WHERE cl.phone = c.norm_phone), 0),
+            COALESCE((SELECT MAX(${jd('n.created_at')}) FROM lead_notes n
+                      WHERE n.phone = c.norm_phone
+                        AND COALESCE(n.created_by, '') NOT LIKE 'system%'
+                        AND COALESCE(n.created_by, '') <> 'bot'), 0),
+            COALESCE((SELECT MAX(${jd('f.sent_at')}) FROM fba_packs f
+                      WHERE f.lead_phone = c.norm_phone), 0),
+            COALESCE((SELECT MAX(${jd('w.created_at')}) FROM work_events w
+                      WHERE w.lead_row = c.row_number), 0),
+            COALESCE((SELECT MAX(${jd('s.created_at')}) FROM lead_status_changes s
+                      WHERE s.lead_row = c.row_number AND s.source IN ('manual', 'work')), 0),
+            COALESCE((SELECT MAX(${jd('e.created_at')}) FROM lead_edits e
+                      WHERE e.lead_row = c.row_number AND COALESCE(e.changed_by_id, '') <> 'system-cron'), 0),
+            COALESCE((SELECT MAX(${jd('a.created_at')}) FROM assignment_log a
+                      WHERE a.lead_row = c.row_number AND a.to_agent = c.assigned_to), 0)
+          ) AS last_touch_jd
+        FROM cand c
+      )
+      SELECT row_number, phone, full_name, lead_status, assigned_to,
+             CASE WHEN last_touch_jd > 0 THEN strftime('%Y-%m-%dT%H:%M:%SZ', last_touch_jd) ELSE '' END AS last_touch_at
+      FROM touched
+      WHERE last_touch_jd < julianday('now') - ?
+      ORDER BY last_touch_jd ASC, row_number ASC
+      LIMIT ?`,
+    args: [...eligibleArgs, opts.idleDays, Math.max(0, Math.floor(opts.limit))],
+  })
+  const stale = res.rows.map(r => ({
+    row_number: Number(r.row_number),
+    phone: String(r.phone ?? ''),
+    full_name: String(r.full_name ?? ''),
+    lead_status: String(r.lead_status ?? ''),
+    assigned_to: String(r.assigned_to ?? ''),
+    last_touch_at: String(r.last_touch_at ?? ''),
+  }))
+  return { scanned, stale }
+}
+
+/**
+ * Open-lead count per agent name in one GROUP BY. The auto-bounce uses it to
+ * pick the least-loaded telecaller without reloading every lead for every
+ * bounce (pickTelecallerForReWarm calls getLeads() each time).
+ */
+export async function getOpenLeadCountsByAgent(closedStatuses: string[]): Promise<Map<string, number>> {
+  const db = await ensureInit()
+  const statusPh = closedStatuses.map(() => '?').join(', ') || "''"
+  const res = await db.execute({
+    sql: `SELECT assigned_to, COUNT(*) AS n FROM leads
+          WHERE merged_into IS NULL AND COALESCE(assigned_to, '') <> ''
+            AND COALESCE(lead_status, '') NOT IN (${statusPh})
+          GROUP BY assigned_to`,
+    args: closedStatuses,
+  })
+  const map = new Map<string, number>()
+  for (const r of res.rows) map.set(String(r.assigned_to), Number(r.n))
   return map
 }
 

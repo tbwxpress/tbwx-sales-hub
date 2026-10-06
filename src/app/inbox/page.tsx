@@ -426,19 +426,23 @@ export default function InboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePhone])
 
-  // Auto-sync from Google Sheets every 2 minutes
+  // Auto-sync from Google Sheets every 5 minutes, only while this tab is
+  // visible. It was every 2 minutes in every open tab, and each run blocked
+  // the server (Sep-Oct 2026 CPU incident). The server also throttles to one
+  // run per 5 minutes and answers { skipped: true } in between.
   useEffect(() => {
     const syncInterval = setInterval(() => {
+      if (document.hidden) return
       fetch('/api/inbox/sync', { method: 'POST' })
         .then(r => r.json())
         .then(d => {
-          if (d.success && (d.data.contacts_created > 0 || d.data.messages_imported > 0)) {
+          if (d.success && d.data && (d.data.contacts_created > 0 || d.data.messages_imported > 0)) {
             fetchContacts()
             toast.success(`Auto-synced: ${d.data.contacts_created} contacts, ${d.data.messages_imported} messages`)
           }
         })
         .catch(() => {})
-    }, 120000) // 2 minutes
+    }, 5 * 60 * 1000)
     return () => clearInterval(syncInterval)
   }, [fetchContacts])
 
@@ -707,9 +711,10 @@ export default function InboxPage() {
   async function handleSync() {
     setSyncing(true)
     try {
-      const res = await fetch('/api/inbox/sync', { method: 'POST' })
+      // force=1: a manual click skips the server's 5-minute throttle.
+      const res = await fetch('/api/inbox/sync?force=1', { method: 'POST' })
       const data = await res.json()
-      if (data.success) {
+      if (data.success && data.data) {
         toast.success(`Synced: ${data.data.contacts_created} contacts, ${data.data.messages_imported} messages (${data.data.leads_skipped || 0} leads skipped — no template sent)`)
         fetchContacts()
       } else {

@@ -3,6 +3,7 @@ import { apiError } from '@/lib/api-error'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getMessages, getContact } from '@/lib/db'
 import { getLeads } from '@/lib/sheets'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 // POST /api/inbox/ai-suggest
 // Body: { phone: string, agent_name?: string }
@@ -122,7 +123,7 @@ ${recent || '(no prior messages)'}
 
 Draft the next message ${agentName} should send.`
 
-    const res = await fetch(`${KIE_BASE}/chat/completions`, {
+    const res = await fetchWithTimeout(`${KIE_BASE}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.KIE_API_KEY}`,
@@ -137,7 +138,7 @@ Draft the next message ${agentName} should send.`
         temperature: 0.5,
         max_tokens: 250,
       }),
-    })
+    }, 30_000)
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '')

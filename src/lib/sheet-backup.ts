@@ -24,7 +24,10 @@ function getSheets() {
     process.env.GOOGLE_CLIENT_SECRET,
   )
   auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN })
-  return google.sheets({ version: 'v4', auth })
+  // googleapis has no timeout by default; a hung call hung its caller (and any
+  // cron lock it held) during the Sep-Oct 2026 incident.
+  // Backup writes go in chunks of up to WRITE_CHUNK rows, hence 60 s.
+  return google.sheets({ version: 'v4', auth, timeout: 60_000 })
 }
 
 // Create the tab if missing; always (re)write the header row.

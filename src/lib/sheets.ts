@@ -1,4 +1,4 @@
-import { google } from 'googleapis'
+import { google, type sheets_v4 } from 'googleapis'
 import type { Lead, LeadStatus, QuickReply, Message, KnowledgeBaseEntry } from './types'
 import { LEAD_COLUMN_MAP, LEAD_WRITE_COLUMNS, SHEETS } from '@/config/client'
 import {
@@ -11,17 +11,30 @@ import {
 } from './form-sources'
 
 // --- Auth setup ---
+// One OAuth2 client + Sheets client for the whole process. A fresh client per
+// call threw away the cached access token, so every sheet read or mirror write
+// began with its own token refresh round trip to Google. googleapis refreshes
+// the shared client's token by itself when it expires.
+// Timeout: googleapis has none by default, so a hung Sheets call used to hang
+// its caller (and any cron lock it held). Full-tab reads are a few MB, so 30 s.
+const SHEETS_TIMEOUT_MS = 30_000
+let _auth: InstanceType<typeof google.auth.OAuth2> | null = null
+let _sheets: sheets_v4.Sheets | null = null
+
 function getAuth() {
-  const auth = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET
-  )
-  auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN })
-  return auth
+  if (!_auth) {
+    _auth = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    )
+    _auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN })
+  }
+  return _auth
 }
 
 function getSheets() {
-  return google.sheets({ version: 'v4', auth: getAuth() })
+  if (!_sheets) _sheets = google.sheets({ version: 'v4', auth: getAuth(), timeout: SHEETS_TIMEOUT_MS })
+  return _sheets
 }
 
 // --- Retry wrapper for Sheets API calls (3 attempts, exponential backoff) ---

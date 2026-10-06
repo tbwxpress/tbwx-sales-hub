@@ -8,6 +8,7 @@
  */
 
 import { META_ADS } from '@/config/client'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 function getToken(): string {
   return META_ADS.accessToken
@@ -50,11 +51,11 @@ async function fetchMeta<T>(path: string, params: Record<string, string> = {}): 
     url.searchParams.set(k, v)
   }
 
-  const res = await fetch(url.toString(), {
+  const res = await fetchWithTimeout(url.toString(), {
     method: 'GET',
     // Cache-control: don't use Next's fetch cache, we handle caching ourselves
     cache: 'no-store',
-  })
+  }, 30_000)
 
   if (!res.ok) {
     const body = await res.text()

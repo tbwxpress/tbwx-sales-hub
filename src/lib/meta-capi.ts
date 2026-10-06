@@ -17,6 +17,7 @@ import { createClient, type Client } from '@libsql/client'
 import path from 'path'
 import fs from 'fs'
 import { getSetting, setSetting, normalizePhone } from './db'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 const dbUrl = process.env.TURSO_DATABASE_URL || 'file:data/inbox.db'
 const authToken = process.env.TURSO_AUTH_TOKEN || undefined
@@ -316,7 +317,7 @@ export async function sendCapiEvent(input: SendCapiInput): Promise<SendCapiResul
   while (attempt < maxAttempts) {
     attempt++
     try {
-      const res = await fetch(`https://graph.facebook.com/v21.0/${cfg.pixel_id}/events`, {
+      const res = await fetchWithTimeout(`https://graph.facebook.com/v21.0/${cfg.pixel_id}/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -514,7 +515,7 @@ export async function ensureCustomAudience(opts: {
   const cached = await getSetting(opts.settingKey)
   if (cached) {
     // Verify it still exists
-    const r = await fetch(`${META_GRAPH}/${cached}?fields=id,name&access_token=${encodeURIComponent(token)}`)
+    const r = await fetchWithTimeout(`${META_GRAPH}/${cached}?fields=id,name&access_token=${encodeURIComponent(token)}`)
     if (r.ok) {
       const d = await r.json() as MetaAudience
       if (d.id) return { id: d.id, created: false }
@@ -523,7 +524,7 @@ export async function ensureCustomAudience(opts: {
   }
 
   // 2. Find by name in the ad account
-  const listRes = await fetch(`${META_GRAPH}/${adAccount}/customaudiences?fields=id,name&limit=200&access_token=${encodeURIComponent(token)}`)
+  const listRes = await fetchWithTimeout(`${META_GRAPH}/${adAccount}/customaudiences?fields=id,name&limit=200&access_token=${encodeURIComponent(token)}`)
   if (listRes.ok) {
     const list = await listRes.json() as { data?: MetaAudience[] }
     const found = (list.data || []).find(a => a.name === opts.name)
@@ -534,7 +535,7 @@ export async function ensureCustomAudience(opts: {
   }
 
   // 3. Create
-  const createRes = await fetch(`${META_GRAPH}/${adAccount}/customaudiences`, {
+  const createRes = await fetchWithTimeout(`${META_GRAPH}/${adAccount}/customaudiences`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -585,11 +586,11 @@ export async function pushPhonesToAudience(opts: {
     const url = action === 'REMOVE'
       ? `${META_GRAPH}/${opts.audienceId}/users`
       : `${META_GRAPH}/${opts.audienceId}/users`
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: action === 'REMOVE' ? 'DELETE' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ payload, access_token: token }),
-    })
+    }, 30_000)
     const data = await res.json() as { error?: { message?: string }; num_received?: number }
     if (!res.ok) {
       return { success: false, sent, error: data.error?.message || `HTTP ${res.status}` }

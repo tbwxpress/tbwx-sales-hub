@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronLock } from '@/lib/cron-guard'
 import { apiError } from '@/lib/api-error'
 import { runAudienceSync, getLastAudienceSync } from '@/lib/meta-capi'
 import { getLeads } from '@/lib/sheets'
@@ -22,31 +23,35 @@ export async function POST(req: NextRequest) {
       requireAdmin(user)
     }
 
-    const [leads, optedOutSet] = await Promise.all([getLeads(), getOptedOutPhones()])
+    // One run at a time: a slow run overlapping the next tick stacks the load
+    // (see src/lib/cron-guard.ts for the Sep-Oct 2026 CPU incident).
+    return await withCronLock('meta-audience-sync', { budgetMs: 120_000 }, async () => {
+      const [leads, optedOutSet] = await Promise.all([getLeads(), getOptedOutPhones()])
 
-    const buyerPhones: string[] = []
-    const excludePhones: string[] = []
+      const buyerPhones: string[] = []
+      const excludePhones: string[] = []
 
-    for (const l of leads) {
-      const ph = l.phone || ''
-      if (!ph) continue
-      if (l.lead_status === 'CONVERTED') {
-        buyerPhones.push(ph)
-      } else if (l.lead_status === 'LOST') {
-        excludePhones.push(ph)
+      for (const l of leads) {
+        const ph = l.phone || ''
+        if (!ph) continue
+        if (l.lead_status === 'CONVERTED') {
+          buyerPhones.push(ph)
+        } else if (l.lead_status === 'LOST') {
+          excludePhones.push(ph)
+        }
       }
-    }
-    // Add opted-out phones to exclude (already 91XXXXXXXXXX format)
-    for (const p of optedOutSet) {
-      excludePhones.push(p)
-    }
+      // Add opted-out phones to exclude (already 91XXXXXXXXXX format)
+      for (const p of optedOutSet) {
+        excludePhones.push(p)
+      }
 
-    const result = await runAudienceSync({
-      buyer_phones: Array.from(new Set(buyerPhones)),
-      exclude_phones: Array.from(new Set(excludePhones)),
+      const result = await runAudienceSync({
+        buyer_phones: Array.from(new Set(buyerPhones)),
+        exclude_phones: Array.from(new Set(excludePhones)),
+      })
+
+      return NextResponse.json({ success: true, data: result })
     })
-
-    return NextResponse.json({ success: true, data: result })
   } catch (err) {
     return NextResponse.json({ success: false, error: apiError(err, 'Failed') }, { status: 500 })
   }

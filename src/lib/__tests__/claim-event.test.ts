@@ -74,4 +74,22 @@ describe('claimEvent', () => {
     const { claimEvent } = await import('../db')
     expect(await claimEvent('')).toBe(true)
   })
+
+  // The webhook now acks first and processes in after(). If processing throws,
+  // the claim is released so a redelivery can still handle the message.
+  it('releaseEvent gives a claim back so the event can be processed again', async () => {
+    const { claimEvent, releaseEvent } = await import('../db')
+    expect(await claimEvent('wa:msg:retry')).toBe(true)
+    expect(await claimEvent('wa:msg:retry')).toBe(false)
+    await releaseEvent('wa:msg:retry')
+    expect(await claimEvent('wa:msg:retry')).toBe(true)
+  })
+
+  it('releaseEvent never throws when the DB errors', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    execute.mockRejectedValueOnce(new Error('db down'))
+    const { releaseEvent } = await import('../db')
+    await expect(releaseEvent('wa:msg:x')).resolves.toBeUndefined()
+    errSpy.mockRestore()
+  })
 })

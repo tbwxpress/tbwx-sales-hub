@@ -1,8 +1,12 @@
 import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
-import { getDripLeads, getDripSequences, upsertDripState, insertMessage, upsertContact, getSetting } from '@/lib/db'
+import { getDripLeads, getBulkDripState, getDripSequences, upsertDripState, insertMessage, upsertContact, getSetting } from '@/lib/db'
 import { getLeads } from '@/lib/sheets'
+import { activeLeads } from '@/lib/leads-db'
+import { hasManualMessageSince } from '@/lib/leads-db-extra'
 import { DRIP_PAUSE_STATUSES, DRIP_DELAY_STATUSES, WHATSAPP } from '@/config/client'
+import { withCronLock } from '@/lib/cron-guard'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 // No hardcoded default sequences: the old defaults referenced templates that
 // were never created on the WABA (followup_value_hook / followup_social_proof /
@@ -18,13 +22,24 @@ const DRIP_ELIGIBLE_STATUSES = ['DECK_SENT', 'CALL_DONE_INTERESTED']
 // Auto-resume: days since last manual message before resuming drip
 const RESUME_DAYS: Record<string, number> = { HOT: 3, WARM: 5, COLD: 7 }
 
+// Never auto-resume while an agent is talking to the lead: a manual message
+// in this many days keeps the drip paused.
+const MANUAL_QUIET_DAYS = 3
+
 /**
  * POST /api/cron/drip — Priority-based drip sequences
  *
  * Matches leads to sequences by priority band (HOT/WARM/COLD) instead of status.
  * Auto-resumes paused drips if no manual message for N days.
  */
+/** One run at a time with a time budget — a second cron tick while a run is
+ *  in flight gets 409 instead of piling synchronous SQLite work on the
+ *  process (the pattern behind the Oct-2026 hourly freezes). */
 export async function POST(req: NextRequest) {
+  return withCronLock('drip', { budgetMs: 120000 }, () => handlePost(req))
+}
+
+async function handlePost(req: NextRequest) {
   const auth = req.headers.get('authorization') || ''
   const secret = process.env.CRON_SECRET
   if (!secret || auth !== `Bearer ${secret}`) {
@@ -40,8 +55,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const leads = await getLeads()
-    const dripLeads = await getDripLeads()
+    // Merged duplicates are copies of another lead: matching a drip to one
+    // (status ARCHIVED) would hide the real lead's status from the checks below.
+    const leads = activeLeads(await getLeads())
+    // EVERY drip row, paused and switched-off ones included. Checking only the
+    // active, unpaused rows made a paused drip look missing, so it was reset
+    // to step 0 and switched back on.
+    const allDripState = await getBulkDripState()
     const results: { phone: string; action: string; template?: string }[] = []
     const now = new Date()
 
@@ -74,15 +94,16 @@ export async function POST(req: NextRequest) {
       const priority = lead.lead_priority || 'WARM'
       if (!sequences[priority]) continue
 
-      // Check if drip state exists
-      const existingDrip = dripLeads.find(d => String(d.phone || '').slice(-10) === phone)
-      if (existingDrip) continue // Already initialized
+      // Any existing drip row (running, paused or off) is never re-initialised.
+      if (allDripState[phone]) continue
 
       await upsertDripState(normalizedPhone, {
         sequence: priority,
         current_step: 0,
         enabled: true,
       })
+      // A second lead row with this phone must not re-initialise it this run.
+      allDripState[phone] = { enabled: true, sequence: priority, current_step: 0, paused_at: null }
       results.push({ phone, action: 'initialized' })
     }
 
@@ -123,6 +144,11 @@ export async function POST(req: NextRequest) {
         const daysSincePause = (now.getTime() - pausedAt.getTime()) / 86400000
 
         if (daysSincePause >= resumeAfterDays) {
+          const quietSince = new Date(now.getTime() - MANUAL_QUIET_DAYS * 86400000).toISOString()
+          if (await hasManualMessageSince(dripPhone, quietSince)) {
+            results.push({ phone: phone10, action: 'resume-held (agent messaged recently)' })
+            continue
+          }
           await upsertDripState(dripPhone, {
             paused_at: null,
             pause_reason: null,
@@ -175,7 +201,7 @@ export async function POST(req: NextRequest) {
       const phoneToSend = dripPhone.startsWith('91') ? dripPhone : `91${phone10}`
 
       try {
-        const waRes = await fetch(
+        const waRes = await fetchWithTimeout(
           `${WHATSAPP.apiBase}/${WHATSAPP.phoneNumberId}/messages`,
           {
             method: 'POST',

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { insertVoiceAgentCall, normalizePhone } from '@/lib/db'
 import { getLeads, updateLead } from '@/lib/sheets'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 const VOICE_AGENT_URL = process.env.VOICE_AGENT_URL || 'https://voice.tbwxpress.com'
 
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
     const formattedPhone = `+91${digits}`
 
     // Call the voice agent API
-    const response = await fetch(`${VOICE_AGENT_URL}/call`, {
+    const response = await fetchWithTimeout(`${VOICE_AGENT_URL}/call`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

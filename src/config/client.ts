@@ -260,7 +260,8 @@ export const DRIP_SEQUENCES: Record<string, { steps: { day: number; template: st
   },
 }
 
-// Statuses that should pause/stop drip sequences
-export const DRIP_PAUSE_STATUSES: string[] = ['HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'LOST']
+// Statuses that should pause/stop drip sequences. REPLIED: the lead is talking
+// to us, so automated follow-ups stop. ARCHIVED is terminal like CONVERTED/LOST.
+export const DRIP_PAUSE_STATUSES: string[] = ['HOT', 'FINAL_NEGOTIATION', 'CONVERTED', 'LOST', 'REPLIED', 'ARCHIVED']
 // Statuses that should delay drip (temporary pause)
 export const DRIP_DELAY_STATUSES: string[] = ['DELAYED']

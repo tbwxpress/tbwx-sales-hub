@@ -1,6 +1,7 @@
 import type { Row } from '@libsql/client'
 import type { Lead, LeadStatus } from './types'
 import { ensureInit, normalizePhone } from './db'
+import { prependNote } from './notes'
 
 // Column order for the `leads` table. row_number is the primary key and the
 // shared lead identifier used across the rest of the schema (lead_row columns).
@@ -96,6 +97,20 @@ export async function dbGetLeads(): Promise<Lead[]> {
   return (res.rows as Row[]).map(r => rowToLead(r as unknown as Record<string, unknown>))
 }
 
+/**
+ * Drop merged duplicates from a lead list.
+ *
+ * A row with merged_into set is an archived copy of another lead (a repeat
+ * enquiry folded in, or a manual merge). The surviving row carries the
+ * conversation, owner and status, so anything that ACTS on leads (auto-send,
+ * drip, reactivation) must filter with this: a copy must never be messaged or
+ * decide whether a message goes out. getLeads() returns every row, merged
+ * ones included, because admin views and the merge tool still need them.
+ */
+export function activeLeads<T extends { merged_into?: number | null }>(leads: T[]): T[] {
+  return leads.filter(l => !l.merged_into)
+}
+
 export async function dbGetLeadByRow(rowNumber: number): Promise<Lead | null> {
   const db = await ensureInit()
   const res = await db.execute({ sql: 'SELECT * FROM leads WHERE row_number = ?', args: [rowNumber] })
@@ -117,7 +132,8 @@ export async function dbInsertLead(lead: Lead): Promise<void> {
 /**
  * Statuses a re-enquiry resets to NEW. A cold or finished lead who fills the
  * form again is, for the agent's purposes, a fresh lead: it belongs back in the
- * queue and should get the deck again.
+ * queue and should get the deck again. That only applies once the previous
+ * enquiry is at least REVIVE_AFTER_DAYS old (see dbApplyReEnquiries).
  *
  * Everything NOT listed here is a live conversation the agent is already in the
  * middle of (Call Done, HOT, Final Negotiation, Converted). Dropping one of
@@ -128,6 +144,15 @@ export async function dbInsertLead(lead: Lead): Promise<void> {
 const REVIVABLE_STATUSES = new Set([
   'NEW', 'DECK_SENT', 'REPLIED', 'NO_RESPONSE', 'DELAYED', 'LOST', 'ARCHIVED', '',
 ])
+
+/**
+ * A repeat enquiry only resets a lead to NEW when the previous enquiry is at
+ * least this old. A second form submit minutes or days after the first is the
+ * same enquiry: resetting it would wipe the agent's progress (a lead the agent
+ * just moved to REPLIED would drop back to NEW) and re-trigger the opt-in.
+ */
+export const REVIVE_AFTER_DAYS = 7
+const DAY_MS = 86_400_000
 
 export interface ReEnquiryResult {
   updated: number
@@ -154,7 +179,8 @@ export async function dbApplyReEnquiries(incoming: Lead[]): Promise<ReEnquiryRes
   const db = await ensureInit()
 
   const existingRes = await db.execute(
-    'SELECT row_number, phone, lead_status, assigned_to, enquiry_count, created_time FROM leads WHERE merged_into IS NULL',
+    `SELECT row_number, phone, lead_status, assigned_to, enquiry_count, created_time,
+            last_enquiry_at, campaign_name, notes FROM leads WHERE merged_into IS NULL`,
   )
   // The master is the EARLIEST-CREATED record — the one carrying the thread,
   // the agent and the history. Explicitly not the lowest row_number: row
@@ -172,7 +198,8 @@ export async function dbApplyReEnquiries(incoming: Lead[]): Promise<ReEnquiryRes
     const key = normalizePhone(String(r.phone || ''))
     if (key.length < 12) continue
     const prev = byPhone.get(key)
-    if (!prev || olderWins(r, prev)) byPhone.set(key, r)
+    // A plain copy: the master is updated in memory as the batch is folded.
+    if (!prev || olderWins(r, prev)) byPhone.set(key, { ...r })
   }
 
   for (const lead of incoming) {
@@ -184,45 +211,75 @@ export async function dbApplyReEnquiries(incoming: Lead[]): Promise<ReEnquiryRes
     if (masterRow === Number(lead.row_number)) continue // this IS the master
 
     const status = String(master.lead_status || '')
-    const revive = REVIVABLE_STATUSES.has(status)
     const enquiryAt = String(lead.created_time || new Date().toISOString())
+    const prevMs = Date.parse(String(master.last_enquiry_at || master.created_time || ''))
+    const nextMs = Date.parse(enquiryAt)
+    const gapKnown = Number.isFinite(prevMs) && Number.isFinite(nextMs)
+    // Reset to NEW only for a real comeback: a cold/finished lead whose last
+    // enquiry is at least REVIVE_AFTER_DAYS old. A quick repeat keeps its
+    // status and owner and just gets the note below.
+    const revive = REVIVABLE_STATUSES.has(status) &&
+      (!gapKnown || nextMs - prevMs >= REVIVE_AFTER_DAYS * DAY_MS)
+    // Rows can arrive out of order; last_enquiry_at never moves backwards.
+    const isNewer = !gapKnown || nextMs >= prevMs
+    const label = `Re-enquired ${enquiryAt.slice(0, 10)} via ${lead.campaign_name || 'ad'}${lead.form_name ? ` (${lead.form_name})` : ''}`
+    const newMetaId = String(lead.id || '').trim()
+    const notes = prependNote(String(master.notes || ''), newMetaId ? `${label} [lead ${newMetaId}]` : label)
 
     try {
-      // 1. Park the duplicate row against the master.
-      await db.execute({
+      // 1. Park the duplicate row against the master. No row changed means it
+      //    was already folded on an earlier pass: never fold it (and count it)
+      //    twice.
+      const parked = await db.execute({
         sql: `UPDATE leads SET merged_into = ?, lead_status = 'ARCHIVED'
               WHERE row_number = ? AND merged_into IS NULL`,
         args: [masterRow, Number(lead.row_number)],
       })
+      if (Number(parked.rowsAffected ?? 0) === 0) continue
 
-      // 2. Refresh the master with what they just told us. assigned_to is
-      //    untouched: the agent who knows them keeps them.
-      const sets = [
-        'id = ?', 'campaign_name = ?', 'form_id = ?', 'form_name = ?', 'form_answers = ?',
-        'model_interest = ?', 'timeline = ?', 'experience = ?', 'platform = ?',
-        'last_enquiry_at = ?', 'enquiry_count = COALESCE(enquiry_count, 1) + 1',
-      ]
-      const args: (string | number)[] = [
-        String(lead.id || ''), String(lead.campaign_name || ''), String(lead.form_id || ''),
-        String(lead.form_name || ''), String(lead.form_answers || ''),
-        String(lead.model_interest || ''), String(lead.timeline || ''),
-        String(lead.experience || ''), String(lead.platform || ''), enquiryAt,
-      ]
+      // 2. Refresh the master with what they just told us, but only with
+      //    answers they actually gave: a blank never wipes a known value.
+      //    Never touched here:
+      //    - id: the original Meta lead id stays (the new one is in the note);
+      //    - assigned_to: the agent who knows them keeps them.
+      const sets: string[] = ['enquiry_count = COALESCE(enquiry_count, 1) + 1', 'notes = ?']
+      const args: (string | number)[] = [notes]
+      const setIfGiven = (column: string, value: unknown) => {
+        const v = String(value ?? '').trim()
+        if (v) { sets.push(`${column} = ?`); args.push(v) }
+      }
+      // A manually entered lead stays "Manual Entry": auto-send relies on that
+      // to never message or re-rotate a telecaller's own lead.
+      if (String(master.campaign_name || '').trim().toLowerCase() !== 'manual entry') {
+        setIfGiven('campaign_name', lead.campaign_name)
+      }
+      setIfGiven('form_id', lead.form_id)
+      setIfGiven('form_name', lead.form_name)
+      setIfGiven('form_answers', lead.form_answers)
+      setIfGiven('model_interest', lead.model_interest)
+      setIfGiven('timeline', lead.timeline)
+      setIfGiven('experience', lead.experience)
+      setIfGiven('platform', lead.platform)
+      if (isNewer) setIfGiven('last_enquiry_at', enquiryAt)
       if (revive) {
         sets.push("lead_status = 'NEW'", "attempted_contact = ''", "next_followup = ''")
-      } else {
+      } else if (!REVIVABLE_STATUSES.has(status)) {
         sets.push("lead_priority = 'HOT'")
       }
       args.push(masterRow)
       await db.execute({ sql: `UPDATE leads SET ${sets.join(', ')} WHERE row_number = ?`, args })
 
       // 3. Audit trail the agent can see on the lead.
-      const label = `Re-enquired ${enquiryAt.slice(0, 10)} via ${lead.campaign_name || 'ad'}${lead.form_name ? ` (${lead.form_name})` : ''}`
       await db.execute({
         sql: `INSERT INTO lead_status_changes (lead_row, phone, old_status, new_status, changed_by, source, reason)
               VALUES (?, ?, ?, ?, 'system', 'reenquiry', ?)`,
         args: [masterRow, key, status, revive ? 'NEW' : status, label],
       })
+
+      // A later row in this same batch compares against this enquiry.
+      if (isNewer) master.last_enquiry_at = enquiryAt
+      if (revive) master.lead_status = 'NEW'
+      master.notes = notes
       out.updated++
       out.archivedDuplicates++
     } catch (err) {

@@ -44,6 +44,8 @@ import {
   getPositiveDripPhones,
   insertMessage,
   getMessages,
+  getAutoBounceCandidates,
+  getOpenLeadCountsByAgent,
   type WorkEvent,
   type LeadSignal,
 } from './db'
@@ -1190,69 +1192,91 @@ export async function applyWorkOutcome(input: ApplyOutcomeInput): Promise<ApplyO
 
 // ─── Auto-bounce (anti-rot) ──────────────────────────────────────────
 
+// Statuses the auto-bounce never moves: closed (CONVERTED / LOST / ARCHIVED),
+// already parked (DELAYED, which is also what a bounce sets), or hot enough to
+// stay with the closer even when quiet (HOT, FINAL_NEGOTIATION).
+const AUTOBOUNCE_SKIP_STATUSES = ['CONVERTED', 'LOST', 'ARCHIVED', 'DELAYED', 'HOT', 'FINAL_NEGOTIATION']
+// Hard limits for one run. See the incident note on runAutoBounce.
+// Default 10, not 50: the job had silently done nothing since 12 Sep 2026 (the
+// watchdog killed every run), so ~2,700 leads are stale at once. While the host
+// cron is still hourly, 10/run = max 240 reassignments a day — a steady stream
+// for the telecallers, not a flood. Raise WORK_AUTOBOUNCE_MAX_PER_RUN to speed up.
+export const AUTOBOUNCE_MAX_PER_RUN = Math.max(1, Number(process.env.WORK_AUTOBOUNCE_MAX_PER_RUN || 10))
+export const AUTOBOUNCE_BUDGET_MS = 60_000
+
 export interface AutoBounceResult {
   bounced: number
-  details: Array<{ lead_row: number; from: string; to: string }>
+  /** Eligible closer leads the scan looked at. */
+  scanned: number
+  /** Stopped early (per-run cap or time budget). More stale leads wait for the next run. */
+  truncated: boolean
+  details: Array<{ lead_row: number; from: string; to: string; last_touch: string }>
 }
 
 /**
- * Bounce closer leads with no engagement (no work_event / message / call) for
- * AUTOBOUNCE_DAYS+ to a telecaller re-warm queue: reassign + status DELAYED +
- * assignment_log + notify. Additive — never touches Free-mode leads' behavior
- * beyond the same reassignment the owner could do manually.
+ * Bounce closer leads nobody has touched for AUTOBOUNCE_DAYS+ to a telecaller
+ * re-warm queue: reassign + status DELAYED + assignment_log + notify. Additive:
+ * it only does the reassignment the owner could do by hand. What counts as a
+ * touch is documented on getAutoBounceCandidates (db.ts).
+ *
+ * Production incident (12 Sep – 7 Oct 2026): the old version loaded all ~7k
+ * leads, looked up messages and call logs lead by lead, and reloaded every lead
+ * again for each telecaller pick. In libsql local-file mode each of those
+ * thousands of statements blocks the Node process: one hourly run held the CPU
+ * at 90-99% for 9+ minutes, the site timed out and the watchdog restarted the
+ * container, up to 24 times a day. Now:
+ *   - the stale scan is two SQL statements (~50 ms on a prod snapshot);
+ *   - telecaller load comes from one GROUP BY, tracked in memory as we assign;
+ *   - at most AUTOBOUNCE_MAX_PER_RUN reassignments per run, oldest touch first;
+ *   - a time budget (default 60 s) stops the loop early with partial results.
+ * The old "last touch" compared space-format and T-format timestamps as raw
+ * strings. The scan now normalises every timestamp in SQL (sqlTsToJulian).
  */
-export async function runAutoBounce(): Promise<AutoBounceResult> {
-  const now = Date.now()
-  const result: AutoBounceResult = { bounced: 0, details: [] }
+export async function runAutoBounce(opts: {
+  /** Cooperative deadline check; defaults to a 60 s budget from the call. */
+  outOfTime?: () => boolean
+  maxBounces?: number
+} = {}): Promise<AutoBounceResult> {
+  const startedAt = Date.now()
+  const outOfTime = opts.outOfTime ?? (() => Date.now() - startedAt >= AUTOBOUNCE_BUDGET_MS)
+  const maxBounces = Math.max(0, Math.floor(opts.maxBounces ?? AUTOBOUNCE_MAX_PER_RUN))
+  const result: AutoBounceResult = { bounced: 0, scanned: 0, truncated: false, details: [] }
 
-  const [users, allLeads] = await Promise.all([getUsers(), getLeads()])
-  const closerNames = new Set(
-    users.filter(u => u.active && effectiveRole(u) === 'closer').map(u => u.name),
-  )
-  const candidates = allLeads.filter(
-    l => l.assigned_to && closerNames.has(l.assigned_to)
-      && !ACTIVE_EXCLUDED.has(l.lead_status),
-  )
-  if (candidates.length === 0) return result
+  const users = await getUsers()
+  const closerNames = users.filter(u => u.active && effectiveRole(u) === 'closer').map(u => u.name)
+  // Same pool + tiebreak as pickTelecallerForReWarm: active, receiving, by name.
+  const telecallers = users
+    .filter(u => u.active && u.receives_new_leads && effectiveRole(u) === 'telecaller')
+    .map(u => u.name)
+    .sort((a, b) => a.localeCompare(b))
 
-  const [lastMsgByPhone, lastWorkByLead] = await Promise.all([
-    getLastMessageByPhone(),
-    getLastWorkEventByLead(candidates.map(l => l.row_number)),
-  ])
+  // Ask for one more than the cap so we can tell the caller more are waiting.
+  const { scanned, stale } = await getAutoBounceCandidates({
+    agents: closerNames,
+    excludeStatuses: AUTOBOUNCE_SKIP_STATUSES,
+    idleDays: AUTOBOUNCE_DAYS,
+    limit: maxBounces + 1,
+  })
+  result.scanned = scanned
+  if (stale.length > maxBounces) result.truncated = true
+  if (stale.length === 0 || telecallers.length === 0) return result
 
-  let callsByPhone: Map<string, string> | null = null
-
-  for (const lead of candidates) {
-    const lastMsg = lastMsgByPhone.get(last10(lead.phone))
-    const lastWork = lastWorkByLead.get(lead.row_number)
-
-    // Most-recent engagement across work_events / message / call.
-    let lastTouch = ''
-    if (lastWork?.created_at && lastWork.created_at > lastTouch) lastTouch = lastWork.created_at
-    if (lastMsg?.timestamp && lastMsg.timestamp > lastTouch) lastTouch = lastMsg.timestamp
-    // Lazy call lookup only if still no engagement found above.
-    if (!lastTouch) {
-      if (!callsByPhone) callsByPhone = new Map()
-      let callAt = callsByPhone.get(last10(lead.phone))
-      if (callAt === undefined) {
-        try {
-          const calls = await getCallLogs(lead.phone)
-          callAt = calls.length > 0 ? String(calls[0].created_at || '') : ''
-        } catch { callAt = '' }
-        callsByPhone.set(last10(lead.phone), callAt)
-      }
-      if (callAt) lastTouch = callAt
+  const openLoad = await getOpenLeadCountsByAgent([...ACTIVE_EXCLUDED])
+  const pickTelecaller = (): string => {
+    let best = telecallers[0]
+    for (const name of telecallers) {
+      if ((openLoad.get(name) || 0) < (openLoad.get(best) || 0)) best = name
     }
+    return best
+  }
 
-    // No engagement ever → fall back to created_time so brand-new unworked
-    // handoffs don't bounce on day one.
-    const referenceAt = lastTouch || lead.created_time || ''
-    if (ageDaysOf(referenceAt, now) < AUTOBOUNCE_DAYS) continue
+  for (const lead of stale.slice(0, maxBounces)) {
+    if (outOfTime()) { result.truncated = true; break }
 
-    const to = await pickTelecallerForReWarm(lead.assigned_to)
-    if (!to || to === lead.assigned_to) continue
-
+    const to = pickTelecaller()
     const from = lead.assigned_to
+    if (!to || to === from) continue
+
     await insertStatusChange({
       lead_row: lead.row_number,
       phone: lead.phone,
@@ -1270,10 +1294,11 @@ export async function runAutoBounce(): Promise<AutoBounceResult> {
       assigned_by: 'System (auto-bounce)',
     })
     await updateLead(lead.row_number, {
-      lead_status: lead.lead_status === 'DELAYED' ? lead.lead_status : 'DELAYED',
+      lead_status: 'DELAYED',
       assigned_to: to,
       next_followup: toIsoDate(1),
     })
+    openLoad.set(to, (openLoad.get(to) || 0) + 1)
     await insertWorkEvent({
       user_id: 'system-cron',
       user_name: 'System',
@@ -1298,7 +1323,7 @@ export async function runAutoBounce(): Promise<AutoBounceResult> {
     } catch { /* non-critical */ }
 
     result.bounced++
-    result.details.push({ lead_row: lead.row_number, from, to })
+    result.details.push({ lead_row: lead.row_number, from, to, last_touch: lead.last_touch_at })
   }
 
   return result

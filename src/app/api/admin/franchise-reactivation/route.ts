@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getLeads, logSentMessage } from '@/lib/sheets'
-import { getOptedOutPhones, insertMessage, normalizePhone, upsertContact, getFailedPhonesForTemplate } from '@/lib/db'
+import { getOptedOutPhones, insertMessage, normalizePhone, upsertContact, getFailedPhonesForTemplate, claimEvent } from '@/lib/db'
+import { releaseEvent, getPhonesSentTemplateSince } from '@/lib/leads-db-extra'
 import { sendTemplate } from '@/lib/whatsapp'
 import { apiError } from '@/lib/api-error'
 
@@ -17,7 +18,11 @@ type TemplateKey = keyof typeof REACTIVATION_TEMPLATES
 const PRE_MAY_CUTOFF = new Date('2026-05-01T00:00:00.000Z').getTime()
 
 // Statuses that exclude a lead from re-engagement.
-const EXCLUDED_STATUSES = new Set(['LOST', 'CONVERTED', 'ARCHIVED'])
+const EXCLUDED_STATUSES = new Set(['LOST', 'CONVERTED', 'ARCHIVED', 'DELAYED'])
+
+// Live deals: an agent is in the middle of these conversations, so a bulk
+// re-engagement blast is never sent, not even when a status allowlist names them.
+const NEVER_TARGET_STATUSES = new Set(['HOT', 'FINAL_NEGOTIATION'])
 
 // Pacing between sends (ms). 1.1s = ~54/min, well under WABA tier limits.
 const PACE_MS = 1100
@@ -36,6 +41,11 @@ function parseLeadDate(s: string): number | null {
   return Number.isNaN(t) ? null : t
 }
 
+// Campaign day in India time; scopes the send-once claim to one lead per day.
+function campaignDayIST(): string {
+  return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
 function firstName(fullName: string): string {
   const trimmed = (fullName || '').trim()
   if (!trimmed) return 'there'
@@ -47,7 +57,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { template?: string; dryRun?: boolean; limit?: number; onlyFailed?: boolean; includeLost?: boolean; statuses?: string[]; failedFor?: string }
+  let body: { template?: string; dryRun?: boolean; limit?: number; onlyFailed?: boolean; includeLost?: boolean; statuses?: string[]; failedFor?: string; skipIfSentWithinDays?: number }
   try {
     body = await req.json()
   } catch {
@@ -73,37 +83,49 @@ export async function POST(req: NextRequest) {
   const failedForKey = (body.failedFor as TemplateKey) || templateKey
   const failedForTemplate = REACTIVATION_TEMPLATES[failedForKey] || templateName
 
-  // Explicit status allowlist takes priority over excluded-set logic.
+  // Explicit status allowlist takes priority over excluded-set logic (DELAYED
+  // is only targeted when named here), but never over NEVER_TARGET_STATUSES.
   // Use this to target specific cohorts e.g. { statuses: ["LOST","DELAYED"] }.
   const statusAllowlist = Array.isArray(body.statuses) && body.statuses.length
     ? new Set(body.statuses.map(s => String(s).toUpperCase()))
     : null
 
   // When includeLost is set (and no allowlist), we still exclude CONVERTED +
-  // ARCHIVED — those are explicit "do not contact" states.
+  // ARCHIVED — those are explicit "do not contact" states — and DELAYED.
   const effectiveExcluded = includeLost
-    ? new Set(['CONVERTED', 'ARCHIVED'])
+    ? new Set(['CONVERTED', 'ARCHIVED', 'DELAYED'])
     : EXCLUDED_STATUSES
 
+  // Recurring mode: skip anyone who already got this same step recently.
+  const skipIfSentWithinDays = typeof body.skipIfSentWithinDays === 'number' && body.skipIfSentWithinDays > 0
+    ? body.skipIfSentWithinDays
+    : 0
+
   try {
-    const [leads, optedOut, failedPhones] = await Promise.all([
+    const [leads, optedOut, failedPhones, recentlySent] = await Promise.all([
       getLeads(),
       getOptedOutPhones(),
       onlyFailed ? getFailedPhonesForTemplate(failedForTemplate) : Promise.resolve(new Set<string>()),
+      skipIfSentWithinDays
+        ? getPhonesSentTemplateSince(templateName, new Date(Date.now() - skipIfSentWithinDays * 86400000).toISOString())
+        : Promise.resolve(new Set<string>()),
     ])
 
-    const skipped = { no_phone: 0, bad_date: 0, post_may: 0, excluded_status: 0, not_in_allowlist: 0, opted_out: 0, duplicate: 0, not_in_failed_set: 0 }
+    const skipped = { no_phone: 0, merged: 0, bad_date: 0, post_may: 0, live_deal: 0, excluded_status: 0, not_in_allowlist: 0, opted_out: 0, duplicate: 0, not_in_failed_set: 0, sent_recently: 0, already_sent_today: 0 }
     const eligible: { phone: string; name: string; row: number; status: string }[] = []
     const seenPhones = new Set<string>()
 
     for (const lead of leads) {
       const phoneNorm = normalizePhone(lead.phone || '')
       if (!phoneNorm || phoneNorm.length < 12) { skipped.no_phone++; continue }
+      // A merged row is a copy of another lead; the surviving row decides.
+      if (lead.merged_into) { skipped.merged++; continue }
 
       const ts = parseLeadDate(lead.created_time)
       if (ts === null) { skipped.bad_date++; continue }
       if (ts >= PRE_MAY_CUTOFF) { skipped.post_may++; continue }
 
+      if (NEVER_TARGET_STATUSES.has(lead.lead_status)) { skipped.live_deal++; continue }
       if (statusAllowlist) {
         if (!statusAllowlist.has(lead.lead_status)) { skipped.not_in_allowlist++; continue }
       } else if (effectiveExcluded.has(lead.lead_status)) {
@@ -112,6 +134,7 @@ export async function POST(req: NextRequest) {
       if (optedOut.has(phoneNorm)) { skipped.opted_out++; continue }
       if (seenPhones.has(phoneNorm)) { skipped.duplicate++; continue }
       if (onlyFailed && !failedPhones.has(phoneNorm)) { skipped.not_in_failed_set++; continue }
+      if (recentlySent.has(phoneNorm)) { skipped.sent_recently++; continue }
 
       seenPhones.add(phoneNorm)
       eligible.push({
@@ -147,7 +170,15 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const campaignDay = campaignDayIST()
     for (const t of targets) {
+      // One send per lead per template per campaign day, even when the cron
+      // (or a person) retries the whole run.
+      const claimKey = `reactivation:${templateName}:${campaignDay}:${t.phone}`
+      if (!(await claimEvent(claimKey, 'reactivation'))) {
+        skipped.already_sent_today++
+        continue
+      }
       const res = await sendTemplate(t.phone, templateName, [{ type: 'text', text: t.name }])
       if (res.success) {
         sentCount++
@@ -177,6 +208,8 @@ export async function POST(req: NextRequest) {
         }
         results.push({ phone: t.phone, ok: true, message_id: res.message_id })
       } else {
+        // Nothing went out: free the claim so a retry can send it.
+        await releaseEvent(claimKey)
         failCount++
         results.push({ phone: t.phone, ok: false, error: res.error })
       }

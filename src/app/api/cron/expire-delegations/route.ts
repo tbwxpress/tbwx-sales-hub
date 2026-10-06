@@ -13,6 +13,7 @@
  */
 import { apiError } from '@/lib/api-error'
 import { NextRequest, NextResponse } from 'next/server'
+import { withCronLock } from '@/lib/cron-guard'
 import { getExpiredActiveDelegations, endDelegation, insertLeadEdit } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
@@ -23,22 +24,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    const expired = await getExpiredActiveDelegations()
+    // One run at a time: a slow run overlapping the next tick stacks the load
+    // (see src/lib/cron-guard.ts for the Sep-Oct 2026 CPU incident).
+    return await withCronLock('expire-delegations', { budgetMs: 60_000 }, async () => {
+      const expired = await getExpiredActiveDelegations()
 
-    for (const d of expired) {
-      await endDelegation(d.id, 'system-cron')
-      await insertLeadEdit({
-        lead_row: d.lead_row,
-        phone: d.phone,
-        field_name: 'delegation',
-        old_value: 'active',
-        new_value: `auto-ended on ${new Date().toISOString().slice(0, 10)} (expired)`,
-        changed_by: 'System',
-        changed_by_id: 'system-cron',
-      })
-    }
+      for (const d of expired) {
+        await endDelegation(d.id, 'system-cron')
+        await insertLeadEdit({
+          lead_row: d.lead_row,
+          phone: d.phone,
+          field_name: 'delegation',
+          old_value: 'active',
+          new_value: `auto-ended on ${new Date().toISOString().slice(0, 10)} (expired)`,
+          changed_by: 'System',
+          changed_by_id: 'system-cron',
+        })
+      }
 
-    return NextResponse.json({ success: true, expired: expired.length })
+      return NextResponse.json({ success: true, expired: expired.length })
+    })
   } catch (err) {
     return NextResponse.json({ success: false, error: apiError(err, 'Expire cron failed') }, { status: 500 })
   }

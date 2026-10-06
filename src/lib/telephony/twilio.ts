@@ -11,6 +11,7 @@
 // the env values change.
 
 import type { RecordedBridgeArgs, TelephonyProvider } from './index'
+import { fetchWithTimeout } from '@/lib/fetch-timeout'
 
 const TWILIO_API = 'https://api.twilio.com/2010-04-01'
 
@@ -49,7 +50,7 @@ export class TwilioProvider implements TelephonyProvider {
     // status_callback_event repeats — append after construction
     body.append('StatusCallbackEvent', 'completed')
 
-    const res = await fetch(`${TWILIO_API}/Accounts/${sid}/Calls.json`, {
+    const res = await fetchWithTimeout(`${TWILIO_API}/Accounts/${sid}/Calls.json`, {
       method: 'POST',
       headers: {
         Authorization: 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64'),
@@ -72,9 +73,9 @@ export async function fetchTwilioRecording(recordingUrl: string): Promise<Buffer
   const token = env('TWILIO_AUTH_TOKEN')
   // Twilio recording URLs serve .mp3 when the extension is appended.
   const url = recordingUrl.endsWith('.mp3') ? recordingUrl : `${recordingUrl}.mp3`
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { Authorization: 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64') },
-  })
+  }, 60_000)
   if (!res.ok) throw new Error(`Failed to fetch recording (${res.status})`)
   const arr = await res.arrayBuffer()
   return Buffer.from(arr)
