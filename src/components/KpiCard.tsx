@@ -23,6 +23,7 @@
 
 import { type ReactNode } from 'react'
 import { ArrowUp, ArrowDown, Minus } from 'lucide-react'
+import CountUp from '@/components/gamification/CountUp'
 
 export type DeltaDirection = 'up' | 'down' | 'flat'
 
@@ -106,7 +107,8 @@ export default function KpiCard({
       {/* Value + delta */}
       <div className="flex items-end gap-2 flex-wrap">
         <span className="text-display leading-none" style={{ color: valueColor }}>
-          {typeof value === 'number' ? value.toLocaleString('en-IN') : value}
+          {/* Numbers count up on load / change; formatted strings render as-is. */}
+          {typeof value === 'number' ? <CountUp value={value} /> : value}
         </span>
 
         {delta && DeltaIcon ? (

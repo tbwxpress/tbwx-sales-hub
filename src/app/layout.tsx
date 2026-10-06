@@ -4,6 +4,7 @@ import { BRAND } from '@/config/client'
 import CommandPalette from '@/components/CommandPalette'
 import KeyboardShortcutsHelp from '@/components/KeyboardShortcutsHelp'
 import GuidedRedirect from '@/components/GuidedRedirect'
+import GamificationProvider from '@/components/gamification/GamificationProvider'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Geist } from "next/font/google";
@@ -49,6 +50,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <CommandPalette />
           <KeyboardShortcutsHelp />
           <Toaster position="top-right" richColors closeButton />
+          {/* Points chips, confetti and badge celebrations (agents only; owner can switch off) */}
+          <GamificationProvider />
           {children}
         </TooltipProvider>
         <Script id="sw-register" strategy="afterInteractive">{`

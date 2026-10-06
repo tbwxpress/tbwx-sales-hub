@@ -17,7 +17,9 @@ const SECTIONS: Section[] = [
   {
     title: 'Global',
     shortcuts: [
+      { key: 'Ctrl / ⌘ + K', description: 'Search leads & jump to any page' },
       { key: '?', description: 'Show this help' },
+      { key: 'Esc', description: 'Close a dialog or panel' },
     ],
   },
 ]

@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import Link from 'next/link'
+import { useVisiblePolling } from '@/lib/use-visible-polling'
+import { STATUS_LABELS } from '@/config/client'
 
 // Forced-followup banner. Polls /api/leads/needs-attention and renders a
 // persistent banner with the leads the caller must touch right now. Closing
@@ -77,12 +79,9 @@ export default function NeedsAttentionBanner({ defaultExpanded = false, showMax 
     setLoading(false)
   }, [])
 
-  useEffect(() => {
-    fetchData()
-    // Poll every 60s so the banner updates as agents close out leads
-    const i = setInterval(fetchData, 60_000)
-    return () => clearInterval(i)
-  }, [fetchData])
+  // Poll every 60s so the banner updates as agents close out leads — paused
+  // while the tab is in the background (agents leave the hub open all day).
+  useVisiblePolling(fetchData, 60_000)
 
   if (loading || !data || data.count === 0) return null
 
@@ -177,7 +176,7 @@ export default function NeedsAttentionBanner({ defaultExpanded = false, showMax 
                         color: tint,
                       }}
                     >
-                      {lead.lead_status}
+                      {STATUS_LABELS[lead.lead_status] || lead.lead_status}
                     </span>
                     {lead.city && (
                       <span className="text-[10px]" style={{ color: 'var(--color-dim)' }}>

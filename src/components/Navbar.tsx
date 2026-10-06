@@ -90,10 +90,8 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [mobileMenuOpen])
 
-  // Close mobile menu on route change
-  useEffect(() => {
-    setMobileMenuOpen(false)
-  }, [pathname])
+  // The mobile menu closes when one of its links is tapped (onClick below) —
+  // no route-change effect needed.
 
   // Close More dropdown on outside click
   useEffect(() => {
@@ -486,6 +484,15 @@ export default function Navbar() {
             <span className="text-sm font-bold" style={{ color: 'var(--color-accent)' }}>Sales Hub</span>
           </Link>
           <div className="flex items-center gap-1">
+            {/* Search was desktop-only (⌘K) — phones had no way to find a lead by name. */}
+            <button
+              onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
+              className="flex items-center justify-center w-10 h-10 rounded-md"
+              style={{ color: 'var(--color-muted)' }}
+              aria-label="Search leads and pages"
+            >
+              <Search className="w-[18px] h-[18px]" strokeWidth={1.75} />
+            </button>
             <NotificationBell />
             <ThemeToggle />
             <Tooltip>
@@ -516,6 +523,7 @@ export default function Navbar() {
               <Link
                 key={link.href}
                 href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150"
                 style={{
                   color: isActive(link.href) ? 'var(--color-accent)' : 'var(--color-muted)',

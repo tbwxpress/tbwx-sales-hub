@@ -70,6 +70,7 @@ import LeadsFilterBar, { type QuickFilter } from '@/components/leads/LeadsFilter
 import ActiveFilterChips, { type ActiveChip } from '@/components/leads/ActiveFilterChips'
 import FavoriteStar from '@/components/leads/FavoriteStar'
 import { PRIORITY_CHIP, PRIORITY_OPTIONS as PRIORITY_SELECT_OPTIONS, patchLead } from '@/components/leads/shared'
+import MyDayStrip from '@/components/gamification/MyDayStrip'
 import { type SavedViewFilters } from '@/lib/stages'
 import { useFavorites } from '@/hooks/useFavorites'
 
@@ -1429,6 +1430,7 @@ export default function LeadsPage() {
           </div>
         </div>
 
+        <MyDayStrip className="mb-4" />{/* agents' points ring + streak (self-hides for admins / when off) */}
         {/* ─── Row 1: Saved Views Bar (unchanged) ───────────────────────── */}
         {user && (
           <SavedViewsBar

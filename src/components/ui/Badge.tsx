@@ -13,9 +13,10 @@ const TONE: Record<BadgeTone, { bg: string; text: string }> = {
 
 export default function Badge({ children, tone = 'neutral', className = '' }: { children: ReactNode; tone?: BadgeTone; className?: string }) {
   const s = TONE[tone]
+  // The colour glides when a lead changes stage (e.g. Replied → HOT) instead of snapping.
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap ${className}`}
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap transition-[background-color,color] duration-300 ease-out ${className}`}
       style={{ backgroundColor: s.bg, color: s.text }}
     >
       {children}

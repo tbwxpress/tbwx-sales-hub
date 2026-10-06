@@ -3,7 +3,11 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
+import MyDayStrip from '@/components/gamification/MyDayStrip'
 import { timeAgo } from '@/lib/format'
+import { STATUS_LABELS } from '@/config/client'
+
+const statusLabel = (s: string) => STATUS_LABELS[s] || s.replace(/_/g, ' ')
 
 interface Lead {
   row_number: number
@@ -76,11 +80,6 @@ export default function AgentQueue({ user }: { user: SessionUser }) {
   )
 
   const totalActions = repliesWaiting.length + followupsDue.length + hotLeads.length
-  const totalContacted = myLeads.filter(
-    l => !['NEW', 'DECK_SENT'].includes(l.lead_status)
-  ).length
-  const dailyGoal = 10
-  const progressPct = Math.min(100, Math.round((totalContacted / dailyGoal) * 100))
 
   const hour = new Date().getHours()
   const greeting =
@@ -97,51 +96,28 @@ export default function AgentQueue({ user }: { user: SessionUser }) {
             {greeting}, {user.name} 👋
           </h1>
           <p className="text-xs mt-1" style={{ color: 'var(--color-muted)' }}>
-            {totalActions > 0
-              ? `You have ${totalActions} action${totalActions === 1 ? '' : 's'} waiting — let's close some deals.`
-              : 'All caught up! Check back soon or reach out to new leads.'}
+            {loading
+              ? 'Getting your queue ready…'
+              : totalActions > 0
+                ? `You have ${totalActions} action${totalActions === 1 ? '' : 's'} waiting — let's close some deals.`
+                : 'All caught up! Check back soon or reach out to new leads.'}
           </p>
         </div>
 
-        {/* Daily progress bar */}
-        <div
-          className="rounded-xl p-4 mb-5 border"
-          style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span
-              className="text-[10px] font-semibold uppercase tracking-widest"
-              style={{ color: 'var(--color-muted)' }}
-            >
-              Daily Progress
-            </span>
-            <span className="text-xs font-bold" style={{ color: 'var(--color-accent)' }}>
-              {totalContacted} / {dailyGoal} leads
-            </span>
-          </div>
-          <div
-            className="h-2 rounded-full overflow-hidden"
-            style={{ background: 'var(--color-elevated)' }}
-          >
-            <div
-              className="h-full rounded-full transition-all duration-700"
-              style={{
-                width: `${progressPct}%`,
-                background:
-                  progressPct >= 80
-                    ? 'linear-gradient(90deg, var(--color-success), #22c55e)'
-                    : 'linear-gradient(90deg, var(--color-accent), var(--color-accent-hover))',
-              }}
-            />
-          </div>
-        </div>
+        {/* Today's real progress: points vs goal + calling streak. (Replaces a
+            "Daily Progress" bar that counted all-time contacted leads, so it
+            read 100% before the first call of the day.) */}
+        <MyDayStrip className="mb-5" />
 
         {loading && (
-          <div
-            className="text-center py-12 text-sm"
-            style={{ color: 'var(--color-muted)' }}
-          >
-            Loading your queue...
+          <div className="space-y-2 mb-5" aria-busy="true" aria-label="Loading your queue">
+            <div className="skeleton h-3 w-32 mb-3" />
+            {[0, 1, 2].map(i => (
+              <div key={i} className="rounded-xl px-4 py-3 border" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
+                <div className="skeleton h-4 w-1/2" />
+                <div className="skeleton mt-2 h-2.5 w-1/3" />
+              </div>
+            ))}
           </div>
         )}
 
@@ -196,7 +172,7 @@ export default function AgentQueue({ user }: { user: SessionUser }) {
                       {lead.full_name}
                     </div>
                     <div className="text-[10px] mt-0.5" style={{ color: 'var(--color-muted)' }}>
-                      {lead.city} · replied {timeAgo(lead.created_time)}
+                      {lead.city ? `${lead.city} · ` : ''}enquired {timeAgo(lead.created_time)}
                     </div>
                   </div>
                   <span
@@ -240,7 +216,7 @@ export default function AgentQueue({ user }: { user: SessionUser }) {
                       {lead.full_name}
                     </div>
                     <div className="text-[10px] mt-0.5" style={{ color: 'var(--color-muted)' }}>
-                      {lead.city} · {lead.lead_status.replace('_', ' ')}
+                      {lead.city ? `${lead.city} · ` : ''}{statusLabel(lead.lead_status)}
                     </div>
                   </div>
                   <span
@@ -284,7 +260,7 @@ export default function AgentQueue({ user }: { user: SessionUser }) {
                       🔥 {lead.full_name}
                     </div>
                     <div className="text-[10px] mt-0.5" style={{ color: 'var(--color-muted)' }}>
-                      {lead.city} · {lead.lead_status.replace('_', ' ')}
+                      {lead.city ? `${lead.city} · ` : ''}{statusLabel(lead.lead_status)}
                     </div>
                   </div>
                   <span
@@ -373,7 +349,7 @@ export default function AgentQueue({ user }: { user: SessionUser }) {
                               borderColor: `color-mix(in srgb, ${sc} 30%, transparent)`,
                             }}
                           >
-                            {lead.lead_status.replace('_', ' ')}
+                            {statusLabel(lead.lead_status)}
                           </span>
                         </div>
                         <div className="text-[10px]" style={{ color: 'var(--color-dim)' }}>

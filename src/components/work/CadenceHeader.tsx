@@ -1,6 +1,7 @@
 'use client'
 
-import { Flame, Phone, MessageCircle, LogOut } from 'lucide-react'
+import Link from 'next/link'
+import { Target, Phone, MessageCircle, MessageSquare, LogOut, House } from 'lucide-react'
 import type { WorkStats } from './types'
 
 /**
@@ -11,14 +12,18 @@ import type { WorkStats } from './types'
  *     vs the quality floor (≥50). This is what "good work" means.
  *   · DIALS / ATTEMPTS (the slim bar) — every logged outcome vs the volume bar
  *     (~200). Effort, not just outcomes.
- * Plus a "{queue_depth} left" count and a streak chip (consecutive days hitting
- * the conversation target). Tasteful operator pride, not childish gamification.
+ * Plus a "{queue_depth} left" count and a target chip (consecutive days hitting
+ * the conversation target — a target icon, so it never gets confused with the
+ * flame, which app-wide means the calling streak). Tasteful operator pride.
+ *
+ * The rail is immersive (no Navbar), so the header carries the only way out:
+ * Inbox for everyone, Today (`exitHref`) for agents who aren't rail-locked.
  *
  * The ring is a pure SVG radial bar (stroke-dasharray = circumference, animated
  * stroke-dashoffset) so it fills smoothly via a CSS transition — no animation
  * library. Respects prefers-reduced-motion through the global media query.
  */
-export default function CadenceHeader({ stats }: { stats: WorkStats }) {
+export default function CadenceHeader({ stats, exitHref = null }: { stats: WorkStats; exitHref?: string | null }) {
   // Conversations — the hero metric.
   const convTarget = Math.max(1, stats.conversations_target || 1)
   const conv = Math.max(0, stats.conversations_today || 0)
@@ -42,7 +47,7 @@ export default function CadenceHeader({ stats }: { stats: WorkStats }) {
       className="glass-nav sticky top-0 z-30 border-b border-border safe-top"
       style={{ boxShadow: '0 1px 0 0 color-mix(in srgb, var(--color-border) 50%, transparent)' }}
     >
-      <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-2.5">
+      <div className="mx-auto flex max-w-xl items-center gap-2 px-4 py-2.5 sm:gap-3">
         {/* Conversations ring (hero) */}
         <div className="relative shrink-0" style={{ width: size, height: size }}>
           <svg
@@ -80,7 +85,7 @@ export default function CadenceHeader({ stats }: { stats: WorkStats }) {
           <div className="flex items-baseline gap-1.5">
             <span className="flex items-center gap-1 text-heading font-bold text-text">
               <MessageCircle className="h-3.5 w-3.5 text-accent" strokeWidth={2.4} />
-              {conv} talks today
+              {conv} {conv === 1 ? 'talk' : 'talks'} today
             </span>
             {convHit && (
               <span className="text-eyebrow text-[var(--color-success)]">target hit 🎯</span>
@@ -118,19 +123,42 @@ export default function CadenceHeader({ stats }: { stats: WorkStats }) {
           </div>
         </div>
 
-        {/* Streak chip */}
+        {/* Target-streak chip (days in a row hitting the conversation target) */}
         {stats.streak > 0 && (
           <div
             className="flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-caption font-bold tabular-nums"
             style={{
-              background: 'color-mix(in srgb, var(--color-hot) 16%, transparent)',
-              color: 'var(--color-hot)',
+              background: 'color-mix(in srgb, var(--color-success) 14%, transparent)',
+              color: 'var(--color-success)',
             }}
             title={`${stats.streak} consecutive days hitting your conversation target`}
+            aria-label={`${stats.streak} days in a row on target`}
           >
-            <Flame className="h-3.5 w-3.5" strokeWidth={2.4} />
-            {stats.streak}-day
+            <Target className="h-3.5 w-3.5" strokeWidth={2.4} />
+            {stats.streak}d
           </div>
+        )}
+
+        {/* Ways off the rail */}
+        <Link
+          href="/inbox"
+          title="Inbox"
+          aria-label="Open Inbox"
+          className="focus-ring flex shrink-0 items-center justify-center rounded-full p-2 text-dim transition-colors hover:text-text"
+          style={{ background: 'color-mix(in srgb, var(--color-border) 30%, transparent)' }}
+        >
+          <MessageSquare className="h-4 w-4" strokeWidth={2} />
+        </Link>
+        {exitHref && (
+          <Link
+            href={exitHref}
+            title="Leave the rail"
+            aria-label="Leave the rail and go to Today"
+            className="focus-ring flex shrink-0 items-center justify-center rounded-full p-2 text-dim transition-colors hover:text-text"
+            style={{ background: 'color-mix(in srgb, var(--color-border) 30%, transparent)' }}
+          >
+            <House className="h-4 w-4" strokeWidth={2} />
+          </Link>
         )}
 
         {/* Sign out — the rail is immersive (no Navbar), so logout lives here so

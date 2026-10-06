@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { emitLeadUpdated } from '@/components/gamification/events'
 
 interface LogCallModalProps {
   phone: string
@@ -12,6 +13,17 @@ interface LogCallModalProps {
   onClose: () => void
   onLogged: () => void
 }
+
+// One tap per outcome (was a dropdown: open → scroll → pick). Same values as before.
+const OUTCOMES: Array<{ value: string; label: string }> = [
+  { value: 'no_answer', label: 'No answer' },
+  { value: 'answered', label: 'Answered' },
+  { value: 'busy', label: 'Busy' },
+  { value: 'callback', label: 'Callback' },
+  { value: 'interested', label: 'Interested' },
+  { value: 'not_interested', label: 'Not interested' },
+  { value: 'wrong_number', label: 'Wrong number' },
+]
 
 export default function LogCallModal({ phone, open, onClose, onLogged }: LogCallModalProps) {
   const [callDuration, setCallDuration] = useState('')
@@ -38,13 +50,16 @@ export default function LogCallModal({ phone, open, onClose, onLogged }: LogCall
         setCallDuration('')
         setCallOutcome('no_answer')
         setCallNotes('')
+        toast.success('Call logged')
+        // Points chip + streak update (no-op for the owner / when switched off).
+        emitLeadUpdated({ source: 'call', phone })
         onLogged()
         onClose()
       } else {
         setError(data.error || 'Failed to log call')
       }
     } catch {
-      setError('Network error')
+      setError('Network error — the call was not saved')
     }
     setSaving(false)
   }
@@ -56,38 +71,44 @@ export default function LogCallModal({ phone, open, onClose, onLogged }: LogCall
           <DialogTitle className="text-sm" style={{ color: 'var(--color-text)' }}>Log Call</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Duration</label>
-              <Input
-                value={callDuration}
-                onChange={e => setCallDuration(e.target.value)}
-                placeholder="e.g. 5 min"
-                className="text-sm"
-                style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Outcome</label>
-              <Select value={callOutcome} onValueChange={v => v && setCallOutcome(v)}>
-                <SelectTrigger className="text-sm" style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
-                  <SelectItem value="no_answer">No Answer</SelectItem>
-                  <SelectItem value="answered">Answered</SelectItem>
-                  <SelectItem value="busy">Busy</SelectItem>
-                  <SelectItem value="callback">Callback Scheduled</SelectItem>
-                  <SelectItem value="interested">Interested</SelectItem>
-                  <SelectItem value="not_interested">Not Interested</SelectItem>
-                  <SelectItem value="wrong_number">Wrong Number</SelectItem>
-                </SelectContent>
-              </Select>
+          <div>
+            <p className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-dim)' }} id="log-call-outcome">How did it go?</p>
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby="log-call-outcome">
+              {OUTCOMES.map(o => {
+                const active = callOutcome === o.value
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setCallOutcome(o.value)}
+                    className="focus-ring rounded-full border px-3 py-1.5 text-[13px] font-medium"
+                    style={active
+                      ? { borderColor: 'var(--color-accent)', background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', color: 'var(--color-text)' }
+                      : { borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}
+                  >
+                    {o.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Notes</label>
+            <label htmlFor="log-call-duration" className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Duration (optional)</label>
+            <Input
+              id="log-call-duration"
+              value={callDuration}
+              onChange={e => setCallDuration(e.target.value)}
+              placeholder="e.g. 5 min"
+              className="text-sm"
+              style={{ background: 'var(--color-elevated)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </div>
+          <div>
+            <label htmlFor="log-call-notes" className="block text-xs font-medium mb-1" style={{ color: 'var(--color-dim)' }}>Notes</label>
             <textarea
+              id="log-call-notes"
               value={callNotes}
               onChange={e => setCallNotes(e.target.value)}
               rows={3}
@@ -96,7 +117,7 @@ export default function LogCallModal({ phone, open, onClose, onLogged }: LogCall
               style={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
             />
           </div>
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs" role="alert" style={{ color: 'var(--color-danger)' }}>{error}</p>}
           <Button
             onClick={handleSubmit}
             disabled={saving}

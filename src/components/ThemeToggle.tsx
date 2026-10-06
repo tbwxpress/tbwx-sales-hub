@@ -1,31 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useHtmlTheme } from '@/components/ui/use-html-theme'
 
 export default function ThemeToggle() {
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    const saved = localStorage.getItem('theme') as 'dark' | 'light' | null
-    if (saved) {
-      setTheme(saved)
-      document.documentElement.classList.remove('dark', 'light')
-      document.documentElement.classList.add(saved)
-    }
-    setMounted(true)
-  }, [])
+  // The saved theme is applied before paint by the inline script in layout.tsx;
+  // this just follows the <html> class (null until hydrated).
+  const theme = useHtmlTheme()
 
   function toggle() {
     const next = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
     document.documentElement.classList.remove('dark', 'light')
     document.documentElement.classList.add(next)
-    localStorage.setItem('theme', next)
+    try { localStorage.setItem('theme', next) } catch { /* private mode */ }
   }
 
   // Avoid hydration mismatch
-  if (!mounted) return <div className="h-8 w-20" />
+  if (!theme) return <div className="h-8 w-20" />
 
   const isDark = theme === 'dark'
 

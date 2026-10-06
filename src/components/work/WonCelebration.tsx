@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 /**
  * WonCelebration — a tasteful, short-lived overlay that fires ONLY on a `won`
@@ -20,6 +20,31 @@ const COLORS = [
   '#fff',
 ]
 
+// Confetti shards are computed once at module load from a seeded PRNG
+// (mulberry32): random-looking, stable across re-renders, and pure during
+// render (Math.random() in render breaks React's purity rules).
+function mulberry32(seed: number) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+const rand = mulberry32(0x7b3c)
+const SHARDS = Array.from({ length: 36 }, (_, i) => ({
+  id: i,
+  left: rand() * 100,
+  delay: rand() * 0.25,
+  duration: 0.9 + rand() * 0.8,
+  color: COLORS[i % COLORS.length],
+  size: 6 + rand() * 6,
+  rotate: rand() * 360,
+  drift: (rand() - 0.5) * 120,
+}))
+
 export default function WonCelebration({
   name,
   onDone,
@@ -27,34 +52,18 @@ export default function WonCelebration({
   name: string
   onDone: () => void
 }) {
-  const [reduced, setReduced] = useState(false)
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      setReduced(window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-    }
-  }, [])
+  // Client-only overlay (shown after a tap), so reading matchMedia once at
+  // mount is safe — no effect + setState round-trip needed.
+  const [reduced] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+  )
 
   useEffect(() => {
     const t = setTimeout(onDone, reduced ? 1100 : 1700)
     return () => clearTimeout(t)
   }, [onDone, reduced])
 
-  // Pre-compute confetti shards once so they don't reshuffle on re-render.
-  const shards = useMemo(
-    () =>
-      Array.from({ length: 36 }, (_, i) => ({
-        id: i,
-        left: Math.random() * 100,
-        delay: Math.random() * 0.25,
-        duration: 0.9 + Math.random() * 0.8,
-        color: COLORS[i % COLORS.length],
-        size: 6 + Math.random() * 6,
-        rotate: Math.random() * 360,
-        drift: (Math.random() - 0.5) * 120,
-      })),
-    [],
-  )
+  const shards = SHARDS
 
   return (
     <div

@@ -6,6 +6,23 @@ import Navbar from '@/components/Navbar'
 import RequestUpdatesButton from '@/components/RequestUpdatesButton'
 import Badge from '@/components/ui/Badge'
 import Card from '@/components/ui/Card'
+import MyGameBoard from '@/components/gamification/MyGameBoard'
+import OwnerGamePanel from '@/components/gamification/OwnerGamePanel'
+import CountUp from '@/components/gamification/CountUp'
+
+function StatsSkeleton() {
+  return (
+    <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full" aria-busy="true" aria-label="Loading stats">
+      <div className="skeleton h-5 w-40 mb-2" />
+      <div className="skeleton h-3 w-56 mb-6" />
+      <div className="skeleton h-48 w-full rounded-2xl mb-6" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        {[0, 1, 2, 3, 4, 5].map(i => <div key={i} className="skeleton h-16 rounded-lg" />)}
+      </div>
+      <div className="skeleton h-40 w-full rounded-xl" />
+    </main>
+  )
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -378,10 +395,10 @@ function CoachPanel({ agentName }: { agentName?: string }) {
 
   const base = `/api/performance/coach${agentName ? `?agent=${encodeURIComponent(agentName)}` : ''}`
 
+  // Fresh state per agent comes from the parent keying this panel by agent
+  // (no synchronous resets inside the effect — they cascade renders).
   useEffect(() => {
     let alive = true
-    setData(null)
-    setError('')
     fetch(base)
       .then(r => r.json())
       .then(json => { if (alive) { if (json.success) setData(json.data); else setError(json.error || 'Failed') } })
@@ -475,13 +492,15 @@ function CoachPanel({ agentName }: { agentName?: string }) {
 
 function SelfActivityView({ you, teamAvg, rank }: SelfActivityViewProps) {
   const totalActions = you.actions.manual_messages + you.actions.calls_logged + you.actions.notes_added + you.actions.status_changes + you.actions.reassignments_performed
+  // Coach, don't shame: being behind the team average is shown as the gap to
+  // close in a neutral tone, never in alarm red.
   const compare = (mine: number, avg: number) => {
     if (avg === 0 && mine === 0) return { color: 'var(--color-dim)', label: '—' }
     if (avg === 0) return { color: 'var(--color-success)', label: 'above team' }
     const diff = mine - avg
     const pct = Math.round((diff / avg) * 100)
     if (pct >= 10) return { color: 'var(--color-success)', label: `+${pct}% vs team` }
-    if (pct <= -10) return { color: 'var(--color-danger)', label: `${pct}% vs team` }
+    if (pct <= -10) return { color: 'var(--color-muted)', label: `${Math.ceil(avg - mine)} to team avg` }
     return { color: 'var(--color-muted)', label: 'on par with team' }
   }
 
@@ -537,10 +556,18 @@ function SelfActivityView({ you, teamAvg, rank }: SelfActivityViewProps) {
       <div className="rounded-lg p-4 flex flex-col" style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}>
         <p className="text-eyebrow text-dim mb-2">Your rank</p>
         {rank && rank.of > 1 ? (
-          <>
-            <p className="text-display text-accent leading-none">#{rank.position}</p>
-            <p className="text-caption text-dim mt-1">of {rank.of} active teammates</p>
-          </>
+          rank.position <= Math.ceil(rank.of / 2) ? (
+            <>
+              <p className="text-display text-accent leading-none">#{rank.position}</p>
+              <p className="text-caption text-dim mt-1">of {rank.of} active teammates</p>
+            </>
+          ) : (
+            // Lower half: no "#6 of 7" — show the way up instead.
+            <>
+              <p className="text-heading text-text leading-snug">Climbing</p>
+              <p className="text-caption text-dim mt-1">A few more calls today moves you up the team table.</p>
+            </>
+          )
         ) : (
           <p className="text-caption text-dim">Solo run today — no peers active.</p>
         )}
@@ -707,31 +734,17 @@ export default function AgentStatsPage() {
 
   // ─── Loading ─────────────────────────────────────────────────────────────
 
-  if (!currentUser) {
+  // Admins wait for the whole team load; agents see their points board at once
+  // while their lead book loads behind skeleton tiles.
+  if (!currentUser || (loading && currentUser.role === 'admin')) {
     return (
       <div className="min-h-screen bg-bg">
         <Navbar />
-        <div className="flex items-center justify-center h-[calc(100vh-56px)]">
-          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-        </div>
+        <StatsSkeleton />
       </div>
     )
   }
   const isAdmin = currentUser.role === 'admin'
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-bg">
-        <Navbar />
-        <div className="flex items-center justify-center h-[calc(100vh-56px)]">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-            <span className="text-muted text-sm">Loading agent stats...</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -750,22 +763,36 @@ export default function AgentStatsPage() {
           </div>
         )}
 
-        {/* Header + WA Token */}
+        {/* Header (+ WA token health — an owner concern, admin only) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-heading text-text">Agent Performance</h1>
+            <h1 className="text-heading text-text">{isAdmin ? 'Agent Performance' : 'My Stats'}</h1>
             <p className="text-body text-dim mt-0.5">
-              {metrics.length} agent{metrics.length !== 1 ? 's' : ''} tracked
-              {unassigned > 0 && (
-                <span className="text-accent ml-2">({unassigned} unassigned lead{unassigned !== 1 ? 's' : ''})</span>
+              {isAdmin ? (
+                <>
+                  {metrics.length} agent{metrics.length !== 1 ? 's' : ''} tracked
+                  {unassigned > 0 && (
+                    <span className="text-accent ml-2">({unassigned} unassigned lead{unassigned !== 1 ? 's' : ''})</span>
+                  )}
+                </>
+              ) : (
+                'Your points, streak, badges and lead book.'
               )}
             </p>
           </div>
-          <WATokenCountdown />
+          {isAdmin && <WATokenCountdown />}
         </div>
 
+        {/* Points & badges — owner controls / agent's own board */}
+        {isAdmin ? <OwnerGamePanel /> : <MyGameBoard />}
+
         {/* ─── Summary Cards ──────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6" aria-busy="true" aria-label="Loading your lead book">
+            {[0, 1, 2, 3, 4, 5].map(i => <div key={i} className="skeleton h-[74px] rounded-lg" />)}
+          </div>
+        ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6 stagger-children">
           {[
             { label: 'Assigned', value: totals.assigned, color: 'text-text' },
             { label: 'Contacted', value: totals.contacted, color: 'text-accent' },
@@ -781,10 +808,11 @@ export default function AgentStatsPage() {
               <p className="text-caption text-dim mb-1.5">
                 {card.label}
               </p>
-              <p className={`text-display ${card.color}`}>{card.value}</p>
+              <p className={`text-display ${card.color}`}><CountUp value={card.value} /></p>
             </div>
           ))}
         </div>
+        )}
 
         {/* ─── Daily Activity Tracker ─────────────────────────────────── */}
         <section className="bg-card border border-border rounded-xl p-4 mb-6">
@@ -806,7 +834,8 @@ export default function AgentStatsPage() {
               {[
                 { label: 'Today', off: 0 },
                 { label: 'Yesterday', off: 1 },
-                { label: 'Last 7d', off: 7 },
+                // Jumps to the single day one week ago (it never was a 7-day range).
+                { label: 'A week ago', off: 7 },
               ].map(c => (
                 <button
                   key={c.label}
@@ -980,7 +1009,7 @@ export default function AgentStatsPage() {
         </section>
 
         {/* ─── Overall Conversion Rate ────────────────────────────────── */}
-        <div className="bg-card border border-border rounded-lg px-5 py-4 mb-6 flex items-center gap-4">
+        <div className={`bg-card border border-border rounded-lg px-5 py-4 mb-6 flex items-center gap-4 ${loading ? 'hidden' : ''}`}>
           <div className="flex-1">
             <p className="text-[10px] text-dim uppercase tracking-wider font-medium mb-1">Overall Conversion Rate</p>
             <div className="flex items-end gap-2">

@@ -2,12 +2,16 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import { CheckCircle, ChevronDown } from 'lucide-react'
+import { toast } from 'sonner'
+import { CheckCircle, ChevronDown, RefreshCw } from 'lucide-react'
 import Navbar from '@/components/Navbar'
 import PoweredBy from '@/components/PoweredBy'
 import NeedsAttentionBanner from '@/components/NeedsAttentionBanner'
 import Badge, { statusTone } from '@/components/ui/Badge'
 import EmptyState from '@/components/ui/EmptyState'
+import MyDayStrip from '@/components/gamification/MyDayStrip'
+import { useVisiblePolling } from '@/lib/use-visible-polling'
+import { STATUS_LABELS } from '@/config/client'
 
 interface FeedItem {
   kind: 'hot_stale' | 'overdue_followup' | 'upcoming_followup' | 'telecaller_handoff' | 'unread_reply' | 'new_assignment'
@@ -79,6 +83,8 @@ function FollowupApprovals() {
   const [total, setTotal] = useState(0)
   const [busy, setBusy] = useState<number | null>(null)
   const [open, setOpen] = useState(true)
+  // Rows playing their exit animation before they're removed.
+  const [leaving, setLeaving] = useState<Set<number>>(() => new Set())
 
   useEffect(() => {
     fetch('/api/followup-nudges')
@@ -102,10 +108,19 @@ function FollowupApprovals() {
       })
       const json = await res.json()
       if (json.success) {
-        setItems(prev => prev.filter(i => i.lead_row !== leadRow))
-        setTotal(t => Math.max(0, t - 1))
+        toast.success(action === 'send' ? 'Follow-up sent on WhatsApp' : 'Skipped — we’ll ask again in 3 days')
+        setLeaving(s => new Set(s).add(leadRow))
+        window.setTimeout(() => {
+          setItems(prev => prev.filter(i => i.lead_row !== leadRow))
+          setTotal(t => Math.max(0, t - 1))
+          setLeaving(s => { const n = new Set(s); n.delete(leadRow); return n })
+        }, 260)
+      } else {
+        toast.error(json.error || 'Could not save — try again')
       }
-    } catch { /* leave the row; agent can retry */ }
+    } catch {
+      toast.error('Network error — try again')
+    }
     setBusy(null)
   }
 
@@ -123,11 +138,11 @@ function FollowupApprovals() {
         <div className="px-3 pb-3 space-y-2">
           <p className="text-[11px] text-dim -mt-1">Approve a WhatsApp follow-up template per lead, or skip (asks again in 3 days).</p>
           {items.map(it => (
-            <div key={it.lead_row} className="flex items-center gap-2 rounded-md px-3 py-2" style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}>
+            <div key={it.lead_row} className={`flex items-center gap-2 rounded-md px-3 py-2 ${leaving.has(it.lead_row) ? 'item-leave' : 'animate-fade-in'}`} style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}>
               <Link href={`/leads/${it.lead_row}`} className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-text truncate">{it.name}</p>
                 <p className="text-[11px] text-dim truncate">
-                  {it.status.replace(/_/g, ' ')}{it.city ? ` · ${it.city}` : ''}{it.next_followup ? ` · due ${it.next_followup}` : ''}
+                  {STATUS_LABELS[it.status] || it.status.replace(/_/g, ' ')}{it.city ? ` · ${it.city}` : ''}{it.next_followup ? ` · due ${it.next_followup}` : ''}
                 </p>
               </Link>
               <button
@@ -182,11 +197,14 @@ export default function TodayPage() {
     setLoading(false)
   }, [])
 
-  useEffect(() => {
-    fetchFeed()
-    const i = setInterval(fetchFeed, 60_000)
-    return () => clearInterval(i)
-  }, [fetchFeed])
+  // Refresh every 60s while the tab is visible (paused in the background).
+  useVisiblePolling(fetchFeed, 60_000)
+  const [refreshing, setRefreshing] = useState(false)
+  async function refreshNow() {
+    setRefreshing(true)
+    await fetchFeed()
+    setRefreshing(false)
+  }
 
   // Distinct owners in the feed → agent chips (admin view only, naturally).
   const owners = useMemo(() => {
@@ -212,10 +230,23 @@ export default function TodayPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-heading text-text">Today</h1>
-            <p className="text-body text-dim mt-0.5">{filtered.length === 0 ? 'You’re all caught up.' : `${filtered.length} action${filtered.length === 1 ? '' : 's'} to take`}</p>
+            <p className="text-body text-dim mt-0.5">
+              {loading ? 'Loading your list…' : filtered.length === 0 ? 'You’re all caught up.' : `${filtered.length} action${filtered.length === 1 ? '' : 's'} to take`}
+            </p>
           </div>
-          <button onClick={fetchFeed} className="text-xs text-accent hover:underline">Refresh</button>
+          <button
+            onClick={refreshNow}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-accent hover:bg-elevated disabled:opacity-60"
+            aria-label="Refresh today's list"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} aria-hidden />
+            Refresh
+          </button>
         </div>
+
+        {/* Points ring + streak (agents only; hidden when switched off) */}
+        <MyDayStrip className="mb-4" />
 
         {/* Admin: deck-automation heartbeat. Green = draining; red = the July
             failure signature (backlog exists, nothing sending). Admin-only data
@@ -248,11 +279,24 @@ export default function TodayPage() {
         <NeedsAttentionBanner />
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          <div className="mt-4 space-y-4" aria-busy="true" aria-label="Loading today's actions">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {[0, 1, 2, 3, 4, 5].map(i => <div key={i} className="skeleton h-14 rounded-lg" />)}
+            </div>
+            <div className="space-y-2">
+              {[0, 1, 2, 3].map(i => (
+                <div key={i} className="rounded-lg p-3" style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}>
+                  <div className="skeleton h-4 w-2/3" />
+                  <div className="skeleton mt-2 h-3 w-1/2" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : err ? (
-          <p className="text-sm text-danger">{err}</p>
+          <div className="mt-6 rounded-lg px-4 py-3 text-sm" role="alert"
+            style={{ color: 'var(--color-danger)', background: 'color-mix(in srgb, var(--color-danger) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-danger) 25%, transparent)' }}>
+            Couldn’t load today’s list. <button onClick={refreshNow} className="font-semibold underline">Try again</button>
+          </div>
         ) : items.length === 0 ? (
           <EmptyState
             icon={<CheckCircle />}
@@ -324,7 +368,7 @@ export default function TodayPage() {
                     <h2 className="text-eyebrow mb-2" style={{ color: meta.color }}>
                       {meta.label} · {list.length}
                     </h2>
-                    <div className="space-y-2">
+                    <div className="space-y-2 stagger-children">
                       {shown.map(item => (
                         <Link
                           key={`${item.kind}-${item.ref_lead_row}`}
@@ -341,7 +385,7 @@ export default function TodayPage() {
                               </p>
                             </div>
                             <Badge tone={statusTone(item.status)} className="shrink-0">
-                              {item.status}
+                              {STATUS_LABELS[item.status] || item.status}
                             </Badge>
                           </div>
                         </Link>

@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, RefreshCw, PartyPopper, ArrowRight } from 'lucide-react'
+import { TriangleAlert, RefreshCw, PartyPopper, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useNow } from '@/components/inbox/useNow'
 import CadenceHeader from '@/components/work/CadenceHeader'
 import WorkCard from '@/components/work/WorkCard'
 import OutcomeBar from '@/components/work/OutcomeBar'
 import WonCelebration from '@/components/work/WonCelebration'
+import MyDayStrip from '@/components/gamification/MyDayStrip'
+import { emitLeadUpdated } from '@/components/gamification/events'
 import type { Card, WorkStats } from '@/components/work/types'
 
 /**
@@ -111,6 +113,21 @@ export default function WorkPage() {
     loadQueue()
   }, [loadQueue])
 
+  // Where the header's "leave the rail" link goes. Locked rail agents only
+  // have the rail + Inbox; everyone else gets a way back to Today.
+  const [exitHref, setExitHref] = useState<string | null>(null)
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => {
+        const u = d?.data
+        if (!u) return
+        const locked = u.work_mode === 'guided' && u.guided_surface === 'guided_inbox'
+        setExitHref(locked ? null : '/today')
+      })
+      .catch(() => {})
+  }, [])
+
   // Swap to the next card once the slide-out + (optional) celebration finished.
   const commitNext = useCallback(() => {
     const payload = pendingNext.current
@@ -168,6 +185,9 @@ export default function WorkPage() {
         }
 
         if (data.stats) setStats(data.stats)
+        // Points chip at the tapped outcome (+2 call, + stage move). The rail
+        // runs its own Won celebration, so no extra confetti here.
+        emitLeadUpdated({ source: 'work', row: card.lead_row, channel: channelRef.current, celebrate: false })
         if (data.routedTo) toast.success(`Routed to ${data.routedTo}`)
         if (data.suggest_whatsapp) toast('Phone nahi uthaya — WhatsApp bhej do, window khul jayegi 💬')
 
@@ -202,7 +222,7 @@ export default function WorkPage() {
       <style>{CONFETTI_CSS}</style>
 
       {/* Pinned cadence header — always-visible momentum. */}
-      <CadenceHeader stats={stats} />
+      <CadenceHeader stats={stats} exitHref={exitHref} />
 
       {/* "+1" flash — fixed, centered above the card, fires on each cleared lead. */}
       {plusOne > 0 && (
@@ -217,6 +237,7 @@ export default function WorkPage() {
       )}
 
       <main className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col px-4 pb-[max(env(safe-area-inset-bottom),1rem)] pt-4">
+        <MyDayStrip variant="compact" className="mb-3" />
         {phase === 'loading' && <LoadingSkeleton />}
 
         {phase === 'error' && (
@@ -374,7 +395,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
         className="mb-4 flex h-16 w-16 items-center justify-center rounded-full"
         style={{ background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)' }}
       >
-        <Loader2 className="h-7 w-7" style={{ color: 'var(--color-danger)' }} strokeWidth={1.8} />
+        <TriangleAlert className="h-7 w-7" style={{ color: 'var(--color-danger)' }} strokeWidth={1.8} />
       </div>
       <h1 className="text-heading font-bold text-text">Couldn&apos;t load your rail</h1>
       <p className="mt-1.5 max-w-xs text-body text-muted">
